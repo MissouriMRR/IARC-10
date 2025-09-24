@@ -2,11 +2,15 @@ import socket
 import time
 
 
+# TODO implement list of drones then make it loop through to send data to them (or 3 threads :) )
+
+
 class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(self, jsonData):
         # TODO Update to create a list of drones to ping
         self.jsonData = jsonData
+        self.droneId: str = jsonData["localInfo"]["selfId"]
 
     # Start client and try to send messages to servers
     # TODO. Once drone list is implemented, split into setup and runtime functions

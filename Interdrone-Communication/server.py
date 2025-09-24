@@ -8,6 +8,7 @@ class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(self, jsonData):
         self.jsonData = jsonData
+        self.droneId: str = jsonData["localInfo"]["selfId"]
 
     # Starts functionality of server
     # TODO separate into 2 functions for server setup and server runtime
@@ -18,8 +19,8 @@ class Server:
         # TODO Update to take specific drone value (EX: Drone 2)
         server_socket.bind(
             (
-                str(self.jsonData["drones"]["drone1"]["ip"]),
-                int(self.jsonData["drones"]["drone1"]["port"]),
+                str(self.jsonData["drones"][self.droneId]["ip"]),
+                int(self.jsonData["drones"][self.droneId]["port"]),
             )
         )
         server_socket.listen(5)

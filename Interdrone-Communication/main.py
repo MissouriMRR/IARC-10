@@ -1,6 +1,6 @@
 import threading
-from . import server
-from . import client
+import server
+import client
 
 import json
 
