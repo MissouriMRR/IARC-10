@@ -37,11 +37,12 @@ class Client:
     def start_client(self):
         while True:
             try:
-                # TODO update to send messages to clients based on drone list
-                self.send_data(
-                    serverIP=str(self.jsonData["drones"]["drone2"]["ip"]),
-                    serverPort=int(self.jsonData["drones"]["drone2"]["port"]),
-                )
+                # Loop through otherDrones and send data to each one
+                for i in range(len(self.otherDronesIps)):
+                    self.send_data(
+                        serverIP=self.otherDronesIps[i],
+                        serverPort=self.otherDronesPorts[i],
+                    )
                 time.sleep(5)
             except:
                 print("no connection secured")
