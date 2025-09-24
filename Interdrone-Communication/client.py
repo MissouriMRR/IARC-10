@@ -15,8 +15,8 @@ class Client:
         # Parse JSON to get IPs and Ports of drones to connect to
 
         # Instantiate otherDrones lists
-        self.otherDronesIps: list[str]
-        self.otherDronesPorts: list[int]
+        self.otherDronesIps: list[str] = []
+        self.otherDronesPorts: list[int] = []
 
         # Loop through drones 1-4
         for i in range(1, 5):
