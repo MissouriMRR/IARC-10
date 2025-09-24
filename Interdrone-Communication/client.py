@@ -36,17 +36,16 @@ class Client:
     # TODO. Once drone list is implemented, split into setup and runtime functions
     def start_client(self):
         while True:
-            try:
-                # Loop through otherDrones and send data to each one
-                for i in range(len(self.otherDronesIps)):
+            # Loop through otherDrones and send data to each one
+            for i in range(len(self.otherDronesIps)):
+                try:
                     self.send_data(
                         serverIP=self.otherDronesIps[i],
                         serverPort=self.otherDronesPorts[i],
                     )
-                time.sleep(5)
-            except:
-                print("no connection secured")
-                time.sleep(5)
+                except:
+                    print(f"no connection secured on {self.otherDronesIps[i]}")
+            time.sleep(5)
 
     # Send data to server based on IP and Port
     def send_data(self, serverIP: str, serverPort: int):
