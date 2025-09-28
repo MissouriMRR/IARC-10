@@ -14,16 +14,18 @@ with open("config.json", "r") as file:
 serverInstance = server.Server(jsonData=data)
 clientInstance = client.Client(jsonData=data)
 
+
 # Create threads properly (don't call the functions with parentheses)
 serverThread = threading.Thread(target=serverInstance.start_server, name="ServerThread")
-clientThread = threading.Thread(target=clientInstance.start_client, name="ClientThread")
+# clientThread = threading.Thread(target=clientInstance.start_client, name="ClientThread")
 
 # Start the threads
 serverThread.start()
 print("Server started")
-clientThread.start()
-print("Client started")
+# clientThread.start()
+# print("Client started")
+clientInstance.run()  # This starts the async event loop
 
 # Wait for threads to complete (if needed)
 serverThread.join()
-clientThread.join()
+# clientThread.join()

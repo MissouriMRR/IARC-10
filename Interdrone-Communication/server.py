@@ -2,13 +2,16 @@
 
 # May want to look into using udp instead
 import socket
+import sys
 
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(self, jsonData):
         self.jsonData = jsonData
-        self.droneId: str = jsonData["localInfo"]["selfId"]
+        # TODO REMOVE FOR BETTER TESTING METHOD
+        self.droneId: str = sys.argv[1]
+        # self.droneId: str = jsonData["localInfo"]["selfId"]
 
     # Starts functionality of server
     # TODO separate into 2 functions for server setup and server runtime
@@ -29,11 +32,9 @@ class Server:
             while True:
                 # Wait for socket connection and take client socket and address variables
                 client_socket, client_address = server_socket.accept()
-                print(f"Connection accepted from {client_address}")
 
                 # Get data from client socket
                 data = client_socket.recv(1024)
-                print(f"Received from client: {data.decode()}")
 
                 # Respond to client message to confirm transmission
                 response = "Server received your message!"
