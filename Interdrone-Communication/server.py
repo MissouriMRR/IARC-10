@@ -1,29 +1,36 @@
 import asyncio
 import sys
+from asyncio.queues import Queue
+from asyncio import StreamReader, StreamWriter
 
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData):
+    def __init__(self, jsonData, serverOutData: Queue[str]):
         self.jsonData = jsonData
+        self.serverOutData = serverOutData
         # TODO REMOVE FOR BETTER TESTING METHOD
         self.droneId: str = sys.argv[1]
         # self.droneId: str = jsonData["localInfo"]["selfId"]
 
     # Handle individual client connections
-    async def handle_client(self, reader, writer):
+    async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             # Read data from client
             data = await reader.read(1024)
 
             if data:
                 message = data.decode()
-                # print(f"Received from {client_address}: {message}")
-
                 # Send response back to client
                 response = "Server received your message!"
                 writer.write(response.encode())
                 await writer.drain()
+
+                # Store received data in serverOutData to be accessed from main.py
+                client_address = writer.get_extra_info("peername")
+                await self.serverOutData.put(
+                    item=(f"client_address {client_address}, {message} message")
+                )
 
         except Exception as e:
             print(f"Error handling client: {e}")
