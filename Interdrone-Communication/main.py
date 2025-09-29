@@ -12,10 +12,13 @@ async def main():
     with open("config.json", "r") as file:
         data: dict[str, object] = json.load(file)
 
+    # Create Server and Client Data queues to pass data out of tasks
+    serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
+    clientData: Queue[str] = asyncio.Queue()
+
     # Instantiate Server and Client
-    serverData: Queue[str] = asyncio.Queue()
     serverInstance = server.Server(jsonData=data, serverOutData=serverData)
-    clientInstance = client.Client(jsonData=data)
+    clientInstance = client.Client(jsonData=data, clientOutData=clientData)
 
     # Run both server and client concurrently
     server_task = asyncio.create_task(serverInstance.start_server_async())
@@ -29,9 +32,15 @@ async def main():
 
             # Continuous loop for other functionality
             while True:
-                # Your other functionality here
+                # Check for serverData from the server task
                 if not serverData.empty():
-                    print(await serverData.get())
+                    print(f"Server Data: {await serverData.get()}")
+
+                    # update ts to have a localServerData var that gets, then calls an async function to process
+
+                # Check for clientData from the client task
+                if not clientData.empty():
+                    print(f"Client Data: {await clientData.get()}")
 
                 await asyncio.sleep(0.1)  # Adjust sleep time as needed
 

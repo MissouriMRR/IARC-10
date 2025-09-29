@@ -1,11 +1,15 @@
+from asyncio.queues import Queue
+
+
 import asyncio
 import sys
 
 
 class Client:
     # Client Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData):
+    def __init__(self, jsonData, clientOutData: Queue[str]):
         self.jsonData = jsonData
+        self.clientOutData: Queue[str] = clientOutData
         # TODO REMOVE FOR BETTER TESTING METHOD
         self.droneId: str = sys.argv[1]
         # self.droneId: str = jsonData["localInfo"]["selfId"]
@@ -46,16 +50,19 @@ class Client:
             # Process results
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    print(f"Connection to {self.otherDronesIps[i]} failed: {result}")
+                    pass
+                    # print(f"Connection to {self.otherDronesIps[i]} failed: {result}")
                 else:
-                    print(
-                        f"Successfully communicated with {self.otherDronesIps[i]}: {result}"
-                    )
+                    pass
+                    # print(
+                    #     f"Successfully communicated with {self.otherDronesIps[i]}: {result}"
+                    # )
 
             # Wait 1 second before next iteration
             await asyncio.sleep(1)
 
     # Async coroutine to send data to one server
+    # TODO add a data param
     async def send_data_async(self, serverIP: str, serverPort: int):
         try:
             # Open async connection with timeout
@@ -69,6 +76,9 @@ class Client:
 
             # Receive response
             data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
+
+            # Add response data to clientOutData queue
+            await self.clientOutData.put(item=str(data))
 
             # Close connection
             writer.close()

@@ -1,6 +1,8 @@
+from asyncio.queues import Queue
+
+
 import asyncio
 import sys
-from asyncio.queues import Queue
 from asyncio import StreamReader, StreamWriter
 
 
@@ -8,7 +10,7 @@ class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(self, jsonData, serverOutData: Queue[str]):
         self.jsonData = jsonData
-        self.serverOutData = serverOutData
+        self.serverOutData: Queue[str] = serverOutData
         # TODO REMOVE FOR BETTER TESTING METHOD
         self.droneId: str = sys.argv[1]
         # self.droneId: str = jsonData["localInfo"]["selfId"]
