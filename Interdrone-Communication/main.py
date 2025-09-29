@@ -1,31 +1,34 @@
-import threading
+import asyncio
 import server
 import client
-
 import json
 
-# Get JSON Data
-# TODO implement JSON class for easier data access
-with open("config.json", "r") as file:
-    data: dict[str, object] = json.load(file)
+
+async def main():
+    # Get JSON Data
+    with open("config.json", "r") as file:
+        data: dict[str, object] = json.load(file)
+
+    # Instantiate Server and Client
+    serverInstance = server.Server(jsonData=data)
+    clientInstance = client.Client(jsonData=data)
+
+    # Run both server and client concurrently
+    server_task = asyncio.create_task(serverInstance.start_server_async())
+    client_task = asyncio.create_task(clientInstance.start_client())
+
+    print("Server and Client started")
+
+    # Implement other code here
+
+    try:
+        # Run both tasks concurrently
+        await asyncio.gather(server_task, client_task)
+    except KeyboardInterrupt:
+        print("Shutting down...")
+        server_task.cancel()
+        client_task.cancel()
 
 
-# Instantiate Server and Client
-serverInstance = server.Server(jsonData=data)
-clientInstance = client.Client(jsonData=data)
-
-
-# Create threads properly (don't call the functions with parentheses)
-serverThread = threading.Thread(target=serverInstance.start_server, name="ServerThread")
-# clientThread = threading.Thread(target=clientInstance.start_client, name="ClientThread")
-
-# Start the threads
-serverThread.start()
-print("Server started")
-# clientThread.start()
-# print("Client started")
-clientInstance.run()  # This starts the async event loop
-
-# Wait for threads to complete (if needed)
-serverThread.join()
-# clientThread.join()
+if __name__ == "__main__":
+    asyncio.run(main())

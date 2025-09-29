@@ -1,7 +1,4 @@
-# Server is just writing data to a file
-
-# May want to look into using udp instead
-import socket
+import asyncio
 import sys
 
 
@@ -13,37 +10,45 @@ class Server:
         self.droneId: str = sys.argv[1]
         # self.droneId: str = jsonData["localInfo"]["selfId"]
 
-    # Starts functionality of server
-    # TODO separate into 2 functions for server setup and server runtime
-    def start_server(self):
-        # Init server socket
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Handle individual client connections
+    async def handle_client(self, reader, writer):
+        try:
+            # Read data from client
+            data = await reader.read(1024)
 
-        # TODO Update to take specific drone value (EX: Drone 2)
-        server_socket.bind(
-            (
-                str(self.jsonData["drones"][self.droneId]["ip"]),
-                int(self.jsonData["drones"][self.droneId]["port"]),
-            )
+            if data:
+                message = data.decode()
+                # print(f"Received from {client_address}: {message}")
+
+                # Send response back to client
+                response = "Server received your message!"
+                writer.write(response.encode())
+                await writer.drain()
+
+        except Exception as e:
+            print(f"Error handling client: {e}")
+        finally:
+            # Close the connection
+            writer.close()
+            await writer.wait_closed()
+
+    # Async server startup
+    async def start_server_async(self):
+        server = await asyncio.start_server(
+            self.handle_client,
+            str(self.jsonData["drones"][self.droneId]["ip"]),
+            int(self.jsonData["drones"][self.droneId]["port"]),
         )
-        server_socket.listen(5)
 
         try:
-            while True:
-                # Wait for socket connection and take client socket and address variables
-                client_socket, client_address = server_socket.accept()
-
-                # Get data from client socket
-                data = client_socket.recv(1024)
-
-                # Respond to client message to confirm transmission
-                response = "Server received your message!"
-                client_socket.sendall(response.encode())
-
-                # Close connection to client socket
-                client_socket.close()
+            async with server:
+                await server.serve_forever()
         except KeyboardInterrupt:
             print("Server shutting down.")
         finally:
-            # When program is killed, close server socket
-            server_socket.close()
+            server.close()
+            await server.wait_closed()
+
+    # Run server
+    def run(self):
+        asyncio.run(self.start_server_async())
