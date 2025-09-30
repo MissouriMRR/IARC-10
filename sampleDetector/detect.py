@@ -26,7 +26,8 @@ grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 detections = at_detector.detect(grey)
 
 #since we only have one, i just have it print off the corners of the first(and only) apriltag detected
-print(detections[0].corners)
+#print(detections[0].corners)
+print(detections)
 
 x1 = int(detections[0].corners[0][0])
 y1 = int(detections[0].corners[0][1])
@@ -36,5 +37,5 @@ y2 = int(detections[0].corners[2][1])
 
 withBox = cv2.rectangle(img,(x1,y1),(x2,y2),(0,255,0),5)
 
-cv2.imshow('final',withBox)
-cv2.waitKey(0)
+#cv2.imshow('final',withBox)
+#cv2.waitKey(0)
