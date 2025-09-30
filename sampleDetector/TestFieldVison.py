@@ -33,8 +33,8 @@ for c in contours:
         cv2.rectangle(output, (x,y), (x+w,y+h), (0,0,255), 2)
         cv2.putText(output, "Candidate", (x,y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
 
-cv2.imshow("HSV Mask", mask)
-cv2.imshow("HSV Detection", output)
+cv2.imwrite("mask_output.png", mask)
+cv2.imwrite("detection_output.png", output)
 
 
 # -------------------
