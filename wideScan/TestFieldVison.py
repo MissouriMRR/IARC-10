@@ -30,11 +30,12 @@ for c in contours:
     area = cv2.contourArea(c)
     if area > 500:   # adjust threshold
         x,y,w,h = cv2.boundingRect(c)
+        print(f'x: {x}\ny: {y}\nw: {w}\nh: {h}')
         cv2.rectangle(output, (x,y), (x+w,y+h), (0,0,255), 2)
         cv2.putText(output, "Candidate", (x,y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
 
-cv2.imwrite("mask_output.png", mask)
-cv2.imwrite("detection_output.png", output)
+#cv2.imwrite("mask_output.png", mask)
+#cv2.imwrite("detection_output.png", output)
 
 
 # -------------------
