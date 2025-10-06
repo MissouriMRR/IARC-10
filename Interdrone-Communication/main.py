@@ -24,30 +24,24 @@ async def main():
     server_task = asyncio.create_task(serverInstance.start_server_async())
     client_task = asyncio.create_task(clientInstance.start_client())
 
+    # Run both tasks concurrently
     try:
-        # Run both tasks concurrently
-        try:
-            # Both tasks are already running in the background
-            print("Server and Client started")
+        # Both tasks are already running in the background
+        print("Server and Client started")
 
-            # Continuous loop for other functionality
-            while True:
-                # Check for serverData from the server task
-                if not serverData.empty():
-                    print(f"Server Data: {await serverData.get()}")
+        # Continuous loop for other functionality
+        while True:
+            # Check for serverData from the server task
+            if not serverData.empty():
+                print(f"Server Data: {await serverData.get()}")
 
-                    # update ts to have a localServerData var that gets, then calls an async function to process
+                # update ts to have a localServerData var that gets, then calls an async function to process
 
-                # Check for clientData from the client task
-                if not clientData.empty():
-                    print(f"Client Data: {await clientData.get()}")
+            # Check for clientData from the client task
+            if not clientData.empty():
+                print(f"Client Data: {await clientData.get()}")
 
-                await asyncio.sleep(0.1)  # Adjust sleep time as needed
-
-        except KeyboardInterrupt:
-            print("Shutting down...")
-            server_task.cancel()
-            client_task.cancel()
+            await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
     except KeyboardInterrupt:
         print("Shutting down...")
