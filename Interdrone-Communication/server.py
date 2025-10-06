@@ -11,9 +11,11 @@ class Server:
     def __init__(self, jsonData, serverOutData: Queue[str]):
         self.jsonData = jsonData
         self.serverOutData: Queue[str] = serverOutData
-        # TODO REMOVE FOR BETTER TESTING METHOD
-        self.droneId: str = sys.argv[1]
-        # self.droneId: str = jsonData["localInfo"]["selfId"]
+        # Check for sys arg for drone selfId
+        try:
+            self.droneId: str = sys.argv[1]
+        except Exception:
+            self.droneId: str = jsonData["localInfo"]["selfId"]
 
     # Handle individual client connections
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
