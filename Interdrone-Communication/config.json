@@ -24,6 +24,8 @@
     },
     "localInfo":
     {
-        "selfId": "2"
+        "selfId": "2",
+        "speedTest": "True",
+        "speedTestKbDataSize": "16"
     }
 }

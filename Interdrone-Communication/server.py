@@ -1,6 +1,5 @@
 from asyncio.queues import Queue
-
-
+import json
 import asyncio
 import sys
 from asyncio import StreamReader, StreamWriter
@@ -11,6 +10,8 @@ class Server:
     def __init__(self, jsonData, serverOutData: Queue[str]):
         self.jsonData = jsonData
         self.serverOutData: Queue[str] = serverOutData
+        self.speedTest: bool = jsonData["localInfo"]["speedTest"]
+        self.speedTestKbDataSize: int = jsonData["localInfo"]["speedTestKbDataSize"]
         # Check for sys arg for drone selfId
         try:
             self.droneId: str = sys.argv[1]
@@ -21,7 +22,7 @@ class Server:
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             # Read data from client
-            data = await reader.read(1024)
+            data = await reader.read(4096)
 
             if data:
                 message = data.decode()
@@ -32,6 +33,22 @@ class Server:
 
                 # Store received data in serverOutData to be accessed from main.py
                 client_address = writer.get_extra_info("peername")
+                # Check if this is a speed test message
+                try:
+                    msg_obj = json.loads(message)
+                    if isinstance(msg_obj, dict) and msg_obj.get("speed_test") == True:
+                        # For speed tests, echo back the original message
+                        writer.write(data)
+                        await writer.drain()
+
+                        # Log speed test info
+                        await self.serverOutData.put(
+                            f"Speed test from drone {msg_obj.get('sender_id')} ({client_address[0]}), size: {len(message) / 1024:.1f}KB"
+                        )
+                        return
+                except json.JSONDecodeError:
+                    # Not JSON data, treat as regular message
+                    pass
                 await self.serverOutData.put(
                     item=(f"client_address {client_address}, {message} message")
                 )

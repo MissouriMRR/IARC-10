@@ -33,13 +33,25 @@ async def main():
         while True:
             # Check for serverData from the server task
             if not serverData.empty():
-                print(f"Server Data: {await serverData.get()}")
-
-                # update ts to have a localServerData var that gets, then calls an async function to process
+                # print(f"Server Data: {await serverData.get()}")
+                pass
+                # TODO update this to have a localServerData var that gets, then calls an async function to process
 
             # Check for clientData from the client task
             if not clientData.empty():
-                print(f"Client Data: {await clientData.get()}")
+                print("in client data")
+                client_msg = await clientData.get()
+                # Process speed test results if applicable
+                try:
+                    result = json.loads(client_msg)
+                    if isinstance(result, dict) and "rtt_ms" in result:
+                        print(
+                            f"Network Test | Target: {result['target']} | RTT: {result['rtt_ms']}ms | Throughput: {result['throughput_kbps']}Kbps"
+                        )
+                    else:
+                        print(f"Client Data: {client_msg}")
+                except:
+                    print(f"Client Data: {client_msg}")
 
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
