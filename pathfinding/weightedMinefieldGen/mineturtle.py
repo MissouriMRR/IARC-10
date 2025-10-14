@@ -1,0 +1,36 @@
+import turtle as t
+from minefield import *
+
+length = 30
+width = 30
+t.setworldcoordinates(0, 0, length, width)
+t.penup()
+t.pensize(1)
+screen = t.Screen()
+screen.tracer(0)
+screen.setup(700,650)
+t.speed(0)
+field = Minefield(length,width,False)
+field.createPath([length-1,(width-1)//3])
+field.createPath([length-1,(width-1)])
+field.generateMines(1000)
+
+for y,row in enumerate(field.get()):
+    for x,col in enumerate(field.get()[0]):
+        if field.get()[y][x] in [Minefield.pathSymbol]:
+            t.color("green")
+        elif field.get()[y][x] in [Minefield.mineSymbol]:
+            t.color("black")
+        elif field.get()[y][x] in [Minefield.dangerZoneSymbol]:
+            t.color("red")
+        t.goto(x,y)
+        t.begin_fill()
+        t.goto(x,y+1)
+        t.goto(x+1,y+1)
+        t.goto(x+1,y)
+        t.goto(x,y)
+        t.end_fill()
+# field.displayOnlyMines()
+# field.displayOnlyPaths()
+t.done()
+
