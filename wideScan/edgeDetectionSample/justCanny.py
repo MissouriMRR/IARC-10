@@ -1,0 +1,26 @@
+import cv2
+import numpy as np
+
+# load in the test pictures we have
+files = ['../Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PXL_20251006_231255410.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231439727.MP.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231443070.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231446447.MP.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231458855.jpg']
+
+for file in files:
+    img = cv2.imread(file)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    edge = cv2.Canny(gray,100,200)
+
+    newSize = (int((img.shape[1])*0.5),int((img.shape[0])*0.5))
+    resized_image = cv2.resize(edge, newSize, interpolation=cv2.INTER_LINEAR)
+    cv2.imshow('canny', resized_image)
+    while(True):
+        # Check for a key press
+        key = cv2.waitKey(1) & 0xFF
+        # If 'q' is pressed, break the loop
+        if key == ord('q'):  
+            break  
+    cv2.destroyAllWindows()
