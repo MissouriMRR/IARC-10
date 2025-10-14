@@ -1,8 +1,11 @@
 import random
 
+#We may need to provide four arbitrary (fake) corners for calculation testing
+
 #Make 2D array
 tRows, tCols = 20, 20                    #Want 3937, 3937
 minefield = [['o' for i in range(tCols)] for i in range(tRows)]
+mineList = [[]]
 
 #Make vars
 numM = 30 #15,499,969 /441~35,147           #Want 40,000
@@ -20,6 +23,7 @@ for k in range(numM):
         col = random.randrange(0,tCols)
 
     minefield[row][col] = mine
+    mineList[k] = [row, col]
 
     #Build danger zone
     for i in range(row-dx//2, row+dx//2+1):
@@ -32,7 +36,12 @@ for k in range(numM):
                 else:
                     minefield[i][j]=danger
 
-#print
+#print mineList
+string = "["
+for blowupDevice in mineList:
+    row_str = str(blowupDevice) +
+
+# #print minefield
 width = len(str(tCols - 1))  # width based on max column number
 header = " " * (width + 1) + " ".join(str(j).rjust(width) for j in range(tCols))
 print(header)
