@@ -1,4 +1,4 @@
-import random, math, os
+import random
 from copy import deepcopy
 
 class Minefield:
@@ -13,9 +13,8 @@ class Minefield:
         self.minefield = [[Minefield.emptySymbol for i in range(width)] for i in range(length)]
         if not randomized:
             random.seed(136)
-    
+
     # Paths will always favor going up, will change if that is not the case
-    # Generate Paths AFTER mines have been generated
     def createPath(self,startPoint:list):
         direction = random.randint(1,100)
         leftWeight = [i for i in range(1,26)] # 1-25
@@ -27,33 +26,32 @@ class Minefield:
         mines = [Minefield.mineSymbol, Minefield.dangerZoneSymbol]
         while referencePoint[0] > 0:
             direction = random.randint(1,100)
-            
             if direction in leftWeight and (referencePoint[1] - 1 >= 0):
                 if self.minefield[referencePoint[0]][referencePoint[1]-1] not in mines:
                     referencePoint[1] -= 1 # Left
                 else:
                     continue
-            elif direction in rightWeight and (referencePoint[1] + 1 <= self.width):
+            elif direction in rightWeight and (referencePoint[1] + 1 < self.width):
                 if self.minefield[referencePoint[0]][referencePoint[1] + 1] not in mines:
                     referencePoint[1] += 1 # Right
                 else:
                     continue
             elif direction in upWeight and (referencePoint[0] - 1 >= 0):
-                if self.minefield[referencePoint[0]][referencePoint[1] - 1] not in mines:
+                if self.minefield[referencePoint[0] - 1][referencePoint[1]] not in mines:
                     referencePoint[0] -= 1 # Up
                 else:
                     continue
-            elif direction in downWeight and (referencePoint[0] + 1 <= self.length):
-                if self.minefield[referencePoint[0]][referencePoint[1] + 1] not in mines:
-                    referencePoint[1] += 1 # Down
+            elif direction in downWeight and (referencePoint[0] + 1 < self.length):
+                if self.minefield[referencePoint[0] + 1][referencePoint[1]] not in mines:
+                    referencePoint[0] += 1 # Down
                 else:
                     continue
-            
-            
-
 
             self.minefield[referencePoint[0]][referencePoint[1]] = Minefield.pathSymbol
 
+    # Mines Generate with a set radius, numOfMines must be between 0 - Field length or width.
+    # Going significantly over will result in filling the field with as much mines possible 
+    # around paths.
     def generateMines(self,numOfMines:int,radius:int=1):
         placeable = True
         for i in range(numOfMines):
@@ -69,8 +67,8 @@ class Minefield:
             else:
                 continue
 
-            for k in range(1,radius+1): # Checking if radius is not occupied, also adding radius symbols
-                leftShift = k
+            for k in range(1,radius+1): # Checking if radius is not occupied.
+                leftShift = k           # Also adding radius symbols
                 rightShift = k
                 upShift = k
                 downShift = k
@@ -119,7 +117,8 @@ class Minefield:
 
                 if not placeable:
                     break
-            
+    
+    # Displaying Mines/Paths only isolates their corresponding values when visualizing
     def displayOnlyMines(self):
         print("  -  "*self.length)
         print("Displaying Mines Only")
@@ -135,7 +134,8 @@ class Minefield:
         
         print("Displaying Mines Only")
         print("  -  "*self.length)
-    
+        return mineOnlyField
+
     def displayOnlyPaths(self):
         print("  -  "*self.length)
         print("Displaying Paths Only")
@@ -150,6 +150,7 @@ class Minefield:
         
         print("Displaying Paths only")
         print("  -  "*self.length)
+        return pathsOnlyField
     
     def get(self):
         return self.minefield
@@ -158,4 +159,4 @@ class Minefield:
         for value in self.minefield:
             print()
             print(value)
-        return "  -  "*self.length
+        return ' '.join(self.minefield)
