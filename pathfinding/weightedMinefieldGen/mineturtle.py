@@ -8,6 +8,10 @@ This will display the field using Turtle.
   is chosen when creating paths.**
 """
 
+displayPath = True
+displayMines = True
+displayFalseMines = True
+
 length = 100
 width = 100
 t.setworldcoordinates(0, 0, length, width)
@@ -37,21 +41,42 @@ field.generateMines(1000) # May not generate the exact amount of mines.
 # Green - Safe Path
 # Black - Mine
 # Red - Dangerzone/Mine radius
+# Orange - False Mine
 """
+cell_size = 0.8
+mineCount = 0
+dangerCount = 0
+falseMineCount = 0
+safePathCellCount = 0
+
 for y,row in enumerate(field.get()):
     for x,col in enumerate(field.get()[0]):
-        if field.get()[y][x] in [Minefield.pathSymbol]:
+        if field.get()[y][x] in [Minefield.pathSymbol] and displayPath:
             t.color("green")
-        elif field.get()[y][x] in [Minefield.mineSymbol]:
+            safePathCellCount += 1
+        elif field.get()[y][x] in [Minefield.mineSymbol] and displayMines:
             t.color("black")
-        elif field.get()[y][x] in [Minefield.dangerZoneSymbol]:
+            mineCount += 1
+        elif field.get()[y][x] in [Minefield.dangerZoneSymbol] and displayMines:
             t.color("red")
+            dangerCount += 1
+        elif field.get()[y][x] in [Minefield.falseMineSymbol] and displayFalseMines:
+            t.color("dark orange")
+            falseMineCount += 1
+        else:
+            dangerCount += 1
+                
         t.goto(x,y)
         t.begin_fill()
-        t.goto(x,y+1)
-        t.goto(x+1,y+1)
-        t.goto(x+1,y)
+        t.goto(x,y+cell_size)
+        t.goto(x+cell_size,y+cell_size)
+        t.goto(x+cell_size,y)
         t.goto(x,y)
         t.end_fill()
 t.done()
-
+print("M I N E F I E L D   S T A T I S T I C S :")
+print(f'Number of Mines Successfully Created:\n{mineCount}')
+print(f'Number of Mines False Mines Successfully Created:\n{falseMineCount}')
+print(f'Percentage of Field That is Safe:\n{(safePathCellCount/(length*width))*100:.2f}%')
+print(f'Percentage of Field That is Dangerous(Mines and Danger Zones):\n{((mineCount+dangerCount)/(length*width))*100:.2f}%')
+print(f'Percentage of Field That are False Mines:\n{(falseMineCount/(length*width))*100:.2f}%')

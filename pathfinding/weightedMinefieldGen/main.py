@@ -15,6 +15,8 @@ field.createPath([length-1,width-1]) # Starts in bottom right corner
 
 field.generateMines(500,2) 
 
+field.displayOnlyFalseMines()
+print()
 field.displayOnlyMines()
 print()
 field.displayOnlyPaths()
