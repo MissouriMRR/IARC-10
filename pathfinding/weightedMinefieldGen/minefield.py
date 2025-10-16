@@ -159,4 +159,4 @@ class Minefield:
         for value in self.minefield:
             print()
             print(value)
-        return ' '.join(self.minefield)
+        return ""

@@ -22,6 +22,8 @@ field = Minefield(length,width,True)
 # Paths created may intersect a lot
 # False paths(Random green spots along the edge or sudden long stretches) may exist.
 # Not intentional but I guess a useful bug ;)
+# Illegal Mines may be generated
+# Not intentional, it is a bug :( 
 
 field.createPath([length-1,(width-1)//3])
 field.createPath([length-1,(width-1)])
