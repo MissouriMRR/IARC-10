@@ -14,16 +14,19 @@ for file in files:
     #make it gray
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     #apply a blur
-    blur = cv2.medianBlur(gray,7)
+    blur = cv2.GaussianBlur(gray,(5,5),0)
     #do the edge detection
-    edge = cv2.Canny(blur,100,200)
+    edge = cv2.Canny(gray,100,200)
 
-    #dilate the lines
-    kernel = np.ones((5, 5), np.uint8)
+    #thicken the lines
+    kernel = np.ones((3, 3), np.uint8)
     thickerLines = cv2.dilate(edge,kernel,iterations=1)
 
+    # try to get rid of some of the extra white space
+    #blurAgain = cv2.medianBlur(thickerLines,5)
+
     #resize the image and show it
-    newSize = (int((img.shape[1])*0.5),int((img.shape[0])*0.5))
+    newSize = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
     resized_image = cv2.resize(thickerLines, newSize, interpolation=cv2.INTER_LINEAR)
     cv2.imshow('final', resized_image)
     #wait to kill the window

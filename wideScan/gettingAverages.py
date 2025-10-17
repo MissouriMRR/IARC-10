@@ -40,13 +40,26 @@ avgMineH /= mineAmount[0] * mineAmount[1]
 avgMineS /= mineAmount[0] * mineAmount[1]
 avgMineV /= mineAmount[0] * mineAmount[1]
 
-print(f'Grass H: {avgGrassH}\nGrass S: {avgGrassS}\nGrass V: {avgGrassV}')
-print(f'Mine H: {avgMineH}\nMine S: {avgMineS}\nMine V: {avgMineV}')
-#print(grassAmount)
+def return_avg(image):
+    avgImage1 = 0
+    avgImage2 = 0
+    avgImage3 = 0
 
-#cv2.imshow('orig',origImg)
-#cv2.imshow('grass',justGrass)
-#cv2.imshow('mine',theMine)
+    amount = image.shape
+
+    for row in image:
+        for item in row:
+            avgImage1 += int(item[0])
+            avgImage2 += int(item[1])
+            avgImage3 += int(item[2])
+
+    avgImage1 /= amount[0] * amount[1]
+    avgImage2 /= amount[0] * amount[1]
+    avgImage3 /= amount[0] * amount[1]
+    return [avgImage1,avgImage2,avgImage3]
+
+#print(f'Grass H: {avgGrassH}\nGrass S: {avgGrassS}\nGrass V: {avgGrassV}')
+#print(f'Mine H: {avgMineH}\nMine S: {avgMineS}\nMine V: {avgMineV}')
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()

@@ -14,8 +14,12 @@ for file in files:
 
     edge = cv2.Canny(gray,100,200)
 
+    #thicken the lines
+    kernel = np.ones((2, 2), np.uint8)
+    thickerLines = cv2.dilate(edge,kernel,iterations=1)
+
     newSize = (int((img.shape[1])*0.5),int((img.shape[0])*0.5))
-    resized_image = cv2.resize(edge, newSize, interpolation=cv2.INTER_LINEAR)
+    resized_image = cv2.resize(thickerLines, newSize, interpolation=cv2.INTER_LINEAR)
     cv2.imshow('canny', resized_image)
     while(True):
         # Check for a key press
