@@ -1,42 +1,41 @@
 import random
 
-#Make 2D array
-tRows, tCols = 20, 20                    #Want 3937, 3937
-minefield = [['o' for i in range(tCols)] for i in range(tRows)]
+# Parameters
+numM = 30
+mine, danger, safe = 'M', 'm', '-'
+dx, dy = 3, 3
 
-#Make vars
-numM = 30 #15,499,969 /441~35,147           #Want 40,000
-row, col= 0, 0
-mine, danger, safe = 'M', 'm', 'o'
-dx, dy = 3, 3                                #Want 21, 21
+# Grid settings
+tRows, tCols = 20, 20
+minefield = [[safe for _ in range(tCols)] for _ in range(tRows)]
+mineList = []
 
-#Generate mines
+# Generate mines
 for k in range(numM):
+    row, col = random.randrange(tRows), random.randrange(tCols)
 
-    #Find available mine location
+    # Avoid placing on existing mine
     while minefield[row][col] == mine:
-
-        row = random.randrange(0,tRows)
-        col = random.randrange(0,tCols)
+        row, col = random.randrange(tRows), random.randrange(tCols)
 
     minefield[row][col] = mine
+    mineList.append([row, col])
 
-    #Build danger zone
-    for i in range(row-dx//2, row+dx//2+1):
-        if i<0 or i>tRows-1:
+    # Mark danger zone for print
+    for i in range(row - dx // 2, row + dx // 2 + 1):
+        if not (0 <= i < tRows):
             continue
-        else:
-            for j in range(col-dy//2, col+dy//2+1):
-                if j<0 or j>tCols-1 or (minefield[i][j] != safe):
-                    continue
-                else:
-                    minefield[i][j]=danger
+        for j in range(col - dy // 2, col + dy // 2 + 1):
+            if not (0 <= j < tCols):
+                continue
+            if minefield[i][j] == safe:
+                minefield[i][j] = danger
 
-#print
-width = len(str(tCols - 1))  # width based on max column number
-header = " " * (width + 1) + " ".join(str(j).rjust(width) for j in range(tCols))
-print(header)
+# Print mine list
+print("Mine locations:")
+for m in mineList:
+    print(m)
 
-for i in range(tRows):
-    row_str = str(i).rjust(width) + " " + " ".join(cell.rjust(width) for cell in minefield[i])
-    print(row_str)
+# Print grid
+for row in minefield:
+    print(" ".join(row))
