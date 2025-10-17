@@ -1,8 +1,7 @@
-import math as m
 import numpy as np
 import turtle as t
-import sys
 
+# Shrink sample size
 def circle_mask(arraySize, circleCenter, circleRad):
     hight, width = arraySize
     y, x = np.ogrid[:hight, :width]
@@ -14,20 +13,21 @@ t.colormode(255) # Sets the color mode to rgb values
 np.random.seed(0) # Seed setter
 numberOfMines = 5 # Total number of mine to generate
 mineHeat = 50 # The heat value the a mine will have (max heat value)
-fieldSize = 300 # The size of the square field
+fieldSizeX = 3600 # The max size of the field
+fieldSizeY = 960 # The max size of the field
 t.speed(0) # Maxes the turtle speed
-t.setworldcoordinates(0, 0, fieldSize, fieldSize) # Creates a configured turtle window
+t.setworldcoordinates(0, 0, fieldSizeY, fieldSizeX) # Creates a configured turtle window
 t.pensize(5)
 t.penup()
 t.hideturtle()
 screen = t.Screen()
 screen.tracer(0) # Turns off the turtle tracer
 
-# Mine generation
-mineList = np.random.randint(fieldSize, size=(numberOfMines, 2))\
+# Mine generation RUDIMENTARY
+mineList = np.random.randint(fieldSizeY, size=(numberOfMines, 2))\
 
 # Discovery Layer Creation
-discLayer = np.full((fieldSize, fieldSize), 1)
+discLayer = np.full((fieldSizeY, fieldSizeX), 1)
 
 # Layers the heat onto the the discovery layer
 for y in range(mineHeat-1):
