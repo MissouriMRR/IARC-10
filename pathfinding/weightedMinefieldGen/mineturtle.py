@@ -1,8 +1,8 @@
 import turtle as t
 from minefield import *
 
-length = 30
-width = 30
+length = 70
+width = 70
 t.setworldcoordinates(0, 0, length, width)
 t.penup()
 t.pensize(1)
