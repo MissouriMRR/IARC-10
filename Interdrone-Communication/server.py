@@ -1,5 +1,4 @@
 from asyncio.queues import Queue
-import json
 import asyncio
 import sys
 from asyncio import StreamReader, StreamWriter
@@ -24,34 +23,16 @@ class Server:
         try:
             # Read data from client
             data = await reader.read(4096)
+            clientAddress: str = writer.get_extra_info(name="peername")
 
             if data:
                 message = data.decode()
-                # Send response back to client
+                # Send default response back to client
                 response = "Server received your message!"
                 writer.write(response.encode())
                 await writer.drain()
 
                 # Store received data in serverOutData to be accessed from main.py
-                clientAddress = writer.get_extra_info("peername")
-                # Check if this is a speed test message
-
-                # TODO abstract to a handle data function
-                try:
-                    msgObj = json.loads(message)
-                    if isinstance(msgObj, dict) and msgObj.get("speedTest") == True:
-                        # For speed tests, echo back the original message
-                        writer.write(data)
-                        await writer.drain()
-
-                        # Log speed test info
-                        await self.serverOutData.put(
-                            f"Speed test from drone {msgObj.get('senderId')} ({clientAddress[0]}), size: {len(message) / 1024:.1f}KB"
-                        )
-                        return
-                except json.JSONDecodeError:
-                    # Not JSON data, treat as regular message
-                    pass
                 await self.serverOutData.put(
                     item=(f"clientAddress {clientAddress}, {message} message")
                 )
