@@ -7,6 +7,18 @@ import client
 import json
 
 
+# DOCS: How to merge this with path finding:
+"""
+1: Change this to a async start_networking() function that runs as a task from real main function
+2. Pass in serverInData, serverOutData 
+"""
+
+# TODO List to get this ready to chat with path finding
+"""
+Move network test out of core functionality to stand alone test (may not be feasible/optimal)
+"""
+
+
 async def main():
     # Get JSON Data
     with open("config.json", "r") as file:
@@ -21,8 +33,8 @@ async def main():
     clientInstance = client.Client(jsonData=data, clientOutData=clientData)
 
     # Run both server and client concurrently
-    server_task = asyncio.create_task(serverInstance.start_server_async())
-    client_task = asyncio.create_task(clientInstance.start_client())
+    serverTask = asyncio.create_task(serverInstance.start_server_async())
+    clientTask = asyncio.create_task(clientInstance.start_client())
 
     # Run both tasks concurrently
     try:
@@ -35,30 +47,28 @@ async def main():
             if not serverData.empty():
                 # print(f"Server Data: {await serverData.get()}")
                 pass
-                # TODO update this to have a localServerData var that gets, then calls an async function to process
 
             # Check for clientData from the client task
             if not clientData.empty():
-                print("in client data")
-                client_msg = await clientData.get()
+                clientMsg = await clientData.get()
                 # Process speed test results if applicable
                 try:
-                    result = json.loads(client_msg)
+                    result = json.loads(clientMsg)
                     if isinstance(result, dict) and "rtt_ms" in result:
                         print(
-                            f"Network Test | Target: {result['target']} | RTT: {result['rtt_ms']}ms | Throughput: {result['throughput_kbps']}Kbps"
+                            f"Network Test | Target: {result['target']} | RTT: {result['rttMs']}ms | Throughput: {result['throughputKbps']}Kbps"
                         )
                     else:
-                        print(f"Client Data: {client_msg}")
+                        print(f"Client Data: {clientMsg}")
                 except:
-                    print(f"Client Data: {client_msg}")
+                    print(f"Client Data: {clientMsg}")
 
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
     except KeyboardInterrupt:
         print("Shutting down...")
-        server_task.cancel()
-        client_task.cancel()
+        serverTask.cancel()
+        clientTask.cancel()
 
 
 if __name__ == "__main__":

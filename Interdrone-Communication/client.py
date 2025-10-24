@@ -28,10 +28,10 @@ class Client:
 
         # Create message data for speed test
         if self.speedTest:
-            self.speed_test_message_data = {
-                "speed_test": True,
+            self.speedTestMessageData = {
+                "speedTest": True,
                 "timestamp": time.time(),
-                "sender_id": self.droneId,
+                "senderId": self.droneId,
                 "payload": "X"
                 * (
                     self.speedTestKbDataSize * 1024
@@ -88,8 +88,8 @@ class Client:
             # Create message based on whether speed testing is enabled
             if self.speedTest:
                 # Update message with time
-                self.speed_test_message_data["timestamp"] = time.time()
-                message = json.dumps(self.speed_test_message_data)
+                self.speedTestMessageData["timestamp"] = time.time()
+                message = json.dumps(self.speedTestMessageData)
             else:
                 message = "Hello, server!"
             sendTime = time.time()
@@ -106,17 +106,18 @@ class Client:
             data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
             receiveTime = time.time()
 
+            # TODO abstract to handle data function
             if self.speedTest:
                 # Calculate speed metrics
-                rtt_ms = (receiveTime - sendTime) * 1000  # RTT in milliseconds
-                bytes_sent = len(message.encode())
-                throughput_kbps = (bytes_sent * 8 / 1024) / (receiveTime - sendTime)
+                rttMs = (receiveTime - sendTime) * 1000  # RTT in milliseconds
+                bytesSent = len(message.encode())
+                throughputKbps = (bytesSent * 8 / 1024) / (receiveTime - sendTime)
 
                 result = {
                     "target": f"{serverIP}:{serverPort}",
-                    "rtt_ms": round(rtt_ms, 2),
-                    "size_kb": self.speedTestKbDataSize,
-                    "throughput_kbps": round(throughput_kbps, 2),
+                    "rttMs": round(rttMs, 2),
+                    "sizeKb": self.speedTestKbDataSize,
+                    "throughputKbps": round(throughputKbps, 2),
                 }
                 await self.clientOutData.put(item=json.dumps(result))
             else:

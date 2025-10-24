@@ -12,6 +12,7 @@ class Server:
         self.serverOutData: Queue[str] = serverOutData
         self.speedTest: bool = jsonData["localInfo"]["speedTest"]
         self.speedTestKbDataSize: int = jsonData["localInfo"]["speedTestKbDataSize"]
+
         # Check for sys arg for drone selfId
         try:
             self.droneId: str = sys.argv[1]
@@ -32,25 +33,27 @@ class Server:
                 await writer.drain()
 
                 # Store received data in serverOutData to be accessed from main.py
-                client_address = writer.get_extra_info("peername")
+                clientAddress = writer.get_extra_info("peername")
                 # Check if this is a speed test message
+
+                # TODO abstract to a handle data function
                 try:
-                    msg_obj = json.loads(message)
-                    if isinstance(msg_obj, dict) and msg_obj.get("speed_test") == True:
+                    msgObj = json.loads(message)
+                    if isinstance(msgObj, dict) and msgObj.get("speedTest") == True:
                         # For speed tests, echo back the original message
                         writer.write(data)
                         await writer.drain()
 
                         # Log speed test info
                         await self.serverOutData.put(
-                            f"Speed test from drone {msg_obj.get('sender_id')} ({client_address[0]}), size: {len(message) / 1024:.1f}KB"
+                            f"Speed test from drone {msgObj.get('senderId')} ({clientAddress[0]}), size: {len(message) / 1024:.1f}KB"
                         )
                         return
                 except json.JSONDecodeError:
                     # Not JSON data, treat as regular message
                     pass
                 await self.serverOutData.put(
-                    item=(f"client_address {client_address}, {message} message")
+                    item=(f"clientAddress {clientAddress}, {message} message")
                 )
 
         except Exception as e:
