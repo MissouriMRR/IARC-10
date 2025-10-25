@@ -1,7 +1,34 @@
 import matplotlib.pyplot as pyplot
 import matplotlib.collections as mc
 import numpy as np
+"""
+Each mine requires at least 4 nodes that connect to another mine's other 4 nodes.
+Ex:
+    mine1 = Mine(centerX,centerY,radius)
+    mine2 = Mine(centerX,centerY,radius)
 
+    Node Setup:
+        Node(parent,target,internal(T/F),primary(T/F))
+
+    internal/external Bitangents:
+      - internal:True
+      - external:False
+    Primary/Secondary Points
+      - Primary:True
+      - Secondary:False
+
+    Repeat for each mine:
+        Rememebr to swap parent and target depending on how 
+        you want to connect the mines
+
+        mine1InterNode1 = Node(mine1,mine2,True,True)
+        mine1InterNode2 = Node(mine1,mine2,True,False)
+        mine1ExterNode1 = Node(mine1,mine2,False,True)
+        mine1ExterNode2 = Node(mine1,mine2,False,False)
+"""
+
+"""MATH STUFF"""
+# Mine class keeps track of mine position and radii
 class Mine:
     numMines = 0
     def __init__(self,centerX,centerY,radius):
@@ -22,6 +49,7 @@ class Mine:
     def __repr__(self):
         return self.__str__()
 
+# Node class keeps track of node positions
 class Node:
 
     def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True):
@@ -30,10 +58,14 @@ class Node:
         self.x = 0.0
         self.y = 0.0
         self.__targetMine = targetMine
-        d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2)
-        self.primary= primary # Primary node is the first node where it is placed towards the top of the circle
+        parentMine.addNode(self)
+        d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
 
-        # Create Angle Offset(relative to target mine)
+        self.primary= primary # Primary node is the first node where it is placed 
+                              # (typically towards the top of the circle)
+
+        # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
+        # Formula is: arccos(x1-x2)/d+pi
         if parentMine.y > targetMine.y:
                offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
         elif parentMine.y < targetMine.y:
@@ -44,10 +76,11 @@ class Node:
             elif parentMine.x > targetMine.x:
                 offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
 
+        # Offset Angle is the same for internal and external bitangents
         if internal:
             # Create internal angle
             internalAngle = np.arccos(((parentMine.radius)+(targetMine.radius))/d)
-                        
+            
             if primary:
                 self.x = ((parentMine.radius) * np.cos(internalAngle+offsetAngle)) + parentMine.x
                 self.y = ((parentMine.radius) * np.sin(internalAngle+offsetAngle)) + parentMine.y
@@ -96,6 +129,7 @@ sampleExternalNode2 = Node(sample,otherSample,False,False)
 sampleExternalNode3 = Node(otherSample,sample,False)
 sampleExternalNode4 = Node(otherSample,sample,False,False)
 
+""" MATPLOTLIB STUFF"""
 plt = pyplot
 
 # Circles/Mines
