@@ -7,13 +7,10 @@ class json_class:
             self.config = json.load(file)
     
     # get drone ip address
-    def get_drone_ip(self, num : int):
-        drone_id = str(num)
-        drone_info = self.config["drones"][drone_id]
-        return drone_info["ip"]
-    
+    def get_drone_ip(self, droneID : int):
+        return self.config["drones"][droneID]
+
     # get drone port
-    def get_drone_port(self, num : int):
-        drone_id = str(num)
-        drone_info = self.config["drones"][drone_id]
-        return drone_info["port"]
+    def get_drone_port(self, dronePort : int):
+        return self.config["drones"][dronePort]
+    
