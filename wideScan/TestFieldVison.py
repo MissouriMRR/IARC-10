@@ -4,7 +4,7 @@ import numpy as np
 # -------------------
 # Load image
 # -------------------
-image = cv2.imread("PFM1.png")   # Change path if needed
+image = cv2.imread("/home/msz4y/MultirotorSoftware/IARC-10/wideScan/Test_Mine_Pictures/TestPic1.jpg")   # Change path if needed
 output = image.copy()
 
 # -------------------
@@ -13,8 +13,8 @@ output = image.copy()
 hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
 # Initial HSV range for dull green (tweak by sampling mine pixel with cv2)
-lower_green = np.array([40, 20, 40])
-upper_green = np.array([80, 150, 150])
+lower_green = np.array([150, 200, 200])
+upper_green = np.array([210, 255, 255])
 
 mask = cv2.inRange(hsv, lower_green, upper_green)
 
@@ -34,8 +34,8 @@ for c in contours:
         cv2.rectangle(output, (x,y), (x+w,y+h), (0,0,255), 2)
         cv2.putText(output, "Candidate", (x,y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
 
-#cv2.imwrite("mask_output.png", mask)
-#cv2.imwrite("detection_output.png", output)
+cv2.imwrite("new_mask_output.png", mask)
+cv2.imwrite("new_detection_output.png", output)
 
 
 # -------------------
