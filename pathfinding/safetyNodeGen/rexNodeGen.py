@@ -3,10 +3,9 @@ import numpy as np #for array functions
 #each element of the array will have a x and y value.
 
       
-mineCorList = [[x,y]] #2D array of mine coordinates.
-mineCorList[0][0]  #x value of first mine
-nodeCorList = [[]]
-connectionTracker = [[]]  #primary node, secondary node, distance between nodes. integer index values that correpsonden to nodeCorList
+mineCorList = [[6,7]] #2D array of mine coordinates.
+nodeCorList = [[1,1]]
+connectionTracker = [[1,2,3]]  #primary node, secondary node, distance between nodes. integer index values that correpsonden to nodeCorList
 
 def addMine(x, y): 
     mineCorList.append([x, y])
