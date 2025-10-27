@@ -15,10 +15,6 @@ class Client:
         self.jsonData = jsonData
         self.clientInData: Queue[dict[str, bool | float | str | Any]] = clientInData
         self.clientOutData: Queue[str] = clientOutData
-        self.speedTest: bool = bool(jsonData["localInfo"]["speedTest"])
-        self.speedTestKbDataSize: int = int(
-            jsonData["localInfo"]["speedTestKbDataSize"]
-        )
 
         # Check for sys arg for drone selfId
         self.droneId: str
@@ -30,18 +26,6 @@ class Client:
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
         self.otherDronesPorts: list[int] = []
-
-        # Create message data for speed test
-        if self.speedTest:
-            self.speedTestMessageData: dict[str, bool | float | str | Any] = {
-                "speedTest": True,
-                "timestamp": time.time(),
-                "senderId": self.droneId,
-                "payload": "X"
-                * (
-                    self.speedTestKbDataSize * 1024
-                ),  # Add payload of specified size by creating a string of specified size
-            }
 
         # Parse JSON to get IPs and Ports of drones to connect to
         # Loop through drones 1-4
@@ -59,77 +43,68 @@ class Client:
     # Start client and try to send messages to servers using asyncio
     async def start_client_async(self):
         while True:
-            # Create coroutines for all drone connections
-            coroutines = []
-            for i in range(len(self.otherDronesIps)):
-                coroutine = self.send_data_async(
-                    serverIP=self.otherDronesIps[i], serverPort=self.otherDronesPorts[i]
-                )
-                coroutines.append(coroutine)
+            # Check for new input message
+            if not self.clientInData.empty():
+                # Get message from clientInData
+                message = await self.clientInData.get()
+                sendTime = time.time()
+                message["timestamp"] = sendTime
 
-            # Run all coroutines concurrently
-            results = await asyncio.gather(*coroutines, return_exceptions=True)
+                # Serialize message to JSON to be able to send to servers
+                jsonMessage = json.dumps(message)
 
-            # Process results
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    pass
-                    # print(f"Connection to {self.otherDronesIps[i]} failed: {result}")
-                else:
-                    pass
-                    # print(
-                    #     f"Successfully communicated with {self.otherDronesIps[i]}: {result}"
-                    # )
+                # Create coroutines for all drone connections
+                coroutines = []
+                for i in range(len(self.otherDronesIps)):
+                    coroutine = self.send_data_async(
+                        serverIP=self.otherDronesIps[i],
+                        serverPort=self.otherDronesPorts[i],
+                        jsonMessage=jsonMessage,
+                    )
+                    coroutines.append(coroutine)
 
-            # Wait 1 second before next iteration
-            await asyncio.sleep(1)
+                # Run all coroutines concurrently
+                results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+                # Process results
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        pass
+                        # print(f"Connection to {self.otherDronesIps[i]} failed: {result}")
+                    else:
+                        pass
+                        # print(
+                        #     f"Successfully communicated with {self.otherDronesIps[i]}: {result}"
+                        # )
+
+            # Wait 0.05 second before checking for next message
+            await asyncio.sleep(0.05)
 
     # Async coroutine to send data to one server
     # TODO add a data param
-    async def send_data_async(self, serverIP: str, serverPort: int):
+    async def send_data_async(self, serverIP: str, serverPort: int, jsonMessage: str):
         try:
-            # Create message based on whether speed testing is enabled
-            if self.speedTest:
-                # Update message with time
-                self.speedTestMessageData["timestamp"] = time.time()
-                message = json.dumps(self.speedTestMessageData)
-            else:
-                message = "Hello, server!"
-            sendTime = time.time()
             # Open async connection with timeout
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(serverIP, serverPort), timeout=1.0
             )
 
             # Send data
-            writer.write(message.encode())
+            writer.write(jsonMessage.encode())
             await writer.drain()
 
             # Receive response
             data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
             receiveTime = time.time()
 
-            # TODO abstract to handle data function
-            if self.speedTest:
-                # Calculate speed metrics
-                rttMs = (receiveTime - sendTime) * 1000  # RTT in milliseconds
-                bytesSent = len(message.encode())
-                throughputKbps = (bytesSent * 8 / 1024) / (receiveTime - sendTime)
-
-                result = {
-                    "target": f"{serverIP}:{serverPort}",
-                    "rttMs": round(rttMs, 2),
-                    "sizeKb": self.speedTestKbDataSize,
-                    "throughputKbps": round(throughputKbps, 2),
-                }
-                await self.clientOutData.put(item=json.dumps(result))
-            else:
-                # Add response data to clientOutData queue
-                await self.clientOutData.put(item=data.decode())
-
             # Close connection
             writer.close()
             await writer.wait_closed()
+
+            # Call process_client_data
+            await self.process_client_data(
+                jsonMessage, data, receiveTime, serverIP, serverPort
+            )
 
             return data.decode()
 
@@ -140,10 +115,53 @@ class Client:
         except Exception as e:
             raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
 
-    def handle_client_response_data(
+    async def process_client_data(
         self,
-    ):
-        pass
+        jsonMessage,
+        data,
+        receiveTime,
+        serverIP: str,
+        serverPort: int,
+    ) -> None:
+        originalMessage = json.loads(s=jsonMessage)
+
+        match originalMessage["messageId"]:
+            # Pathfinding Message
+            case 1:
+                pass
+            # Heartbeat Message
+            case 4:
+                await self.clientOutData.put(item=data.decode())
+                pass
+            # Speedtest Message
+            case 13:
+                # Calculate Round-Trip Time (RTT) in seconds
+                rtt_seconds: float = receiveTime - originalMessage["timestamp"]
+
+                # Calculate the size of the JSON message that was sent
+                size_bytes = len(jsonMessage.encode("utf-8"))
+
+                # Calculate throughput in kilobits per second (kbps)
+                # Avoid division by zero if RTT is extremely small
+                if rtt_seconds > 0:
+                    # (bytes * 8 bits/byte) / 1000 bits/kbit = kilobits
+                    # kilobits / seconds = kbps
+                    throughput_kbps = (size_bytes * 8 / 1000) / rtt_seconds
+                else:
+                    throughput_kbps = float("inf")
+
+                result = {
+                    "messageId": "13",
+                    "target": f"{serverIP}:{serverPort}",
+                    "rttMs": round(rtt_seconds * 1000, 2),
+                    "sizeKb": round(size_bytes / 1024, 2),  # Size in KiloBytes (KB)
+                    "throughputKbps": round(throughput_kbps, 2),
+                }
+                await self.clientOutData.put(item=json.dumps(result))
+                pass
+            case _:
+                # If no message ID, return server response data
+                await self.clientOutData.put(item=data)
 
     # Helper method to run the async client
     def run(self):

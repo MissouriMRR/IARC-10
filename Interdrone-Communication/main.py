@@ -2,7 +2,6 @@ from asyncio.queues import Queue
 
 
 import asyncio
-import time
 from typing import Any
 import server
 import client
@@ -52,9 +51,9 @@ async def main():
     except Exception:
         droneId = data["localInfo"]["selfId"]
 
-    heartBeatMessage: dict[str, bool | float | str | Any] = {
-        "speedTest": True,
-        "timestamp": time.time(),
+    heartBeatMessage: dict[str, int | float | str | Any] = {
+        "messageId": 4,
+        "timestamp": 0.0,  # set in client
         "senderId": droneId,
         "payload": "Hello server!",
     }
@@ -66,6 +65,9 @@ async def main():
 
         # Continuous loop for other functionality
         while True:
+            # Add heartbeat message to clientQueue to send
+            await clientInData.put(item=heartBeatMessage)
+
             # Check for serverData from the server task
             if not serverData.empty():
                 # print(f"Server Data: {await serverData.get()}")
