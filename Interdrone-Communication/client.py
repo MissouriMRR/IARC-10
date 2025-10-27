@@ -1,3 +1,6 @@
+from typing import Any
+
+
 from asyncio.queues import Queue
 
 import time
@@ -8,8 +11,9 @@ import json
 
 class Client:
     # Client Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData, clientOutData: Queue[str]):
+    def __init__(self, jsonData, clientInData: Queue[Any], clientOutData: Queue[str]):
         self.jsonData = jsonData
+        self.clientInData: Queue[dict[str, bool | float | str | Any]] = clientInData
         self.clientOutData: Queue[str] = clientOutData
         self.speedTest: bool = bool(jsonData["localInfo"]["speedTest"])
         self.speedTestKbDataSize: int = int(
@@ -17,10 +21,11 @@ class Client:
         )
 
         # Check for sys arg for drone selfId
+        self.droneId: str
         try:
-            self.droneId: str = sys.argv[1]
+            self.droneId = sys.argv[1]
         except Exception:
-            self.droneId: str = jsonData["localInfo"]["selfId"]
+            self.droneId = jsonData["localInfo"]["selfId"]
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -28,7 +33,7 @@ class Client:
 
         # Create message data for speed test
         if self.speedTest:
-            self.speedTestMessageData = {
+            self.speedTestMessageData: dict[str, bool | float | str | Any] = {
                 "speedTest": True,
                 "timestamp": time.time(),
                 "senderId": self.droneId,
@@ -50,11 +55,9 @@ class Client:
                 self.otherDronesPorts.append(
                     int(self.jsonData["drones"][str(i)]["port"])
                 )
-        print(self.otherDronesIps)
-        print(self.otherDronesPorts)
 
     # Start client and try to send messages to servers using asyncio
-    async def start_client(self):
+    async def start_client_async(self):
         while True:
             # Create coroutines for all drone connections
             coroutines = []
@@ -137,6 +140,11 @@ class Client:
         except Exception as e:
             raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
 
+    def handle_client_response_data(
+        self,
+    ):
+        pass
+
     # Helper method to run the async client
     def run(self):
-        asyncio.run(self.start_client())
+        asyncio.run(self.start_client_async())

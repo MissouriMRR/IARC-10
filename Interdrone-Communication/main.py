@@ -2,9 +2,12 @@ from asyncio.queues import Queue
 
 
 import asyncio
+import time
+from typing import Any
 import server
 import client
 import json
+import sys
 
 
 # DOCS: How to merge this with path finding:
@@ -22,19 +25,39 @@ Move network test out of core functionality to stand alone test (may not be feas
 async def main():
     # Get JSON Data
     with open("config.json", "r") as file:
-        data: dict[str, object] = json.load(file)
+        data: dict[str, Any] = json.load(file)  # TODO verify and update this
 
-    # Create Server and Client Data queues to pass data out of tasks
+    # Create Server and Client Data queues to pass data in and out of tasks
     serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
-    clientData: Queue[str] = asyncio.Queue()
+
+    # TODO talk to Harper to see if we need a serverInData
+    clientInData: Queue[dict[str, bool | float | str | Any]] = (
+        asyncio.Queue()
+    )  # TODO remove Any once we figure out how to structure our passed in data
+    clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
     serverInstance = server.Server(jsonData=data, serverOutData=serverData)
-    clientInstance = client.Client(jsonData=data, clientOutData=clientData)
+    clientInstance = client.Client(
+        jsonData=data, clientInData=clientInData, clientOutData=clientOutData
+    )
 
     # Run both server and client concurrently
     serverTask = asyncio.create_task(serverInstance.start_server_async())
-    clientTask = asyncio.create_task(clientInstance.start_client())
+    clientTask = asyncio.create_task(clientInstance.start_client_async())
+
+    droneId: str
+    try:
+        droneId = sys.argv[1]
+    except Exception:
+        droneId = data["localInfo"]["selfId"]
+
+    heartBeatMessage: dict[str, bool | float | str | Any] = {
+        "speedTest": True,
+        "timestamp": time.time(),
+        "senderId": droneId,
+        "payload": "Hello server!",
+    }
 
     # Run both tasks concurrently
     try:
@@ -48,9 +71,9 @@ async def main():
                 # print(f"Server Data: {await serverData.get()}")
                 pass
 
-            # Check for clientData from the client task
-            if not clientData.empty():
-                clientMsg = await clientData.get()
+            # Check for clientOutData from the client task
+            if not clientOutData.empty():
+                clientMsg = await clientOutData.get()
                 # Process speed test results if applicable
                 try:
                     result = json.loads(clientMsg)
@@ -63,7 +86,7 @@ async def main():
                 except:
                     print(f"Client Data: {clientMsg}")
 
-            await asyncio.sleep(0.1)  # Adjust sleep time as needed
+            await asyncio.sleep(1)  # Adjust sleep time as needed
 
     except KeyboardInterrupt:
         print("Shutting down...")

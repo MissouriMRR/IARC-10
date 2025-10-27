@@ -13,10 +13,11 @@ class Server:
         self.speedTestKbDataSize: int = jsonData["localInfo"]["speedTestKbDataSize"]
 
         # Check for sys arg for drone selfId
+        self.droneId: str
         try:
-            self.droneId: str = sys.argv[1]
+            self.droneId = sys.argv[1]
         except Exception:
-            self.droneId: str = jsonData["localInfo"]["selfId"]
+            self.droneId = jsonData["localInfo"]["selfId"]
 
     # Handle individual client connections
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
@@ -27,6 +28,7 @@ class Server:
 
             if data:
                 message = data.decode()
+
                 # Send default response back to client
                 response = "Server received your message!"
                 writer.write(response.encode())
