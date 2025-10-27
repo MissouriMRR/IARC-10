@@ -51,11 +51,14 @@ async def main():
     except Exception:
         droneId = data["localInfo"]["selfId"]
 
-    heartBeatMessage: dict[str, int | float | str | Any] = {
-        "messageId": 4,
-        "timestamp": 0.0,  # set in client
+    speedTestMessage: dict[str, bool | float | str | Any] = {
+        "messageId": 13,
+        "timestamp": 0.0,
         "senderId": droneId,
-        "payload": "Hello server!",
+        "payload": "X"
+        * (
+            (int(data["localInfo"]["speedTestKbDataSize"])) * 1024
+        ),  # Add payload of specified size by creating a string of specified size
     }
 
     # Run both tasks concurrently
@@ -66,7 +69,7 @@ async def main():
         # Continuous loop for other functionality
         while True:
             # Add heartbeat message to clientQueue to send
-            await clientInData.put(item=heartBeatMessage)
+            await clientInData.put(item=speedTestMessage)
 
             # Check for serverData from the server task
             if not serverData.empty():
@@ -75,11 +78,14 @@ async def main():
 
             # Check for clientOutData from the client task
             if not clientOutData.empty():
+                print("we here fr")
                 clientMsg = await clientOutData.get()
                 # Process speed test results if applicable
                 try:
-                    # result = json.loads(clientMsg)
-                    print(f"Client Data: {clientMsg}")
+                    result = json.loads(clientMsg)
+                    print(
+                        f"Network Test | Target: {result['target']} | RTT: {result['rttMs']}ms | Throughput: {result['throughputKbps']}Kbps"
+                    )
                 except:
                     print(f"Client Data: {clientMsg}")
 

@@ -9,8 +9,6 @@ class Server:
     def __init__(self, jsonData, serverOutData: Queue[str]):
         self.jsonData = jsonData
         self.serverOutData: Queue[str] = serverOutData
-        self.speedTest: bool = jsonData["localInfo"]["speedTest"]
-        self.speedTestKbDataSize: int = jsonData["localInfo"]["speedTestKbDataSize"]
 
         # Check for sys arg for drone selfId
         self.droneId: str

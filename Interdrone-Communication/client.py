@@ -124,8 +124,7 @@ class Client:
         serverPort: int,
     ) -> None:
         originalMessage = json.loads(s=jsonMessage)
-
-        match originalMessage["messageId"]:
+        match int(originalMessage["messageId"]):
             # Pathfinding Message
             case 1:
                 pass
@@ -135,6 +134,7 @@ class Client:
                 pass
             # Speedtest Message
             case 13:
+                print("got to case switch 13")
                 # Calculate Round-Trip Time (RTT) in seconds
                 rtt_seconds: float = receiveTime - originalMessage["timestamp"]
 
@@ -143,7 +143,7 @@ class Client:
 
                 # Calculate throughput in kilobits per second (kbps)
                 # Avoid division by zero if RTT is extremely small
-                if rtt_seconds > 0:
+                if rtt_seconds > 0.0:
                     # (bytes * 8 bits/byte) / 1000 bits/kbit = kilobits
                     # kilobits / seconds = kbps
                     throughput_kbps = (size_bytes * 8 / 1000) / rtt_seconds
