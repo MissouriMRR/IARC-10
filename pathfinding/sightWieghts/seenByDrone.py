@@ -37,4 +37,5 @@ while True:
         mergedSeen = droneSightArr[0] + droneSightArr[1] + droneSightArr[2] + droneSightArr[3]
     else:
         print("Done")
+        print(np.max(mergedSeen))
         break
