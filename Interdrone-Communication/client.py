@@ -1,6 +1,3 @@
-from typing import Any
-
-
 from asyncio.queues import Queue
 
 import time
@@ -11,9 +8,14 @@ import json
 
 class Client:
     # Client Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData, clientInData: Queue[Any], clientOutData: Queue[str]):
+    def __init__(
+        self,
+        jsonData,
+        clientInData: Queue[dict[str, int | float | str]],
+        clientOutData: Queue[str],
+    ):
         self.jsonData = jsonData
-        self.clientInData: Queue[dict[str, bool | float | str | Any]] = clientInData
+        self.clientInData: Queue[dict[str, bool | float | str]] = clientInData
         self.clientOutData: Queue[str] = clientOutData
 
         # Check for sys arg for drone selfId
@@ -47,8 +49,7 @@ class Client:
             if not self.clientInData.empty():
                 # Get message from clientInData
                 message = await self.clientInData.get()
-                sendTime = time.time()
-                message["timestamp"] = sendTime
+                message["timestamp"] = time.time()
 
                 # Serialize message to JSON to be able to send to servers
                 jsonMessage = json.dumps(message)
@@ -134,7 +135,6 @@ class Client:
                 pass
             # Speedtest Message
             case 13:
-                print("got to case switch 13")
                 # Calculate Round-Trip Time (RTT) in seconds
                 rtt_seconds: float = receiveTime - originalMessage["timestamp"]
 
