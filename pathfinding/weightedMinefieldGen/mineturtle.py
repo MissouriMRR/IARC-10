@@ -14,6 +14,7 @@ field = Minefield(length,width,False)
 field.createPath([length-1,(width-1)//3])
 field.createPath([length-1,(width-1)])
 field.generateMines(1000)
+# field.generateOtherObstacles(5) Do not run this yet, it will not work
 
 for y,row in enumerate(field.get()):
     for x,col in enumerate(field.get()[0]):
@@ -23,6 +24,8 @@ for y,row in enumerate(field.get()):
             t.color("black")
         elif field.get()[y][x] in [Minefield.dangerZoneSymbol]:
             t.color("red")
+        elif field.get()[y][x] in [Minefield.otherObstaclesSymbol]:
+            t.color("brown")
         t.goto(x,y)
         t.begin_fill()
         t.goto(x,y+1)

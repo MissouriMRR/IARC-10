@@ -104,50 +104,119 @@ class Node:
             distance = np.sqrt((self.x-node.x)**2+(self.y-node.y)**2)
         return distance
 
+    def connectNode(self,node:"Node"):
+        self.connectedNodes(node)
+        node.connectedNodes(self)
+        return node
+
+    def get_pos(self):
+        return (round(float(self.x),3),round(float(self.y),3))
+
     def getTargetMine(self):
         return self.__targetMine
     def __str__(self):
         return f"Parent Mine: {self.parentMine}"
     def __repr__(self):
         return self.__str__()
-    
+
 
 sample = Mine(25,25,16)
 otherSample = Mine(0,100,16)
+mine = Mine(100,75,16)
 
-# Internal Bitangents
+"""""""""Internal Bitangents"""""""""
+# sample and other sample connections
 sampleNode1 = Node(sample,otherSample,True)
 sampleNode2 = Node(sample,otherSample,True,False)
 
 otherSampleNode1 = Node(otherSample,sample,True)
 otherSampleNode2 = Node(otherSample,sample,True,False)
 
-# External Bitangents
+# mine and sample connections
+mineToSampleInterNode1 = Node(mine,sample,True)
+mineToSampleInterNode2 = Node(mine,sample,True,False)
+
+sampleToMineInterNode1 = Node(sample,mine,True)
+sampleToMineInterNode2 = Node(sample,mine,True,False)
+
+# mine and other sample connections
+mineToOtherSampleInterNode1 = Node(mine,otherSample,True)
+mineToOtherSampleInterNode2 = Node(mine,otherSample,True,False)
+
+otherSampleToMineInterNode1 = Node(otherSample,mine,True)
+otherSampleToMineInterNode2 = Node(otherSample,mine,True,False)
+
+"""""""""External Bitangents"""""""""
+# sample and other sample connections
 sampleExternalNode1 = Node(sample,otherSample,False)
 sampleExternalNode2 = Node(sample,otherSample,False,False)
 
 sampleExternalNode3 = Node(otherSample,sample,False)
 sampleExternalNode4 = Node(otherSample,sample,False,False)
 
+# mine and sample connections
+mineToSampleExternNode1 = Node(mine,sample,False)
+mineToSampleExternNode2 = Node(mine,sample,False,False)
+
+sampleToMineExternNode1 = Node(sample,mine,False)
+sampleToMineExternNode2 = Node(sample,mine,False,False)
+
+# mine and other sample connections
+mineToOtherSampleExternNode1 = Node(mine,otherSample,False)
+mineToOtherSampleExternNode2 = Node(mine,otherSample,False,False)
+
+otherSampleToMineExternNode1 = Node(otherSample,mine,False)
+otherSampleToMineExternNode2 = Node(otherSample,mine,False,False)
+
+# # Connect the Nodes
+# sampleNode1.connectNode(otherSampleNode1)
+# sampleNode2.connectNode(otherSampleNode2)
+
+# sampleExternalNode1.connectNode(sampleExternalNode3)
+# sampleExternalNode2.connectNode(sampleExternalNode4)
 """ MATPLOTLIB STUFF"""
 plt = pyplot
 
 # Circles/Mines
 sampleCircle = pyplot.Circle(sample.getPos(),sample.getRadius(),color='r')
 otherSampleCircle = pyplot.Circle(otherSample.getPos(),otherSample.getRadius(),color='b')
+mineCircle = pyplot.Circle(mine.getPos(),mine.getRadius(),color="black")
 
 fig, ax = pyplot.subplots()
 ax.set_aspect("equal")
 ax.add_patch(sampleCircle)
 ax.add_patch(otherSampleCircle)
+ax.add_patch(mineCircle)
 
-# Plot Internal Bitangents
+"""""""""Plot Internal Bitangents"""""""""
+# sample and other sample internal connect
 plt.plot([sampleNode1.x,otherSampleNode1.x],[sampleNode1.y,otherSampleNode1.y],color="y")
 plt.plot([otherSampleNode2.x,sampleNode2.x],[otherSampleNode2.y,sampleNode2.y],color='g')
 
-# Plot External Bitangents
+# mine and sample internal connect
+plt.plot([mineToSampleInterNode1.x,sampleToMineInterNode1.x],[mineToSampleInterNode1.y,sampleToMineInterNode1.y],color='y')
+plt.plot([mineToSampleInterNode2.x,sampleToMineInterNode2.x],[mineToSampleInterNode2.y,sampleToMineInterNode2.y],color='g')
+
+# mine and other sample internal connect
+plt.plot([mineToOtherSampleInterNode1.x,otherSampleToMineInterNode1.x],[mineToOtherSampleInterNode1.y,otherSampleToMineInterNode1.y],color='y')
+plt.plot([mineToOtherSampleInterNode2.x,otherSampleToMineInterNode2.x],[mineToOtherSampleInterNode2.y,otherSampleToMineInterNode2.y],color='g')
+
+"""""""""Plot External Bitangents"""""""""
+# sample and other sample external connect
 plt.plot([sampleExternalNode1.x,sampleExternalNode4.x],[sampleExternalNode1.y,sampleExternalNode4.y],color='c')
 plt.plot([sampleExternalNode2.x,sampleExternalNode3.x],[sampleExternalNode2.y,sampleExternalNode3.y],color='m')
+
+""" 
+#For whatever reason, a bug where one of the external nodes is displayed slightly off.
+#But, the node position itself through printing to console appears to be correctly calculated.
+"""
+# mine and sample external connect
+plt.plot([mineToSampleExternNode1.x,sampleToMineExternNode2.x],[mineToSampleExternNode1.y,sampleToMineExternNode2.y],color='c')
+plt.plot([mineToSampleExternNode2.x,sampleToMineExternNode1.x],[mineToSampleExternNode2.y,sampleToMineInterNode1.y],color='m')
+
+# mine and other sample external connect
+plt.plot([mineToOtherSampleExternNode1.x,otherSampleToMineExternNode2.x],[mineToOtherSampleExternNode1.y,otherSampleToMineExternNode2.y],color='c')
+plt.plot([mineToOtherSampleExternNode2.x,otherSampleToMineExternNode1.x],[mineToOtherSampleExternNode2.y,otherSampleToMineExternNode1.y],color='m')
 
 plt.xlim(-100,150)
 plt.ylim(-100,150)
