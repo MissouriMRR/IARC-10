@@ -54,6 +54,8 @@ def GenerateMineField(numM=6000, tRows=80, tCols=300, dx=3, dy=3):
 
     return mineList
 
+#def droneScan(mineList, nextCoord):
+
 def printMines(mineList):
 
     # Print mine list
