@@ -4,14 +4,20 @@ import sys
 
 # --- 1. Define File List and Detection Parameters ---
 
-files = ['../Iarc_photo_folder/mine_in_grass_templates.png',
+files = ['../Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PXL_20251006_231255410.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231439727.MP.jpg',
+         '../Test_Mine_Pictures/PXL_20251006_231443070.jpg',
+         '../Iarc_photo_folder/mine_in_grass templates_(combo-2).png',
+         '../Iarc_photo_folder/mine_in_grass templates_(combo).png']
+
+"""['../Iarc_photo_folder/mine_in_grass_templates.png',
          '../Iarc_photo_folder/mine_in_grass_templates1.png',
          '../Iarc_photo_folder/mine_in_grass_templates2.png',
          '../Iarc_photo_folder/mine_in_grass_templates3.png',
          '../Iarc_photo_folder/mine_in_grass_templates4.png',
          '../Iarc_photo_folder/mine_in_grass_templates_prime.png',
          '../Iarc_photo_folder/mine_in_grass_templates_prime2.png',
-         '../Iarc_photo_folder/mine_in_grass_templates_prime3.png']
+         '../Iarc_photo_folder/mine_in_grass_templates_prime3.png']"""
 
 # HSV color range for the grey-blue mines.
 # You may need to tune these if lighting is different in other photos.
