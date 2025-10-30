@@ -1,9 +1,13 @@
 import matplotlib.pyplot as pyplot
-import matplotlib.collections as mc
+import matplotlib.colors as pyplotcolors
 import numpy as np
 import random
+from itertools import combinations
 """
 Use the Field class to generate mines and their nodes.
+The number of nodes increases in the form of:
+                equation not found
+    a = number of mines, b = total number of nodes
 Ex:
     field = Field(-100,150,-100,150,3,16)
 
@@ -27,40 +31,43 @@ class Field:
     
     def addMine(self,centerX,centerY,radius):
         self.mines.append(Mine(centerX,centerY,radius))
-        for num,mine in enumerate(self.mines):
-            # Nodes get created only after the 1st iteration
-            if num > 0:
-                currentMine = self.mines[num]
-                prevMine = self.mines[num-1]
-                # Previous Mine's Node Creation
-                prevMine.addNode(Node(prevMine,currentMine,True,True)) # Previous mine's primary internal node created
-                prevMine.addNode(Node(prevMine,currentMine,True,False))
-                prevMine.addNode(Node(prevMine,currentMine,False,True)) # Previous mine's primary external node created
-                prevMine.addNode(Node(prevMine,currentMine,False,False))
+        mineCombo = list(combinations(self.mines,2))
+        for pair in mineCombo:
+            mine = pair[0]
+            target = pair[1]
+            
+            if target not in mine.connectedMines and mine not in target.connectedMines:
+                # Mine internal nodes
+                mineInternPrimary = Node(mine,target,True,True)
+                mineInternSecond = Node(mine,target,True,False)      
+                mine.addNode(mineInternPrimary)
+                mine.addNode(mineInternSecond)
 
-                # Current Mine's Node Creation
-                currentMine.addNode(Node(currentMine,prevMine,True,True))
-                currentMine.addNode(Node(currentMine,prevMine,True,False))
-                currentMine.addNode(Node(currentMine,prevMine,False,True))
-                currentMine.addNode(Node(currentMine,prevMine,False,False))
+                # Mine External nodes
+                mineExternPrimary = Node(mine,target,False,True)
+                mineExternSecond = Node(mine,target,False,False)
+                mine.addNode(mineExternPrimary)
+                mine.addNode(mineExternSecond)
 
-                # Gather each mines' nodes to prepare for connecting
-                prevMineNodes = prevMine.getNodes()
-                currentMineNodes = currentMine.getNodes()
-                for prevMineNode in prevMineNodes:
-                    for currentMineNode in currentMineNodes:
-                        # Internal connections(Previous Mine's internal primary to Current Mine's internal secondary)
-                        if (prevMineNode.internal and prevMineNode.primary) and (currentMineNode.internal and not currentMineNode.primary):
-                            prevMineNode.connectNode(currentMineNode)
-                        elif(prevMineNode.internal and not prevMineNode.primary) and (currentMineNode.internal and currentMineNode.primary):
-                            prevMineNode.connectNode(currentMineNode)
-                        # External connections(Previous Mine's external primary to Current Mine's external primary)
-                        elif (not prevMineNode.internal and prevMineNode.primary) and (not currentMineNode.internal and currentMineNode.primary):
-                            prevMineNode.connectNode(currentMineNode)
-                        elif (not prevMineNode.internal and not prevMineNode.primary) and (not currentMineNode.internal and not currentMineNode.primary):
-                            prevMineNode.connectNode(currentMineNode)
-                
-                # TODO: Node Creation of earlier mines(Connect ALL the mines)
+                # target internal nodes
+                targetInternPrimary = Node(target,mine,True,True)
+                targetInternSecond = Node(target,mine,True,False)
+                target.addNode(targetInternPrimary)
+                target.addNode(targetInternSecond)
+                # target external nodes
+                targetExternPrimary = Node(target,mine,False,True)
+                targetExternSecond = Node(target,mine,False,False)
+                target.addNode(targetExternPrimary)
+                target.addNode(targetExternSecond)
+
+                # Connect Nodes
+                mineInternPrimary.connectNode(targetInternSecond)
+                mineInternSecond.connectNode(targetInternPrimary)
+
+                mineExternPrimary.connectNode(targetExternPrimary)
+                mineExternSecond.connectNode(targetExternSecond)
+
+
 
     # Plotting using matplotlib
     def plotField(self):
@@ -79,11 +86,13 @@ class Field:
             ax.add_patch(circle)
 
         # Plot the nodes
-        allNodes = Node.nodes
-        for node in allNodes:
-            # NOTE: May create duplicate lines due to nodes connecting to each other twice
-            plt.plot([node.x,node.connectedNode.x],[node.y,node.connectedNode.y],'o',color='black')
-        
+        nodeSymbol = ''
+        for node in Node.nodes:
+            if not node.plotted:
+                try:
+                    plt.plot([node.x,node.connectedNode.x],[node.y,node.connectedNode.y],nodeSymbol)
+                except AttributeError:
+                    plt.plot([node.x],[node.y],nodeSymbol)
         plt.show()
 
 """MATH STUFF"""
@@ -104,6 +113,7 @@ class Mine:
         self.__secondary = []
         self.__internal = []
         self.__external = []
+        self.connectedMines = []
         Mine.mines.append(self)
         
         
@@ -158,7 +168,17 @@ class Node:
         self.x = 0.0
         self.y = 0.0
         self.connected = False
+        self.plotted = False # To prevent duplicate plotting
         self.__targetMine = targetMine
+
+        if internal and primary:
+            self.type = 'internal primary'
+        elif internal and not primary:
+            self.type = 'internal secondary'
+        elif not internal and primary:
+            self.type = 'external primary'
+        elif not internal and not primary:
+            self.type = 'external secondary'
 
         d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
 
@@ -211,6 +231,9 @@ class Node:
         node.connectedNode = self
         self.connected = True
         node.connected = True
+        if node.parentMine not in self.parentMine.connectedMines and self.parentMine not in node.parentMine.connectedMines:
+            self.parentMine.connectedMines.append(node.parentMine)
+            node.parentMine.connectedMines.append(self.parentMine)
         return node
 
     def get_pos(self):
@@ -223,7 +246,7 @@ class Node:
     def __repr__(self):
         return self.__str__()
 
-numMines = 3
+numMines = 5
 xMin = -100
 xMax = 150
 yMin = -100
@@ -235,11 +258,13 @@ field = Field(xMin,xMax,yMin,yMax,numMines,radius)
 # Mine generation
 for num in range(numMines):
     while True: # To make sure generated mines arent clipping off the edges of the field
-        #           TODO: prevent mines from overlapping
+#           TODO: prevent mines from overlapping
         position[0], position[1] = random.randint(xMin,xMax+1),random.randint(yMin,yMax+1)
         if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
             continue
-        
         break
     field.addMine(position[0],position[1],radius)
+for mine in field.mines:
+    print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
+print(Node.nodes)
 field.plotField()
