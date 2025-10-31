@@ -80,9 +80,6 @@ for file_path in files:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     print(f"Found {mine_count} potential mines in: {file_path}")
-    if (mine_count > 0):
-        for coordinate in coordinates:
-            print(f"Coordinate number {coordinate}: {coordinates[coordinate]}")
 
     # --- 5. Resize and Display Results ---
     
