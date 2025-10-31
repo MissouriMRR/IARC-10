@@ -19,6 +19,9 @@ files = ['../Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PX
          '../Iarc_photo_folder/mine_in_grass_templates_prime2.png',
          '../Iarc_photo_folder/mine_in_grass_templates_prime3.png']"""
 
+#array to store coordinate(tuple) values to be used for coordinate finding
+coordinates = []
+
 # HSV color range for the grey-blue mines.
 # You may need to tune these if lighting is different in other photos.
 lower_bound = np.array([90, 40, 100])
@@ -62,18 +65,22 @@ for file_path in files:
         area = cv2.contourArea(cnt)
         
         # This filter is more reliable than W/H and (W*H)
-        if area > 500 and area < 10000: 
+        if area > 200 and area < 200000: 
             mine_count += 1
             
             # Get bounding box and draw it
             x, y, w, h = cv2.boundingRect(cnt)
             cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 0, 255), 3) # Changed thickness to 3
+            coordinates.append[(x,y)]
             
             # Put a label
             cv2.putText(output_image, f"Mine #{mine_count}", (x, y - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     print(f"Found {mine_count} potential mines in: {file_path}")
+    if (mine_count > 0):
+        for coordinate in coordinates:
+            print(f"Coordinate number {coordinate}: {coordinates[coordinate]}")
 
     # --- 5. Resize and Display Results ---
     
