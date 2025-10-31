@@ -50,13 +50,13 @@ class Field:
                 mine.addNode(mineExternSecond)
 
                 # target internal nodes
-                targetInternPrimary = Node(target,mine,True,True)
-                targetInternSecond = Node(target,mine,True,False)
+                targetInternPrimary = Node(target,mine,True,False)
+                targetInternSecond = Node(target,mine,True,True)
                 target.addNode(targetInternPrimary)
                 target.addNode(targetInternSecond)
                 # target external nodes
-                targetExternPrimary = Node(target,mine,False,True)
-                targetExternSecond = Node(target,mine,False,False)
+                targetExternPrimary = Node(target,mine,False,False)
+                targetExternSecond = Node(target,mine,False,True)
                 target.addNode(targetExternPrimary)
                 target.addNode(targetExternSecond)
 
