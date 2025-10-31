@@ -58,7 +58,7 @@ async def main():
         "payload": "X"
         * (
             (int(data["localInfo"]["speedTestKbDataSize"])) * 1024
-        ),  # Add payload of specified size by creating a string of specified size
+        ),  # Multiply string by a specified size of Kb to create a payload size
     }
 
     # Run both tasks concurrently
@@ -66,31 +66,33 @@ async def main():
         # Both tasks are already running in the background
         print("Server and Client started")
 
+        numberOfQueries = 10
+        i = 0
+        speedResults: list[int] = []
         # Continuous loop for other functionality
-        while True:
+        while i < numberOfQueries:
             # Add heartbeat message to clientQueue to send
             await clientInData.put(item=speedTestMessage)
 
-            # Check for serverData from the server task
-            if not serverData.empty():
-                # print(f"Server Data: {await serverData.get()}")
-                pass
-
             # Check for clientOutData from the client task
             if not clientOutData.empty():
-                print("we here fr")
                 clientMsg = await clientOutData.get()
-                # Process speed test results if applicable
+                # Print speed test results
                 try:
                     result = json.loads(clientMsg)
+                    print(f"i {i} and numberOfQueries {numberOfQueries}")
                     print(
                         f"Network Test | Target: {result['target']} | RTT: {result['rttMs']}ms | Throughput: {result['throughputKbps']}Kbps"
                     )
+                    speedResults.append(int(result["throughputKbps"]))
+                    i += 1
                 except:
                     print(f"Client Data: {clientMsg}")
+            await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
-            await asyncio.sleep(1)  # Adjust sleep time as needed
-
+        average = sum(speedResults) / len(speedResults)
+        averageMbps = average / 1000
+        print(f"Average upload speed is {averageMbps} mbps")
     except KeyboardInterrupt:
         print("Shutting down...")
         serverTask.cancel()

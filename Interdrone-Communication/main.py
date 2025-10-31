@@ -30,7 +30,7 @@ async def main():
     serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
 
     # TODO talk to Harper to see if we need a serverInData
-    clientInData: Queue[dict[str, bool | float | str | Any]] = (
+    clientInData: Queue[dict[str, int | float | str]] = (
         asyncio.Queue()
     )  # TODO remove Any once we figure out how to structure our passed in data
     clientOutData: Queue[str] = asyncio.Queue()
@@ -51,7 +51,7 @@ async def main():
     except Exception:
         droneId = data["localInfo"]["selfId"]
 
-    heartBeatMessage: dict[str, int | float | str | Any] = {
+    heartBeatMessage: dict[str, int | float | str] = {
         "messageId": 4,
         "timestamp": 0.0,  # set in client
         "senderId": droneId,
