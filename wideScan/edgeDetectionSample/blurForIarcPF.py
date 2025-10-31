@@ -20,7 +20,7 @@ files = ['../Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PX
          '../Iarc_photo_folder/mine_in_grass_templates_prime3.png']"""
 
 #array to store coordinate(tuple) values to be used for coordinate finding
-coordinates = []
+coordinate_list = []
 
 # HSV color range for the grey-blue mines.
 # You may need to tune these if lighting is different in other photos.
@@ -71,8 +71,9 @@ for file_path in files:
             # Get bounding box and draw it
             x, y, w, h = cv2.boundingRect(cnt)
             cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 0, 255), 3) # Changed thickness to 3
-            tempTuple = (x,y)
-            coordinates.append[tempTuple]
+            center_x = x + int(w / 2)
+            center_y = y + int(h / 2)
+            coordinate_list.append((center_x, center_y))
             
             # Put a label
             cv2.putText(output_image, f"Mine #{mine_count}", (x, y - 10), 
@@ -111,3 +112,13 @@ for file_path in files:
     cv2.destroyAllWindows()
 
 print("\nFinished processing all files.")
+
+#printing coordinates
+coordinates = np.array(coordinate_list)
+print("\n--- Summary of All Mine Coordinates ---")
+if coordinates.shape[0] > 0:
+    print(f"Found a total of {coordinates.shape[0]} mines across all files.")
+    print("Coordinates (center x, center y):")
+    print(coordinates)
+else:
+    print("No mines were found in any files.")
