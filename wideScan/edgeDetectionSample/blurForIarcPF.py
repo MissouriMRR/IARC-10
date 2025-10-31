@@ -71,7 +71,8 @@ for file_path in files:
             # Get bounding box and draw it
             x, y, w, h = cv2.boundingRect(cnt)
             cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 0, 255), 3) # Changed thickness to 3
-            coordinates.append[(x,y)]
+            tempTuple = (x,y)
+            coordinates.append[tempTuple]
             
             # Put a label
             cv2.putText(output_image, f"Mine #{mine_count}", (x, y - 10), 
