@@ -63,7 +63,7 @@ for file_path in files:
         print(f"Found contour with area: {area}")
 
         # This filter is more reliable than W/H and (W*H)
-        if area > 500 and area < 200000: 
+        if area > 80 and area < 5000: 
             mine_count += 1
             
             # Get bounding box and draw it
