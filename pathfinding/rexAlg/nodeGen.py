@@ -1,37 +1,51 @@
 import matplotlib.pyplot as pyplot
-import matplotlib.colors as pyplotcolors
 import numpy as np
 import random
 from itertools import combinations
 """
-Use the Field class to generate mines and their nodes.
-The number of nodes increases in the form of:
-                equation not found
-    a = number of mines, b = total number of nodes
-Ex:
-    field = Field(-100,150,-100,150,3,16)
+When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
 
-    Field(xMin,xMax,yMin,yMax,numMines,mineRadius)
+KEY MINE ATTRIBUTES/METHODS:
+ - Mine.getPos() -> (x,y) position on field of the Mine
+ - Mine.getNodes() -> [Node,Node,...] A list of all mine's child Nodes
+
+KEY NODE ATTRIBUTES/METHODS:
+
+ - Node.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
+
+ - Node.type() -> "internal/external primary/secondary" (Either internal OR external AND primary OR secondary)
+ - Node.parentMine -> Mine object that the node is on
+ - Node.getPos() -> (x,y) position on field of the Node
+ - Node.distanceFromNode(node) -> distance (Simple distance between nodes)
+
+KEY FIELD ATTRIBUTES/METHODS:
+ - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
+ - Field.plotField() -> Using matplotlib, plots the field.
+
+---------------------------------------------------------------------
+Use the Field class to generate mines and their nodes.
+Ex:
+
+    field = Field(-100,150,-100,150)
+
+    Field(xMin,xMax,yMin,yMax)
     Field Setup:
      - xMin,xMax : The fields x axis range
      - yMin, yMax : The fields y axis range
-     - numMines : Number of mines to be generated for Node testing
-     - mineRadius : The mines' radii
-
 """
 
 # Field generates nodes off of mines, temporarily generates mines too
 class Field:
-    def __init__(self,xMin,xMax,yMin,yMax,numMines,mineRadius):
-        self.mines:Mine = []
+    def __init__(self,xMin,xMax,yMin,yMax):
         self.xMin = xMin
         self.yMin = yMin
         self.xMax = xMax
-        self.yMax = yMax                            
+        self.yMax = yMax
+        self.mines = []
     
     def addMine(self,centerX,centerY,radius):
         self.mines.append(Mine(centerX,centerY,radius))
-        mineCombo = list(combinations(self.mines,2))
+        mineCombo = list(combinations(self.mines,2)) # group unique pairs of mines together
         for pair in mineCombo:
             mine = pair[0]
             target = pair[1]
@@ -66,20 +80,44 @@ class Field:
 
                 mineExternPrimary.connectNode(targetExternPrimary)
                 mineExternSecond.connectNode(targetExternSecond)
+        
+        # Terminate pair of Nodes if their connection is blocked by another mine
+        for node in Node.nodes:
+            connectedNode = node.connectedNode
+            x1 = node.x
+            y1 = node.y
+            x2 = connectedNode.x
+            y2 = connectedNode.y
+            for mine in self.mines:
+                x3 = mine.x
+                y3 = mine.y
 
+                # Fraction of segment between nodes that the mine lands perpendicular to segment
+                uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
+                uDenominator = ((x1-x2)**2) + ((y1-y2)**2)                
+                u = np.clip(uNumerator/uDenominator,0,1) # Restrict to the constraints of a segment
 
-
+                # Adjust accordingly, determines how close a mine can be to a node before the node terminates
+                uMin = 0.03
+                uMax = 0.95
+                if uMin <= u <= uMax:
+                    # Point on segment that is tangent and perpendicular to mine
+                    tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
+                    
+                    distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
+                    if distanceFromMine < radius:
+                        node.terminated = True
+                        
     # Plotting using matplotlib
     def plotField(self):
         plt = pyplot
-        mineColors = ['red','blue','orange','magenta','cyan']
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
         plt.xlim(self.xMin,self.xMax)
         plt.ylim(self.yMin,self.yMax)
         
         # Create a list of circles representing mines, centered to their correlated mine's center
-        circles = [plt.Circle(self.mines[i].getPos(),self.mines[i].getRadius(),color=np.random.choice(mineColors)) for i in range(len(self.mines))]
+        circles = [plt.Circle(self.mines[i].getPos(),self.mines[i].getRadius(),color=(np.random.random(),np.random.random(),np.random.random())) for i in range(len(self.mines))]
         
         # Plot the mines
         for circle in circles:
@@ -88,7 +126,7 @@ class Field:
         # Plot the nodes
         nodeSymbol = ''
         for node in Node.nodes:
-            if not node.plotted:
+            if not node.plotted and not node.terminated:
                 try:
                     plt.plot([node.x,node.connectedNode.x],[node.y,node.connectedNode.y],nodeSymbol)
                 except AttributeError:
@@ -168,9 +206,11 @@ class Node:
         self.x = 0.0
         self.y = 0.0
         self.connected = False
-        self.plotted = False # To prevent duplicate plotting
+        self.plotted = False # To prevent hopefully duplicate plotting
         self.__targetMine = targetMine
+        self.terminated = False
 
+        # categorize nodes
         if internal and primary:
             self.type = 'internal primary'
         elif internal and not primary:
@@ -218,6 +258,9 @@ class Node:
             else:
                 self.x = (parentMine.radius) * np.cos(externalAngle-(offsetAngle)) + parentMine.x
                 self.y = (parentMine.radius) * np.sin(externalAngle-(offsetAngle)+np.pi) + parentMine.y
+        
+        self.x = round(self.x,3)
+        self.y = round(self.y,3)
         Node.nodes.append(self)
         
     def distanceFromNode(self,node:"Node"):
@@ -225,6 +268,19 @@ class Node:
         if len(self.connectedNodes) > 0 and node in self.connectedNodes:
             distance = np.sqrt((self.x-node.x)**2+(self.y-node.y)**2)
         return distance
+
+    def status(self):
+        result = []
+        if self.terminated:
+            result.append("Node terminated")
+        else:
+            result.append("Node exists")
+        
+        if self.connected:
+            result.append("Node connected")
+        else:
+            result.append("Node not connected")
+        return result
 
     def connectNode(self,node:"Node"):
         self.connectedNode = node
@@ -236,7 +292,7 @@ class Node:
             node.parentMine.connectedMines.append(self.parentMine)
         return node
 
-    def get_pos(self):
+    def getPos(self):
         return (round(float(self.x),3),round(float(self.y),3))
 
     def getTargetMine(self):
@@ -246,25 +302,37 @@ class Node:
     def __repr__(self):
         return self.__str__()
 
-numMines = 5
-xMin = -100
+numMines = 15
+xMin = -150
 xMax = 150
-yMin = -100
+yMin = -150
 yMax = 150
 radius = 16
 position = [0,0]
-field = Field(xMin,xMax,yMin,yMax,numMines,radius)
+field = Field(xMin,xMax,yMin,yMax)
+debug = False
 
 # Mine generation
-for num in range(numMines):
-    while True: # To make sure generated mines arent clipping off the edges of the field
-#           TODO: prevent mines from overlapping
-        position[0], position[1] = random.randint(xMin,xMax+1),random.randint(yMin,yMax+1)
-        if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
-            continue
-        break
-    field.addMine(position[0],position[1],radius)
-for mine in field.mines:
-    print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
-print(Node.nodes)
+if not debug:
+    for num in range(numMines):
+        while True: # To make sure generated mines arent clipping off the edges of the field
+            position[0], position[1] = random.randint(xMin,xMax+1),random.randint(yMin,yMax+1)
+            invalidPosition = False
+            for mine in field.mines:
+                if (mine.getPos()[0] - 2*radius <= position[0] <= mine.getPos()[0] + 2*radius) and (mine.getPos()[1] - 2*radius <= position[1] <= mine.getPos()[1] + 2*radius):
+                    invalidPosition = True
+                    break
+            if invalidPosition:
+                continue
+            if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
+                continue
+            break
+        field.addMine(position[0],position[1],radius)
+
+if debug:
+    for mine in field.mines:
+        print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
+    print(Node.nodes)
+
 field.plotField()
+
