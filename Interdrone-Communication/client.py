@@ -44,42 +44,43 @@ class Client:
 
     # Start client and try to send messages to servers using asyncio
     async def start_client_async(self):
+        tasks = set()  # Keep track of background tasks
+
         while True:
             # Check for new input message
             if not self.clientInData.empty():
                 # Get message from clientInData
-                message = await self.clientInData.get()
-                message["timestamp"] = time.time()
+                message: dict[str, bool | float | str] = await self.clientInData.get()
 
-                # Serialize message to JSON to be able to send to servers
-                jsonMessage = json.dumps(message)
-
-                # Create coroutines for all drone connections
-                coroutines = []
-                for i in range(len(self.otherDronesIps)):
-                    coroutine = self.send_data_async(
-                        serverIP=self.otherDronesIps[i],
-                        serverPort=self.otherDronesPorts[i],
-                        jsonMessage=jsonMessage,
-                    )
-                    coroutines.append(coroutine)
-
-                # Run all coroutines concurrently
-                results = await asyncio.gather(*coroutines, return_exceptions=True)
-
-                # Process results
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        pass
-                        # print(f"Connection to {self.otherDronesIps[i]} failed: {result}")
-                    else:
-                        pass
-                        # print(
-                        #     f"Successfully communicated with {self.otherDronesIps[i]}: {result}"
-                        # )
+                # Create a background task to handle this message (allows for asynchronous messaging)
+                task = asyncio.create_task(self.handle_message(message))
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)  # Clean up completed tasks
 
             # Wait 0.05 second before checking for next message
             await asyncio.sleep(0.05)
+
+    async def handle_message(self, message: dict[str, bool | float | str]):
+        message["timestamp"] = time.time()
+        jsonMessage = json.dumps(message)
+
+        # Create coroutines for all drone connections
+        coroutines = []
+        for i in range(len(self.otherDronesIps)):
+            coroutine = self.send_data_async(
+                serverIP=self.otherDronesIps[i],
+                serverPort=self.otherDronesPorts[i],
+                jsonMessage=jsonMessage,
+            )
+            coroutines.append(coroutine)
+
+        # Run all coroutines concurrently
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+        # Process results (optional logging)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                pass  # Handle errors if needed
 
     # Async coroutine to send data to one server
     # TODO add a data param
@@ -159,6 +160,8 @@ class Client:
                 }
                 await self.clientOutData.put(item=json.dumps(result))
                 pass
+            case 400:
+                await self.clientOutData.put(item="OMG the app contacted us!")
             case _:
                 # If no message ID, return server response data
                 await self.clientOutData.put(item=data)
