@@ -59,8 +59,8 @@ def main():
                     #get the box's lbp histogram
                     cropped_hist = get_lbp_hist(cropped)
                     #get the box's similarity to our sample image
-                    comparison = compare_textures(cropped_hist,ref_pic_hist)
-                    print(f'Box {num}: {comparison}')
+                    comparison = compare_textures(cropped_hist,ref_pic_hist,method='bhattacharyya')
+                    print(f'Box {num} rating: {comparison}')
                     print()
         newSize = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
         copy = cv2.resize(copy, newSize, interpolation=cv2.INTER_LINEAR)
@@ -79,7 +79,7 @@ def main():
 def get_lbp_hist(image):
 
     #find the lbp first
-    lbp = local_binary_pattern(image,8,1,'uniform')
+    lbp = local_binary_pattern(image,P=16,R=1,method='uniform')
 
     # this can be tweaked to +2, +1, or +0
     n_bins = 8 + 2
@@ -94,5 +94,10 @@ def compare_textures(hist1,hist2, method = 'euclidean'):
     # we also might want to try correlation coefficient
     if(method == 'correlation'):
         return np.corrcoef(hist1,hist2)[0,1]
-
+    if(method == 'bhattacharyya'):
+        return 100*(-np.log(np.sum(np.sqrt(hist1 * hist2)) + 1e-10))
+    if(method == 'intersection'):
+        return 1 - np.sum(np.minimum(hist1, hist2))
+    if(method == 'chi_squared'):
+        return 0.5 * np.sum((hist1 - hist2)**2 / (hist1 + hist2 + 1e-10))
 main()
