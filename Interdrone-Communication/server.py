@@ -2,6 +2,7 @@ from asyncio.queues import Queue
 import asyncio
 import sys
 from asyncio import StreamReader, StreamWriter
+import json
 
 
 class Server:
@@ -26,6 +27,13 @@ class Server:
 
             if data:
                 message = data.decode()
+
+                # TODO implement server response stuff here
+                originalMessage = json.loads(s=message)
+
+                match int(originalMessage["messageId"]):
+                    case 400:
+                        self.serverOutData.put(item="OMG the app contacted us!")
 
                 # Send default response back to client
                 response = "Server received your message!"
@@ -64,3 +72,12 @@ class Server:
     # Run server
     def run(self):
         asyncio.run(self.start_server_async())
+
+
+"""
+def processData():
+    match messageId:
+        case 402:
+            drone.hover()
+
+"""
