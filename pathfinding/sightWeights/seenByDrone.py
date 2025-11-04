@@ -1,6 +1,7 @@
 import numpy as np
 import time as t
 import random
+from PIL import Image, ImageDraw
 
 timeLimit = 120 # Time limit in seconds
 fieldSizeX = 3600 # The max size of the field in inches
@@ -13,7 +14,20 @@ def circle_mask(arraySize, circleCenter, circleRad):
     mask = np.sqrt((x - circleCenter[0])**2 + (y - circleCenter[1])**2) <= circleRad
     return mask
 
-# Randomly moves a given drone in a direction
+# Function for generating polygon masks based on node to node connections
+# To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
+def polygonMask(node1, node2, array_size):
+    x1 = node1.mine.x
+    y1 = node1.mine.y
+    x2 = node2.mine.x
+    y2 = node2.mine.y
+    polygon = [(x1,y1),(2(node1.x-x1)+x1,2(node1.y-y1)+y1),(x2,y2),(2(node2.x-x2)+x2,2(node2.y-y2)+y2)]
+
+    img = Image.new('L', array_size, 0)
+    ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
+    return np.array(img)
+
+# Randomly moves a given simulated drone in a direction, used for testing
 def random_move(droneNumber, droneLocation):
     newX = droneLocation[droneNumber][0] + random.randint(-1, 1)
     newY = droneLocation[droneNumber][1] + random.randint(-1, 1)
@@ -28,6 +42,8 @@ droneCoords = [[450,960], [1350,960], [2250,960], [3150,960]] # Starting locatio
 droneSightArr = np.empty((4, fieldSizeX, fieldSizeY)) # Indevidual sight data for each drone
 mergedSeen = np.empty((fieldSizeX, fieldSizeY)) # Combines all the seen data so decisions can be made off of it
 
+# Increments the values in an area around the drones representative of what the drones are seeing
+# This repeats until a time value is reached
 startTime = t.time()
 while True:
     if t.time() - startTime <= timeLimit:
