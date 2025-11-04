@@ -59,7 +59,7 @@ def main():
                     #get the box's lbp histogram
                     cropped_hist = get_lbp_hist(cropped)
                     #get the box's similarity to our sample image
-                    comparison = compare_textures(cropped_hist,ref_pic_hist,method='bhattacharyya')
+                    comparison = compare_textures(cropped_hist,ref_pic_hist,method='euclidean')#bhattacharyya is current best
                     print(f'Box {num} rating: {comparison}')
                     print()
         newSize = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
@@ -77,9 +77,11 @@ def main():
         os.system('clear')
 
 def get_lbp_hist(image):
-
+    # r is always best at 1
+    r = 2
+    p = 16*r
     #find the lbp first
-    lbp = local_binary_pattern(image,P=16,R=1,method='uniform')
+    lbp = local_binary_pattern(image,P=p,R=r,method='uniform')
 
     # this can be tweaked to +2, +1, or +0
     n_bins = 8 + 2
@@ -90,14 +92,14 @@ def get_lbp_hist(image):
 
 def compare_textures(hist1,hist2, method = 'euclidean'):
     if(method == 'euclidean'):
-        return euclidean(hist1,hist2)
+        return 100*(euclidean(hist1,hist2))
     # we also might want to try correlation coefficient
     if(method == 'correlation'):
         return np.corrcoef(hist1,hist2)[0,1]
     if(method == 'bhattacharyya'):
         return 100*(-np.log(np.sum(np.sqrt(hist1 * hist2)) + 1e-10))
     if(method == 'intersection'):
-        return 1 - np.sum(np.minimum(hist1, hist2))
+        return 100*(1 - np.sum(np.minimum(hist1, hist2)))
     if(method == 'chi_squared'):
         return 0.5 * np.sum((hist1 - hist2)**2 / (hist1 + hist2 + 1e-10))
 main()
