@@ -3,7 +3,6 @@ from minefield import *
 length, width =30,30 # Change to 3737x3737 later
 
 field = Minefield(length,width,True)
-################### There is an index error preventing from complete running at the moment ######################
 """
 Please compatible numbers is reconmended, 
 unless you want to fill everything with mines.
@@ -20,7 +19,7 @@ Same goes for start points of safe paths.
 field.createPath([length-1,width-1]) # Starts in bottom right corner
 
 field.generateMines(500,2) 
-
+field.generateOtherObstacles(2)
 field.displayOnlyMines()
 print()
 field.displayOnlyPaths()

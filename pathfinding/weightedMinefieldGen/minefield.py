@@ -6,6 +6,7 @@ class Minefield:
     mineSymbol = "M"
     falseMineSymbol = "N"
     dangerZoneSymbol = "X"
+    otherObstaclesSymbol = "E"
     emptySymbol= " "
 
     def __init__(self,length:int,width:int,randomized=True):
@@ -162,6 +163,90 @@ class Minefield:
                     if falseMine:
                         self.minefield[row][col] = Minefield.falseMineSymbol
     
+    # Run AFTER paths and mines have been generated
+    def generateOtherObstacles(self,numOfObstacles:int):
+        minefield = self.minefield
+        shapes = {1:"square",
+                  2:"rectangle",
+                  3:"wall"} # Or line
+        orientation = {1:"horizontalLeft",
+                       2:"horizontalRight",
+                       3:"verticalUp",
+                       4:"verticalDown"}
+        shapeWidth = 0
+        shapeLength = 0
+        startPoint = [0,0] # [Row][Col]
+        selectedShape = 1
+        selectedOrientation = 1
+
+
+        for i in range(numOfObstacles):
+            startPoint[0] = random.randint(0,self.width-1)
+            startPoint[1] = random.randint(0,self.length-1)
+            selectedShape = random.randint(1,1)
+            selectedOrientation = random.randint(1,4)
+
+            if shapes[selectedShape] == "square": # Make a square obstacle
+                shapeWidth = random.randint(2,int(round(self.width/12)))
+                if orientation[selectedOrientation] == "horizontalLeft":
+                    for width in range(shapeWidth+1):
+                        for length in range(shapeWidth+1):
+                            if random.randint(0,1) == 0: # Up
+                                if (startPoint[0] - length > 0 and startPoint[1] - width > 0) and minefield[startPoint[0] - length][startPoint[1] - width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] - length][startPoint[1] - width] == Minefield.otherObstaclesSymbol
+                            else: # Down
+                                if (startPoint[0] + length > 0 and startPoint[1] - width > 0) and minefield[startPoint[0] + length][startPoint[1] - width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] + length][startPoint[1] - width] == Minefield.otherObstaclesSymbol
+                elif orientation[selectedOrientation] == "horizontalRight":
+                    for width in range(shapeWidth+1):
+                        for length in range(shapeWidth+1):
+                            if random.randint(0,1) == 0: #  Up
+                                if (startPoint[0] - length > 0 and startPoint[1] - width < self.width) and minefield[startPoint[0] - length][startPoint[1] + width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] - length][startPoint[1] + width] == Minefield.otherObstaclesSymbol
+                            else: # Down
+                                if (startPoint[0] - length > 0 and startPoint[1] + width < self.width) and minefield[startPoint[0] + length][startPoint[1] + width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] + length][startPoint[1] + width] == Minefield.otherObstaclesSymbol
+                elif orientation[selectedOrientation] == "verticalUp":
+                    for width in range(shapeWidth+1):
+                        for length in range(shapeWidth+1):
+                            if startPoint[1] - width//2 > 0:
+                                startPoint[1] =- width//2
+                            else:
+                                break
+                            if random.randint(0,1) == 0: # Up
+                                if (startPoint[0] - length > 0 and startPoint[1] - width > 0) and minefield[startPoint[0] - length][startPoint[1] - width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] - length][startPoint[1] - width] == Minefield.otherObstaclesSymbol
+                elif orientation[selectedOrientation] == "verticalDown":
+                    for width in range(shapeWidth+1):
+                        for length in range(shapeWidth+1):
+                            if startPoint[1] - width//2 > 0:
+                                startPoint[1] =- width//2
+                            else:
+                                # Down
+                                if (startPoint[0] + length > 0 and startPoint[1] - width > 0) and minefield[startPoint[0] + length][startPoint[1] - width] not in [Minefield.pathSymbol,Minefield.otherObstaclesSymbol]:
+                                    minefield[startPoint[0] + length][startPoint[1] - width] == Minefield.otherObstaclesSymbol
+            elif shapes[selectedShape] == "rectangle": # Make a Rectangular obstacle
+                shapeWidth = random.randint(2,int(round(self.width/12)))
+                shapeLength = random.randint(2,int(round(self.length/12)))
+                if orientation[selectedOrientation] == "horizontalLeft":
+                    pass
+                elif orientation[selectedOrientation] == "horizontalRight":
+                    pass
+                elif orientation[selectedOrientation] == "verticalUp":
+                    pass
+                elif orientation[selectedOrientation] == "verticalDown":
+                    pass
+            elif shapes[selectedShape] == "wall": # Make a wall obstacle
+                shapeWidth = random.randint(2,int(round(self.width/12)))
+                if orientation[selectedOrientation] == "horizontalLeft":
+                    pass
+                elif orientation[selectedOrientation] == "horizontalRight":
+                    pass
+                elif orientation[selectedOrientation] == "verticalUp":
+                    pass
+                elif orientation[selectedOrientation] == "verticalDown":
+                    pass
+
     # Displaying FalseMines/Mines/Paths only isolates their corresponding values when printing
     def displayOnlyMines(self,print:bool=True):
         
