@@ -10,7 +10,8 @@ def main():
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231439727.MP.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231443070.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231446447.MP.jpg',
-            '../all_pictures/Test_Mine_Pictures/PXL_20251006_231458855.jpg']
+            '../all_pictures/Test_Mine_Pictures/PXL_20251006_231458855.jpg',
+            ]
     ref_pic_path = '../all_pictures/cropped_reference_mine.jpg'
     #get our reference picture and histogram ready
     ref_pic = cv2.imread(ref_pic_path) # picture
@@ -21,6 +22,7 @@ def main():
         print()
         # get our image
         img = cv2.imread(file)
+        print(img.shape)
         # make some copies that we can draw on
         copy = img
         finalCopy = copy
@@ -32,6 +34,7 @@ def main():
         thickerLines = cv2.dilate(edge,kernel,iterations=1)
         #median blur after
         blurAfter = cv2.medianBlur(thickerLines,7)
+        #cv2.imshow('with edge and blur',blurAfter)
         #          ADD BOUNDING BOXES
         contours, hierarchy = cv2.findContours(blurAfter, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # keep track of how many boxes we're picking up
@@ -39,7 +42,7 @@ def main():
         #go through all of the contours and see if any of them are mine-like
         for contour in contours:
             x,y,w,h = cv2.boundingRect(contour)
-            if((w <= 200) and (h <= 200) and ((w*h) > 10000)):
+            if((w <= (0.25 * img.shape[1])) and (h <= (0.25 * img.shape[0])) and ((w*h) > 10000)):
                 #show all of the boxes in the normal copy
                 num += 1
                 text = f"Box {num}"
@@ -77,7 +80,6 @@ def main():
         os.system('clear')
 
 def get_lbp_hist(image):
-    # r is always best at 1
     r = 2
     p = 16*r
     #find the lbp first
