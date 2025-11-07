@@ -112,6 +112,17 @@ for file_path in files:
     cv2.imshow('Detections', resized_detections)
     cv2.imshow('Mask (for debugging)', resized_mask)
 
+    #printing coordinates
+    sum : int = 1
+    coordinates: np.ndarray = np.array(coordinate_list) # This is an N-by-2 array
+    print("\n--- Summary of Mine Coordinates ---")
+    print(f"\nPicture {sum}: ")
+    sum+=1
+    if coordinates.shape[0] > 0:
+        print(f"Found a total of {coordinates.shape[0]} mines across all files.")
+        print("Coordinates (center x, center y):")
+        print(coordinates)
+
     # --- 6. Wait for 'q' to Move to Next Image ---
     print("Press 'q' in any window to proceed to the next image...")
     while(True):
@@ -120,18 +131,11 @@ for file_path in files:
         # If 'q' is pressed, break the inner loop
         if key == ord('q'):  
             break 
+
+    else:
+        print("No mines were found in any files.")
             
     # Close the windows for the current image before opening the next
     cv2.destroyAllWindows()
 
 print("\nFinished processing all files.")
-
-#printing coordinates
-coordinates: np.ndarray = np.array(coordinate_list) # This is an N-by-2 array
-print("\n--- Summary of All Mine Coordinates ---")
-if coordinates.shape[0] > 0:
-    print(f"Found a total of {coordinates.shape[0]} mines across all files.")
-    print("Coordinates (center x, center y):")
-    print(coordinates)
-else:
-    print("No mines were found in any files.")
