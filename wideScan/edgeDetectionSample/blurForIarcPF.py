@@ -116,11 +116,11 @@ for file_path in files:
     sum : int = 1
     coordinates: np.ndarray = np.array(coordinate_list) # This is an N-by-2 array
     print("\n--- Summary of Mine Coordinates ---")
-    print(f"\nPicture {sum}: ")
-    sum+=1
     if coordinates.shape[0] > 0:
         print(f"Found a total of {coordinates.shape[0]} mines across all files.")
         print("Coordinates (center x, center y):")
+        print(f"\nPicture {sum}: ")
+        sum+=1
         print(coordinates)
 
     # --- 6. Wait for 'q' to Move to Next Image ---
