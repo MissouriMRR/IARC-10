@@ -1,11 +1,16 @@
 import cv2
 import numpy as np
 import sys
+from typing import List, Tuple, Optional, Any # Import necessary types
+
+# Define a type alias for OpenCV/Numpy images for clarity
+# An image is just a multi-dimensional numpy array
+ImageType = np.ndarray
 
 # --- 1. Define File List and Detection Parameters ---
 
-files = ['../Iarc_photo_folder/mine_in_grass templates_(combo-2).png',
-         '../Iarc_photo_folder/mine_in_grass templates_(combo).png']
+files: List[str] = ['../Iarc_photo_folder/mine_in_grass templates_(combo-2).png',
+                   '../Iarc_photo_folder/mine_in_grass templates_(combo).png']
 
 """['../Iarc_photo_folder/mine_in_grass_templates.png',
          '../Iarc_photo_folder/mine_in_grass_templates1.png',
@@ -16,23 +21,24 @@ files = ['../Iarc_photo_folder/mine_in_grass templates_(combo-2).png',
          '../Iarc_photo_folder/mine_in_grass_templates_prime2.png',
          '../Iarc_photo_folder/mine_in_grass_templates_prime3.png']"""
 
-#array to store coordinate(tuple) values to be used for coordinate finding
-coordinate_list = []
+# array to store coordinate(tuple) values to be used for coordinate finding
+# A list of tuples, where each tuple contains two integers (x, y)
+coordinate_list: List[Tuple[int, int]] = []
 
 # HSV color range for the grey-blue mines.
-# You may need to tune these if lighting is different in other photos.
-lower_bound = np.array([90, 40, 100])
-upper_bound = np.array([130, 150, 220])
+lower_bound: ImageType = np.array([90, 40, 100])
+upper_bound: ImageType = np.array([130, 150, 220])
 
 # Kernel for morphological operations (cleaning the mask)
-kernel = np.ones((5, 5), np.uint8)
+kernel: ImageType = np.ones((5, 5), np.uint8)
 
 
 # --- 2. Loop Through Each File ---
 
 for file_path in files:
     # Load the image
-    img = cv2.imread(file_path)
+    # cv2.imread returns an ImageType (np.ndarray) on success or None on failure
+    img: Optional[ImageType] = cv2.imread(file_path)
 
     # CRITICAL: Check if the image was loaded successfully
     if img is None:
@@ -41,25 +47,31 @@ for file_path in files:
         continue  # Go to the next iteration of the for loop
 
     # Create a copy to draw results on
-    output_image = img.copy()
+    output_image: ImageType = img.copy()
 
     # --- 3. HSV Color Segmentation (The Core Logic) ---
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv: ImageType = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     
     # Create the binary mask
-    mask = cv2.inRange(hsv, lower_bound, upper_bound)
+    mask: ImageType = cv2.inRange(hsv, lower_bound, upper_bound)
     
     # Clean the mask
-    mask_closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask_cleaned = cv2.morphologyEx(mask_closed, cv2.MORPH_OPEN, kernel)
+    mask_closed: ImageType = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    mask_cleaned: ImageType = cv2.morphologyEx(mask_closed, cv2.MORPH_OPEN, kernel)
 
     # --- 4. Find and Filter Mines ---
-    contours, _ = cv2.findContours(mask_cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # findContours returns a tuple: (list_of_contours, hierarchy)
+    contours: Tuple[ImageType, ...]
+    hierarchy: ImageType
+    contours, hierarchy = cv2.findContours(mask_cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    mine_count = 0
+    mine_count: int = 0
+    
+    # Each 'cnt' is a single contour, which is an np.ndarray of points
+    cnt: ImageType 
     for cnt in contours:
         # Filter by area to remove small noise (like watermarks)
-        area = cv2.contourArea(cnt)
+        area: float = cv2.contourArea(cnt)
         print(f"Found contour with area: {area}")
 
         # This filter is more reliable than W/H and (W*H)
@@ -67,10 +79,16 @@ for file_path in files:
             mine_count += 1
             
             # Get bounding box and draw it
+            # boundingRect returns (x, y, w, h) as integers
+            x: int
+            y: int
+            w: int
+            h: int
             x, y, w, h = cv2.boundingRect(cnt)
+            
             cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 0, 255), 3) # Changed thickness to 3
-            center_x = x + int(w / 2)
-            center_y = y + int(h / 2)
+            center_x: int = x + int(w / 2)
+            center_y: int = y + int(h / 2)
             coordinate_list.append((center_x, center_y))
             
             # Put a label
@@ -83,9 +101,9 @@ for file_path in files:
     
     # Calculate new size (30% of original)
     try:
-        newSize = (int((img.shape[1])*0.3), int((img.shape[0])*0.3))
-        resized_detections = cv2.resize(output_image, newSize, interpolation=cv2.INTER_LINEAR)
-        resized_mask = cv2.resize(mask_cleaned, newSize, interpolation=cv2.INTER_LINEAR)
+        newSize: Tuple[int, int] = (int((img.shape[1])*0.3), int((img.shape[0])*0.3))
+        resized_detections: ImageType = cv2.resize(output_image, newSize, interpolation=cv2.INTER_LINEAR)
+        resized_mask: ImageType = cv2.resize(mask_cleaned, newSize, interpolation=cv2.INTER_LINEAR)
     except Exception as e:
         print(f"Error resizing image {file_path}: {e}")
         continue
@@ -98,7 +116,7 @@ for file_path in files:
     print("Press 'q' in any window to proceed to the next image...")
     while(True):
         # Check for a key press
-        key = cv2.waitKey(1) & 0xFF
+        key: int = cv2.waitKey(1) & 0xFF
         # If 'q' is pressed, break the inner loop
         if key == ord('q'):  
             break 
@@ -109,7 +127,7 @@ for file_path in files:
 print("\nFinished processing all files.")
 
 #printing coordinates
-coordinates = np.array(coordinate_list)
+coordinates: np.ndarray = np.array(coordinate_list) # This is an N-by-2 array
 print("\n--- Summary of All Mine Coordinates ---")
 if coordinates.shape[0] > 0:
     print(f"Found a total of {coordinates.shape[0]} mines across all files.")
