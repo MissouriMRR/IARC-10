@@ -1,23 +1,17 @@
 from asyncio.queues import Queue
-
+from typing import Any
+from message_types import MessageData
 
 import asyncio
-from typing import Any
 import server
 import client
 import json
 import sys
 
-
 # DOCS: How to merge this with path finding:
 """
 1: Change this to a async start_networking() function that runs as a task from real main function
 2. Pass in serverInData, serverOutData 
-"""
-
-# TODO List to get this ready to chat with path finding
-"""
-Move network test out of core functionality to stand alone test (may not be feasible/optimal)
 """
 
 
@@ -27,12 +21,9 @@ async def main():
         data: dict[str, Any] = json.load(file)  # TODO verify and update this
 
     # Create Server and Client Data queues to pass data in and out of tasks
-    serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
+    serverData: Queue[str] = asyncio.Queue()  # May need to change queue type
 
-    # TODO talk to Harper to see if we need a serverInData
-    clientInData: Queue[dict[str, int | float | str]] = (
-        asyncio.Queue()
-    )  # TODO remove Any once we figure out how to structure our passed in data
+    clientInData: Queue[MessageData] = asyncio.Queue()
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
@@ -51,11 +42,13 @@ async def main():
     except Exception:
         droneId = data["localInfo"]["selfId"]
 
-    heartBeatMessage: dict[str, int | float | str] = {
-        "messageId": 4,
-        "timestamp": 0.0,  # set in client
-        "senderId": droneId,
-        "payload": "Hello server!",
+    heartBeatMessage: MessageData = {
+        "messageId": 504,
+        "data": {
+            "timestamp": 0.0,
+            "senderId": droneId,
+            "payload": "Hello server!",
+        },
     }
 
     # Run both tasks concurrently

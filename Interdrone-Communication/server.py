@@ -3,6 +3,7 @@ import asyncio
 import sys
 from asyncio import StreamReader, StreamWriter
 import json
+import time
 
 
 class Server:
@@ -51,6 +52,15 @@ class Server:
                     # App test message
                     case 400:
                         await self.serverOutData.put(item="OMG the app contacted us!")
+                    case 513:
+                        # Set final upload time when server receives
+                        jsonMessage["data"]["finalUploadTime"] = time.time()
+
+                        # Set initial download time when server sends response
+                        jsonMessage["data"]["initialDownloadTime"] = time.time()
+
+                        # Echo back the message with timing data
+                        responseMessage = json.dumps(jsonMessage)
 
                 writer.write((responseMessage + "\n").encode())
                 await writer.drain()

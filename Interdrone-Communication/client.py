@@ -4,6 +4,7 @@ import time
 import asyncio
 import sys
 import json
+from message_types import MessageData
 
 
 class Client:
@@ -11,11 +12,11 @@ class Client:
     def __init__(
         self,
         jsonData,
-        clientInData: Queue[dict[str, int | float | str]],
+        clientInData: Queue[MessageData],
         clientOutData: Queue[str],
     ):
         self.jsonData = jsonData
-        self.clientInData: Queue[dict[str, bool | float | str]] = clientInData
+        self.clientInData: Queue[MessageData] = clientInData
         self.clientOutData: Queue[str] = clientOutData
 
         # Check for sys arg for drone selfId
@@ -55,7 +56,7 @@ class Client:
             # Check for new message from clientInData
             if not self.clientInData.empty():
                 # Get new message from clientInData
-                message: dict[str, bool | float | str] = await self.clientInData.get()
+                message: MessageData = await self.clientInData.get()
 
                 # Create a background task to handle this message (allows for asynchronous messaging)
                 clientMessageTask = asyncio.create_task(self.handle_message(message))
@@ -68,8 +69,8 @@ class Client:
             await asyncio.sleep(0.05)
 
     # Create messageTasks to send data to all other drones
-    async def handle_message(self, message: dict[str, bool | float | str]):
-        message["timestamp"] = (
+    async def handle_message(self, message: MessageData):
+        message["data"]["timestamp"] = (
             time.time()
         )  # TODO WITH TEST REWORK MOVE THIS WHEN MESSAGE IS ADDED TO CLIENT IN DATA
         clientMessage = json.dumps(message)
@@ -107,15 +108,13 @@ class Client:
             serverResponseData = await asyncio.wait_for(
                 reader.readuntil(b"\n"), timeout=2.0
             )
-            receiveTime = time.time()
-
             # Close connection
             writer.close()
             await writer.wait_closed()
 
             # Call process_client_data
             await self.process_client_data(
-                clientMessage, serverResponseData, receiveTime, serverIP, serverPort
+                clientMessage, serverResponseData, serverIP, serverPort
             )
 
             return serverResponseData.decode()
@@ -131,46 +130,56 @@ class Client:
         self,
         clientMessage: str,
         serverResponseData: bytes,
-        receiveTime: float,
         serverIP: str,
         serverPort: int,
     ) -> None:
-        originalMessage = json.loads(s=clientMessage)
+        originalMessage: MessageData = json.loads(s=clientMessage)
         match int(originalMessage["messageId"]):
             # Pathfinding Message
             case 1:
                 pass
-            # Heartbeat Message
-            case 4:
-                await self.clientOutData.put(item=serverResponseData.decode())
-                pass
-            # Speedtest Message
-            case 13:
-                # Calculate Round-Trip Time (RTT) in seconds
-                rttSeconds: float = receiveTime - float(originalMessage["timestamp"])
-
-                # Calculate the size of the JSON message that was sent
-                sizeBytes = len(clientMessage.encode("utf-8"))
-
-                # Avoid division by zero if RTT is extremely small
-                if rttSeconds > 0.0:
-                    # (bytes * 8 bits/byte) / 1000 bits/kbit = kilobits
-                    # kilobits / seconds = kbps
-                    throughputKbps = (sizeBytes * 8 / 1000) / rttSeconds
-                else:
-                    throughputKbps = float("inf")
-
-                result = {
-                    "messageId": "13",
-                    "target": f"{serverIP}:{serverPort}",
-                    "rttMs": round(rttSeconds * 1000, 2),
-                    "sizeKb": round(sizeBytes / 1024, 2),  # Size in KiloBytes (KB)
-                    "throughputKbps": round(throughputKbps, 2),
-                }
-                await self.clientOutData.put(item=json.dumps(result))
-                pass
+            # App test message
             case 400:
                 await self.clientOutData.put(item="OMG the app contacted us!")
+            # Heartbeat Message
+            case 504:
+                await self.clientOutData.put(item=serverResponseData.decode())
+            # Speedtest Message
+            case 513:
+                # Client receives response - set final download time
+                receiveTime = time.time()
+                responseData = json.loads(serverResponseData.decode())
+                # Calculate Upload Speed (client send → server receive)
+                uploadTime = float(responseData["data"]["finalUploadTime"]) - float(
+                    originalMessage["data"]["initialUploadTime"]
+                )
+                uploadSizeBytes = len(clientMessage.encode("utf-8"))
+                uploadThroughputKbps = (
+                    (uploadSizeBytes * 8 / 1000) / uploadTime
+                    if uploadTime > 0
+                    else float("inf")
+                )
+                # Calculate Download Speed (server send → client receive)
+                downloadTime = receiveTime - float(
+                    responseData["data"]["initialDownloadTime"]
+                )
+                downloadSizeBytes = len(serverResponseData)
+                downloadThroughputKbps = (
+                    (downloadSizeBytes * 8 / 1000) / downloadTime
+                    if downloadTime > 0
+                    else float("inf")
+                )
+                result = {
+                    "messageId": 513,
+                    "data": {
+                        "target": f"{serverIP}:{serverPort}",
+                        "uploadRttMs": round(uploadTime * 1000, 2),
+                        "uploadThroughputKbps": round(uploadThroughputKbps, 2),
+                        "downloadRttMs": round(downloadTime * 1000, 2),
+                        "downloadThroughputKbps": round(downloadThroughputKbps, 2),
+                    },
+                }
+                await self.clientOutData.put(item=json.dumps(result))
             case _:
                 # If no message ID, return server response data
                 await self.clientOutData.put(item=serverResponseData.decode())
