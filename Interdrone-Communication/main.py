@@ -21,13 +21,13 @@ async def main():
         data: dict[str, Any] = json.load(file)  # TODO verify and update this
 
     # Create Server and Client Data queues to pass data in and out of tasks
-    serverData: Queue[str] = asyncio.Queue()  # May need to change queue type
+    serverOutData: Queue[str] = asyncio.Queue()
 
     clientInData: Queue[MessageData] = asyncio.Queue()
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
-    serverInstance = server.Server(jsonData=data, serverOutData=serverData)
+    serverInstance = server.Server(jsonData=data, serverOutData=serverOutData)
     clientInstance = client.Client(
         jsonData=data, clientInData=clientInData, clientOutData=clientOutData
     )
@@ -51,19 +51,18 @@ async def main():
         },
     }
 
-    # Run both tasks concurrently
     try:
-        # Both tasks are already running in the background
         print("Server and Client started")
 
-        # Continuous loop for other functionality
+        await clientInData.put(item=heartBeatMessage)
+
+        # Continuous loop to send and receive data from server and client
         while True:
             # Add heartbeat message to clientQueue to send
-            await clientInData.put(item=heartBeatMessage)
 
-            # Check for serverData from the server task
-            if not serverData.empty():
-                # print(f"Server Data: {await serverData.get()}")
+            # Check for serverOutData from the server task
+            if not serverOutData.empty():
+                # print(f"Server Data: {await serverOutData.get()}")
                 pass
 
             # Check for clientOutData from the client task
@@ -75,6 +74,10 @@ async def main():
                     print(f"Client Data: {clientMsg}")
                 except:
                     print(f"Client Data: {clientMsg}")
+
+            # If previous heartbeat message has been sent, add new one to queue to be sent
+            if clientInData.empty():
+                await clientInData.put(item=heartBeatMessage)
 
             await asyncio.sleep(1)  # Adjust sleep time as needed
 

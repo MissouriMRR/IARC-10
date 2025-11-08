@@ -12,12 +12,11 @@ import sys
 async def main():
     # Get JSON Data
     with open("config.json", "r") as file:
-        data: dict[str, Any] = json.load(file)  # TODO verify and update this
+        data: dict[str, Any] = json.load(file)
 
     # Create Server and Client Data queues to pass data in and out of tasks
-    serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
+    serverData: Queue[str] = asyncio.Queue()
 
-    # TODO talk to Harper to see if we need a serverInData
     clientInData: Queue[MessageData] = asyncio.Queue()
     clientOutData: Queue[str] = asyncio.Queue()
 
@@ -31,6 +30,7 @@ async def main():
     serverTask = asyncio.create_task(serverInstance.start_server_async())
     clientTask = asyncio.create_task(clientInstance.start_client_async())
 
+    # Get our drones id
     droneId: str
     try:
         droneId = sys.argv[1]
@@ -61,13 +61,10 @@ async def main():
         i = 0
         speedResults: list[MessageData] = []
         # Add network test message to clientQueue to send
-        print("adding to queue")
         await clientInData.put(item=speedTestMessage)
-        # Continuous loop for other functionality
+        # Send messages until numberOfQueries is hit
         while i < numberOfQueries:
             # Check for clientOutData from the client task
-            # if droneId == int(1):
-            #     print(f"out here with i={i}")
             if not clientOutData.empty():
                 clientMsg = await clientOutData.get()
                 # Print speed test results
@@ -79,6 +76,7 @@ async def main():
                 except Exception as e:
                     print(f"Error processing result: {e}")
                     print(f"Client Data: {clientMsg}")
+            # If previous message has been sent, add new one to queue
             if clientInData.empty():
                 await clientInData.put(item=speedTestMessage)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed

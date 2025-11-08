@@ -1,3 +1,5 @@
+OUT OF DATE INFORMATION. DIAGRAM IS A WORK IN PROGRESS
+
 ## Goal of Server
 
 1. Receive data from clients

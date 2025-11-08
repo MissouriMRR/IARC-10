@@ -41,7 +41,6 @@ class Server:
         try:
             # Read all data from client until end of data char (\n)
             messageData = await reader.readuntil(b"\n")
-            clientAddress: str = str(writer.get_extra_info(name="peername"))
 
             if messageData:
                 message = messageData.decode()
@@ -64,10 +63,6 @@ class Server:
 
                 writer.write((responseMessage + "\n").encode())
                 await writer.drain()
-                # Store received data in serverOutData to be accessed from main.py
-                # await self.serverOutData.put(
-                #     item=(f"clientAddress {clientAddress}, {message} message")
-                # )
         except asyncio.TimeoutError:
             print("Client timeout - no data received")
         except asyncio.IncompleteReadError:
