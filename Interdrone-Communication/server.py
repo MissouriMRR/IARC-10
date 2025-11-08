@@ -22,28 +22,31 @@ class Server:
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             # Read all data from client until end of data char (\n)
-            data = await reader.readuntil(b"\n")
-            clientAddress: str = writer.get_extra_info(name="peername")
+            messageData = await reader.readuntil(b"\n")
+            clientAddress: str = str(writer.get_extra_info(name="peername"))
 
-            if data:
-                message = data.decode()
+            if messageData:
+                message = messageData.decode()
                 # print(message)
                 # TODO implement server response stuff here
-                originalMessage = json.loads(message)
-                match int(originalMessage["messageId"]):
+                jsonMessage = json.loads(message)
+                match int(jsonMessage["messageId"]):
                     case 400:
                         await self.serverOutData.put(item="OMG the app contacted us!")
 
                 # Send default response back to client
-                response = "Server received your message!"
-                writer.write((response + "\n").encode())
+                responseMessage = "Server received your message!"
+                writer.write((responseMessage + "\n").encode())
                 await writer.drain()
 
                 # Store received data in serverOutData to be accessed from main.py
                 await self.serverOutData.put(
                     item=(f"clientAddress {clientAddress}, {message} message")
                 )
-
+        except asyncio.TimeoutError:
+            print("Client timeout - no data received")
+        except asyncio.IncompleteReadError:
+            print("Client disconnected before sending complete message")
         except Exception as e:
             print(f"Error handling client: {e}")
         finally:
