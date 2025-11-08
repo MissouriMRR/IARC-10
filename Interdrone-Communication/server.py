@@ -21,23 +21,22 @@ class Server:
     # Handle individual client connections
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
-            # Read data from client
-            data = await reader.read(4096)
+            # Read all data from client until end of data char (\n)
+            data = await reader.readuntil(b"\n")
             clientAddress: str = writer.get_extra_info(name="peername")
 
             if data:
                 message = data.decode()
-
+                # print(message)
                 # TODO implement server response stuff here
-                originalMessage = json.loads(s=message)
-
+                originalMessage = json.loads(message)
                 match int(originalMessage["messageId"]):
                     case 400:
-                        self.serverOutData.put(item="OMG the app contacted us!")
+                        await self.serverOutData.put(item="OMG the app contacted us!")
 
                 # Send default response back to client
                 response = "Server received your message!"
-                writer.write(response.encode())
+                writer.write((response + "\n").encode())
                 await writer.drain()
 
                 # Store received data in serverOutData to be accessed from main.py

@@ -91,12 +91,12 @@ class Client:
                 asyncio.open_connection(serverIP, serverPort), timeout=1.0
             )
 
-            # Send data
-            writer.write(jsonMessage.encode())
+            # Send data with end of data char (\n)
+            writer.write((jsonMessage + "\n").encode())
             await writer.drain()
 
             # Receive response
-            data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
+            data = await asyncio.wait_for(reader.readuntil(b"\n"), timeout=1.0)
             receiveTime = time.time()
 
             # Close connection
