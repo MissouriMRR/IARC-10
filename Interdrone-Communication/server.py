@@ -44,22 +44,20 @@ class Server:
 
             if messageData:
                 message = messageData.decode()
-                # print(message)
-                # TODO implement server response stuff here
                 jsonMessage = json.loads(message)
+                responseMessage = "Server received your message!"
+                # Check for messageId and perform required operations
                 match int(jsonMessage["messageId"]):
+                    # App test message
                     case 400:
                         await self.serverOutData.put(item="OMG the app contacted us!")
 
-                # Send default response back to client
-                responseMessage = "Server received your message!"
                 writer.write((responseMessage + "\n").encode())
                 await writer.drain()
-
                 # Store received data in serverOutData to be accessed from main.py
-                await self.serverOutData.put(
-                    item=(f"clientAddress {clientAddress}, {message} message")
-                )
+                # await self.serverOutData.put(
+                #     item=(f"clientAddress {clientAddress}, {message} message")
+                # )
         except asyncio.TimeoutError:
             print("Client timeout - no data received")
         except asyncio.IncompleteReadError:
@@ -74,12 +72,3 @@ class Server:
     # Run server
     def run(self):
         asyncio.run(self.start_server_async())
-
-
-"""
-def processData():
-    match messageId:
-        case 402:
-            drone.hover()
-
-"""
