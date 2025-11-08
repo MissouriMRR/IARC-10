@@ -18,6 +18,23 @@ class Server:
         except Exception:
             self.droneId = jsonData["localInfo"]["selfId"]
 
+    # Async server startup
+    async def start_server_async(self):
+        server = await asyncio.start_server(
+            self.handle_client,
+            str(self.jsonData["drones"][self.droneId]["ip"]),
+            int(self.jsonData["drones"][self.droneId]["port"]),
+        )
+
+        try:
+            async with server:
+                await server.serve_forever()
+        except KeyboardInterrupt:
+            print("Server shutting down.")
+        finally:
+            server.close()
+            await server.wait_closed()
+
     # Handle individual client connections
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
@@ -53,23 +70,6 @@ class Server:
             # Close the connection
             writer.close()
             await writer.wait_closed()
-
-    # Async server startup
-    async def start_server_async(self):
-        server = await asyncio.start_server(
-            self.handle_client,
-            str(self.jsonData["drones"][self.droneId]["ip"]),
-            int(self.jsonData["drones"][self.droneId]["port"]),
-        )
-
-        try:
-            async with server:
-                await server.serve_forever()
-        except KeyboardInterrupt:
-            print("Server shutting down.")
-        finally:
-            server.close()
-            await server.wait_closed()
 
     # Run server
     def run(self):
