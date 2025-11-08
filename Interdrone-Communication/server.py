@@ -54,10 +54,10 @@ class Server:
                         await self.serverOutData.put(item="OMG the app contacted us!")
                     case 513:
                         # Set final upload time when server receives
-                        jsonMessage["data"]["finalUploadTime"] = time.time()
+                        jsonMessage["data"]["finalUploadTime"] = time.perf_counter()
 
                         # Set initial download time when server sends response
-                        jsonMessage["data"]["initialDownloadTime"] = time.time()
+                        jsonMessage["data"]["initialDownloadTime"] = time.perf_counter()
 
                         # Echo back the message with timing data
                         responseMessage = json.dumps(jsonMessage)

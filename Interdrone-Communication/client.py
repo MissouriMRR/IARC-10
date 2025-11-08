@@ -70,9 +70,8 @@ class Client:
 
     # Create messageTasks to send data to all other drones
     async def handle_message(self, message: MessageData):
-        message["data"]["timestamp"] = (
-            time.time()
-        )  # TODO WITH TEST REWORK MOVE THIS WHEN MESSAGE IS ADDED TO CLIENT IN DATA
+        if message["messageId"] == 513:
+            message["data"]["initialUploadTime"] = time.perf_counter()
         clientMessage = json.dumps(message)
 
         # Create tasks for all drone connections
@@ -147,7 +146,7 @@ class Client:
             # Speedtest Message
             case 513:
                 # Client receives response - set final download time
-                receiveTime = time.time()
+                receiveTime = time.perf_counter()
                 responseData = json.loads(serverResponseData.decode())
                 # Calculate Upload Speed (client send → server receive)
                 uploadTime = float(responseData["data"]["finalUploadTime"]) - float(

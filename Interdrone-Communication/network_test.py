@@ -7,7 +7,6 @@ import server
 import client
 import json
 import sys
-import time
 
 
 async def main():
@@ -19,9 +18,7 @@ async def main():
     serverData: Queue[str] = asyncio.Queue()  # May need to change queue type to any
 
     # TODO talk to Harper to see if we need a serverInData
-    clientInData: Queue[MessageData] = (
-        asyncio.Queue()
-    )  # TODO remove Any once we figure out how to structure our passed in data
+    clientInData: Queue[MessageData] = asyncio.Queue()
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
@@ -43,7 +40,7 @@ async def main():
     speedTestMessage: MessageData = {
         "messageId": 513,
         "data": {
-            "initialUploadTime": time.time(),  # Set when queued to send
+            "initialUploadTime": 0.0,  # Set when queued to send
             "finalUploadTime": 0.0,
             "initialDownloadTime": 0.0,
             "finalDownloadTime": 0.0,
@@ -92,34 +89,34 @@ async def main():
         print("=" * 70)
 
         if speedResults:
-            upload_throughputs = [
+            uploadThroughputs = [
                 float(r["data"]["uploadThroughputKbps"]) for r in speedResults
             ]
-            upload_rtts = [float(r["data"]["uploadRttMs"]) for r in speedResults]
-            download_throughputs = [
+            uploadRttms = [float(r["data"]["uploadRttMs"]) for r in speedResults]
+            downloadThroughputs = [
                 float(r["data"]["downloadThroughputKbps"]) for r in speedResults
             ]
-            download_rtts = [float(r["data"]["downloadRttMs"]) for r in speedResults]
+            downloadRttMs = [float(r["data"]["downloadRttMs"]) for r in speedResults]
 
             # Calculate upload statistics
-            avgUploadThroughputKbps = sum(upload_throughputs) / len(upload_throughputs)
+            avgUploadThroughputKbps = sum(uploadThroughputs) / len(uploadThroughputs)
             avgUploadThroughputMbps = avgUploadThroughputKbps / 1000
-            avgUploadRttMs = sum(upload_rtts) / len(upload_rtts)
-            minUploadThroughput = min(upload_throughputs) / 1000
-            maxUploadThroughput = max(upload_throughputs) / 1000
-            minUploadRtt = min(upload_rtts)
-            maxUploadRtt = max(upload_rtts)
+            avgUploadRttMs = sum(uploadRttms) / len(uploadRttms)
+            minUploadThroughput = min(uploadThroughputs) / 1000
+            maxUploadThroughput = max(uploadThroughputs) / 1000
+            minUploadRtt = min(uploadRttms)
+            maxUploadRtt = max(uploadRttms)
 
             # Calculate download statistics
-            avgDownloadThroughputKbps = sum(download_throughputs) / len(
-                download_throughputs
+            avgDownloadThroughputKbps = sum(downloadThroughputs) / len(
+                downloadThroughputs
             )
             avgDownloadThroughputMbps = avgDownloadThroughputKbps / 1000
-            avgDownloadRttMs = sum(download_rtts) / len(download_rtts)
-            minDownloadThroughput = min(download_throughputs) / 1000
-            maxDownloadThroughput = max(download_throughputs) / 1000
-            minDownloadRtt = min(download_rtts)
-            maxDownloadRtt = max(download_rtts)
+            avgDownloadRttMs = sum(downloadRttMs) / len(downloadRttMs)
+            minDownloadThroughput = min(downloadThroughputs) / 1000
+            maxDownloadThroughput = max(downloadThroughputs) / 1000
+            minDownloadRtt = min(downloadRttMs)
+            maxDownloadRtt = max(downloadRttMs)
 
             print(f"\nTotal Tests: {len(speedResults)}")
             print(f"Target: {speedResults[0]['data']['target']}")
