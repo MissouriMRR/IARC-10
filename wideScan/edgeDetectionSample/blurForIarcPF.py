@@ -7,7 +7,7 @@ from typing import List, Tuple, Optional, Any # Import necessary types
 # An image is just a multi-dimensional numpy array
 ImageType = np.ndarray
 
-# --- 1. Define File List and Detection Parameters ---
+#Creating the list of photos to run through
 
 files: List[str] = ['../Iarc_photo_folder/mine_in_grass templates_(combo-2).png',
                    '../Iarc_photo_folder/mine_in_grass templates_(combo).png']
@@ -29,11 +29,11 @@ coordinate_list: List[Tuple[int, int]] = []
 lower_bound: ImageType = np.array([90, 40, 100])
 upper_bound: ImageType = np.array([130, 150, 220])
 
-# Kernel for morphological operations (cleaning the mask)
+# Kernel for cleaning the mask
 kernel: ImageType = np.ones((5, 5), np.uint8)
 
 
-# --- 2. Loop Through Each File ---
+#Loop Through Each File
 
 for file_path in files:
     # Load the image
@@ -49,17 +49,17 @@ for file_path in files:
     # Create a copy to draw results on
     output_image: ImageType = img.copy()
 
-    # --- 3. HSV Color Segmentation (The Core Logic) ---
+    # Switches from RGB to Hue, Saturation, and Value
     hsv: ImageType = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     
-    # Create the binary mask
+    # Create the binary mask (only allows for fully white/black pixels)
     mask: ImageType = cv2.inRange(hsv, lower_bound, upper_bound)
     
     # Clean the mask
     mask_closed: ImageType = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     mask_cleaned: ImageType = cv2.morphologyEx(mask_closed, cv2.MORPH_OPEN, kernel)
 
-    # --- 4. Find and Filter Mines ---
+    # Find and Filter Mines
     # findContours returns a tuple: (list_of_contours, hierarchy)
     contours: Tuple[ImageType, ...]
     hierarchy: ImageType
@@ -113,17 +113,14 @@ for file_path in files:
     cv2.imshow('Mask (for debugging)', resized_mask)
 
     #printing coordinates
-    sum : int = 1
     coordinates: np.ndarray = np.array(coordinate_list) # This is an N-by-2 array
     print("\n--- Summary of Mine Coordinates ---")
     if coordinates.shape[0] > 0:
         print(f"Found a total of {coordinates.shape[0]} mines across all files.")
         print("Coordinates (center x, center y):")
-        print(f"\nPicture {sum}: ")
-        sum+=1
         print(coordinates)
 
-    # --- 6. Wait for 'q' to Move to Next Image ---
+    # Wait for 'q' to Move to Next Image 
     print("Press 'q' in any window to proceed to the next image...")
     while(True):
         # Check for a key press
