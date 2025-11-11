@@ -17,7 +17,7 @@ mineList = np.random.randint(3937, size=(numberOfMines+1, 2))
 mineList[0] = (5000,5000)
 
 # Format:
-# mineConTrac[<reference mine postion in mineList>][0: 0-60, 1: 60-12, 2: 120-180, 3: 180-240, 4: 240-300, 5: 300-360]
+# mineConTract reference mine postion in mineList>][0: 0-60, 1: 60-12, 2: 120-180, 3: 180-240, 4: 240-300, 5: 300-360]
 mineConTrac = np.full((numberOfMines+1, 6), 0)
 
 for i in range(1, len(mineList)):
