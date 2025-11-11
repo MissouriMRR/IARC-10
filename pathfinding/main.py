@@ -18,3 +18,15 @@ def polygonMask(node1:ng.Node, node2:ng.Node, array_size:tuple[int, int]):
     ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
     return np.array(img)
 
+# This will be the function that sends a drone to a given location
+# Right now its built a simple placeholder
+def droneGoto():
+    placeholder = ""
+
+class Drone:
+    x = 1800
+    y = 960
+
+previousPath = "placeholder"
+while ():
+    droneGoto()
