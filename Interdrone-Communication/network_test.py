@@ -35,7 +35,7 @@ async def main():
     try:
         droneId = sys.argv[1]
     except Exception:
-        droneId = data["localInfo"]["selfId"]
+        droneId = str(data["localInfo"]["selfId"])
 
     speedTestMessage: MessageData = {
         "messageId": 513,
