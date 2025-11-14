@@ -1,3 +1,4 @@
 {
-    "output.smartScroll.enabled": true
+    "output.smartScroll.enabled": true,
+    "python.REPL.enableREPLSmartSend": false
 }

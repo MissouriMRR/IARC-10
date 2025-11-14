@@ -15,8 +15,11 @@ KEY NODE ATTRIBUTES/METHODS:
 
  - Node.type() -> "internal/external primary/secondary" (Either internal OR external AND primary OR secondary)
  - Node.parentMine -> Mine object that the node is on
+ - Node.connectedNodes -> [Node,Node,...] A list of all nodes, excluding the Node itself
+ - Node.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
+                              A list of strings describing the kind of connection each node would be connected
  - Node.getPos() -> (x,y) position on field of the Node
- - Node.distanceFromNode(node) -> distance (Simple distance between nodes)
+ - Node.distanceFromNode(Node) -> distance (Simple distance between nodes)
 
 KEY FIELD ATTRIBUTES/METHODS:
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
@@ -149,8 +152,12 @@ class Field:
                     if distanceFromMine < radius:
                         node.terminated = True
                         connectedNode.terminated = True
-            
-                            
+        
+        # Brute force; each node has a list of every node created, excluding itself. 
+        # Significantly slows down this algorithm though
+        # for node in Node.nodes:
+        #     node.connectedNodes.extend([n for n in Node.nodes if n not in [node,node.connectedNode]]`
+
         
     def plotField(self):
         plt = pyplot
@@ -218,7 +225,7 @@ class Mine:
             return 'invalid node type'
     def addNode(self,node:"Node"):
         Node.nodes.append(node)
-        self.nodes.append(Node.nodes[Node.nodes.index(node)])
+        self.nodes.append(node)
         return node
     def __str__(self):
         return self.name
@@ -231,13 +238,13 @@ class Node:
     nodes = []
     def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str=''):
         Node.nodeNum += 1
-        
         if len(name) < 1:
             self.name = "Node ID: "+ str(Node.nodeNum)
         else:
             self.name = name 
         self.parentMine = parentMine
         self.connectedNode = None
+        self.connectedNodes = []
         self.x = 0.0
         self.y = 0.0
         self.connected = False
@@ -304,8 +311,8 @@ class Node:
         self.y = round(self.y,3)
     
     # DISTANCE
-    def distanceFromNode(self,node:"Node"):
-        distance = 0
+    def distanceFromNode(self,node:"Node") -> float:
+        distance = 0.0
         if len(self.connectedNodes) > 0 and node in self.connectedNodes:
             if node.parentMine == self.parentMine: # Nodes are on the same mine
                 currentNodeDistance = np.sqrt((self.parentMine.x-self.x)**2 + (self.parentMine.y-self.y)**2)
@@ -319,7 +326,7 @@ class Node:
                 distance = np.sqrt((self.x-node.x)**2+(self.y-node.y)**2)
         return distance
 
-    def status(self):
+    def status(self) -> list:
         result = []
         if self.terminated:
             result.append("Node terminated")
@@ -332,7 +339,7 @@ class Node:
             result.append("Node not connected")
         return result
 
-    def connectNode(self,node:"Node"):
+    def connectNode(self,node:"Node") -> None:
         self.connectedNode = node
         node.connectedNode = self
         self.connected = True
@@ -342,10 +349,37 @@ class Node:
             node.parentMine.connectedMines.append(self.parentMine)
         return node
 
-    def getPos(self):
+    # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
+    def getPathType(self,node:'Node') -> list:
+        types = []
+
+        # Connection based on parent mines
+        if node.parentMine != self.parentMine:
+            types.append("line")
+        elif node.parentMine == self.parentMine:
+            types.append("arc")
+        
+        # Connection exists 
+        if self.connectedNode == node:
+            types.append("established")
+        elif self.connectedNode != node:
+            types.append("unestablished")
+        
+        # Connection follows bitangency, such that moving from node to node has no sharp/perpendicular turns
+        if (self.type == "internal primary" and node.type == "internal primary" or
+            self.type == "external primary" and node.type == "external secondary" or
+            self.type == "internal secondary" and node.type == "internal secondary" or
+            self.type == "external secondary" and node.type == "external primary"):
+            types.append("bitangent")
+        else:
+            types.append("normal")
+        
+        return types
+
+    def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
-    def getTargetMine(self):
+    def getTargetMine(self) -> Mine:
         return self.__targetMine
     def __str__(self):
         return self.name
@@ -402,7 +436,9 @@ if not debug:
     # field.addMine(200,300,radius,'black')
     # field.addMine(250,300,radius,'black')
     # field.addMine(300,300,radius,'black')
-
+# for pair in combinations(Node.nodes,2):
+#     connections = pair[0].getPathType(pair[1])
+#     print(connections)
 if debug:
     field.addMine(0,0,radius)
     field.addMine(-150,0,radius)
@@ -423,7 +459,9 @@ if debug:
 field.plotField()
 """
 TODO:
- - Arc lengths
+X=Done
+- = Todo
+ X Arc lengths
  - Find a way to set a viable and efficient end point
  - Terminate nodes if the nodes themselves are created within another mine
  - ########## Terminate internal bitangents unless external bitangents are intersecting ##################
