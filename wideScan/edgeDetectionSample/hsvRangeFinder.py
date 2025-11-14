@@ -103,13 +103,13 @@ if final_mask is not None:
         """lower = np.array([stats[0] - 2 * stats[3],  # H_mean - 2*H_std
                           stats[1] - 2 * stats[4],  # S_mean - 2*S_std
                           stats[2] - 2 * stats[5]]) # V_mean - 2*V_std"""
-        lower = np.array(h_min, s_min, v_min)
+        lower = np.array([h_min, s_min, v_min])
                           
         """upper = np.array([stats[0] + 2 * stats[3],  # H_mean + 2*H_std
                           stats[1] + 2 * stats[4],  # S_mean + 2*S_std
                           stats[2] + 2 * stats[5]]) # V_mean + 2*V_std"""
         
-        upper = np.array(h_max, s_max, v_max)
+        upper = np.array([h_max, s_max, v_max])
 
         # Clip the values to their valid ranges
         lower_bound_final = np.clip(lower, [0, 0, 0], [179, 255, 255]).astype(int)
