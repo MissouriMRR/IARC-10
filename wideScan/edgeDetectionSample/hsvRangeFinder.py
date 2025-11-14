@@ -10,8 +10,10 @@ def nothing(x: Any) -> None:
 IMAGE_PATH = '../Iarc_photo_folder/mine_in_grass templates_(combo-2).png'
 #For more photos: [First Photo Here, '../Iarc_photo_folder/mine_in_grass templates_(combo).png']
 
-
+#Reads through each image in Image_path with cv2
 img = cv2.imread(IMAGE_PATH)
+
+#if image couldn't load then go to the next one or stop program
 if img is None:
     print(f"Error: Could not load image from {IMAGE_PATH}")
     exit()
@@ -42,6 +44,7 @@ print("---------------------------------")
 
 final_mask = None
 
+#continue updating HSV values bassed on trackbars until q or s is pressed
 while True:
     # --- 3. Read Trackbar Values ---
     h_min = cv2.getTrackbarPos('H_min', 'Trackbars')
@@ -55,9 +58,9 @@ while True:
     lower_bound = np.array([h_min, s_min, v_min])
     upper_bound = np.array([h_max, s_max, v_max])
 
-    # --- 4. Create and Show Mask ---
+    # --- 4. Create and Show Mask (white pixels that are in HSV range, all other pixels are black)
     mask: np.ndarray = cv2.inRange(hsv, lower_bound, upper_bound)
-    # Apply the mask to the original image
+    # Apply the mask to the original image (original pixels in the HSV range)
     result = cv2.bitwise_and(img, img, mask=mask)
 
     cv2.imshow('Original Image', img)
@@ -95,15 +98,18 @@ if final_mask is not None:
         
         stats = np.array([mean, std_dev]).flatten()
         
-        # Calculate bounds using 2 standard deviations
+        # Calculate bounds using values from the trackbars
         # Note: 179 is max for H, 255 for S and V
-        lower = np.array([stats[0] - 2 * stats[3],  # H_mean - 2*H_std
+        """lower = np.array([stats[0] - 2 * stats[3],  # H_mean - 2*H_std
                           stats[1] - 2 * stats[4],  # S_mean - 2*S_std
-                          stats[2] - 2 * stats[5]]) # V_mean - 2*V_std
+                          stats[2] - 2 * stats[5]]) # V_mean - 2*V_std"""
+        lower = np.array(h_min, s_min, v_min)
                           
-        upper = np.array([stats[0] + 2 * stats[3],  # H_mean + 2*H_std
+        """upper = np.array([stats[0] + 2 * stats[3],  # H_mean + 2*H_std
                           stats[1] + 2 * stats[4],  # S_mean + 2*S_std
-                          stats[2] + 2 * stats[5]]) # V_mean + 2*V_std
+                          stats[2] + 2 * stats[5]]) # V_mean + 2*V_std"""
+        
+        upper = np.array(h_max, s_max, v_max)
 
         # Clip the values to their valid ranges
         lower_bound_final = np.clip(lower, [0, 0, 0], [179, 255, 255]).astype(int)
