@@ -2,6 +2,7 @@ import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 from itertools import combinations
+import time
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
 
@@ -49,7 +50,7 @@ class Field:
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
-        mineCombo = [combo for combo in combinations(self.mines,2) if newMine in combo]
+        mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
         for pair in mineCombo:
             mine = pair[0]
             target = pair[1]
@@ -84,9 +85,7 @@ class Field:
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
 
-
         """Terminate pair of Nodes in certain conditions"""
-
         # Check newMine Nodes intersecting other mines
         for node in newMine.nodes:
             connectedNode = node.connectedNode
@@ -120,7 +119,6 @@ class Field:
                         if distanceFromMine < radius:
                             node.terminated = True
                             connectedNode.terminated = True
-        
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in Node.nodes if n not in newMine.nodes]:
             connectedNode = node.connectedNode
@@ -225,6 +223,7 @@ class Mine:
             return 'invalid node type'
     def addNode(self,node:"Node"):
         Node.nodes.append(node)
+        self.nodes.append(node)
         self.nodes.append(node)
         return node
     def __str__(self):
@@ -387,7 +386,7 @@ class Node:
         return self.__str__()
 
 
-numMines = 50
+numMines = 100
 xMin = -300
 xMax = 300
 yMin = -300
