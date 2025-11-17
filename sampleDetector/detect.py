@@ -2,7 +2,7 @@ import cv2
 from dt_apriltags import Detector
 
 # read in the image
-filePath = 'apriltag.png'
+filePath = 'april0.png'
 img = cv2.imread(filePath)
 
 # show original image
@@ -37,5 +37,5 @@ y2 = int(detections[0].corners[2][1])
 
 withBox = cv2.rectangle(img,(x1,y1),(x2,y2),(0,255,0),5)
 
-#cv2.imshow('final',withBox)
-#cv2.waitKey(0)
+cv2.imshow('final',withBox)
+cv2.waitKey(0)
