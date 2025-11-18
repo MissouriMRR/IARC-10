@@ -48,7 +48,8 @@ class Drone:
             self.takePhoto() # Small Placeholder
             self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
             # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated)
-            # Call for a remeet if path needs to change
+            # Call for a remeet if path is changed, clears current task cache is that happens and breaks
+        # Clears task cache
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
