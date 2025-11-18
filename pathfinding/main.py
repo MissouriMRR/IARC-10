@@ -1,13 +1,14 @@
-import rexAlg.nodeGen as ng
-import sightWeights.seenByDrone as sbd
+import rexAlg.nodeGen as nodeg
+import sightWeights.seenByDrone as seebd
 import dijkstrasPathfindingAlg.basicDijkstras as dijk
+import safetyNodeGen.rexNodeGen as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
 
 # Function for generating polygon masks based on node to node connections
 # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
-def polygonMask(node1:ng.Node, node2:ng.Node, array_size:tuple[int, int]):
+def polygonMask(node1:nodeg.Node, node2:nodeg.Node, array_size:tuple[int, int]):
     x1 = node1.parentMine.x
     y1 = node1.parentMine.y
     x2 = node2.parentMine.x
@@ -25,10 +26,15 @@ class Drone:
         self.y = coords[1]
         self.state = state
         self.visionRange = ((1,1), (1,1), (1,1), (1,1))
+        self.tasks = []
     
     # Updates the corners tracking what the drone is seeing
     def updateVision(self, corners:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = ((1,1), (1,1), (1,1), (1,1))):
         self.visionRange = corners
+
+    def updateTasks(self, goto:tuple[tuple[int, int]]):
+        for i in range(len(goto)):
+            self.tasks.append(goto[i])
     
     # This will be the function that sends a drone to a given location
     # Right now its built a simple placeholder
@@ -36,9 +42,17 @@ class Drone:
         self.x = coords[0]
         self.y = coords[1]
 
+    def completeTasks(self, path, mines):
+        for i in range(len(self.tasks)):
+            self.goto(self.tasks[i])
+            self.takePhoto() # Small Placeholder
+            self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
+            # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated)
+            # Call for a remeet if path needs to change
+
 # This is a place holder for the output from generating the fastest path.
 class Path:
-    def __init__(self, chain:tuple[ng.Node], length:float = 9999999, width:float = 1):
+    def __init__(self, chain:tuple[nodeg.Node], length:float = 9999999, width:float = 1):
         self.length = length
         self.chain = chain
         self.width = width
@@ -50,7 +64,9 @@ fieldSizeY = 960 # The max size of the field in inches
 startTime = t.time() # Starting time (Based on Global clock)
 previousPath = Path() # Previous Path
 currentPath = Path() # Current Working Path
+drones = [Drone(), Drone(), Drone(), Drone()]
 stopCondition = "Timed out"
+
 # Main loop of the canoptek scarab hive mind 
 while (True):
     if (t.time() - startTime > timeLimit):
@@ -60,7 +76,16 @@ while (True):
         
         stopCondition = "Timed out"
         break
-    if (previousPath.weight < currentPath):
+    if (previousPath.weight < currentPath.weight):
+        stopCondition = "Optimal Path Found"
         break
+    else:
+        gotoCoords = gotoDiv.gotoPath(currentPath)
+        for i in range(len(drones)):
+            diviedGoto = []
+            for y in range(len(gotoCoords)/len(drones)):
+                diviedGoto.append(gotoCoords[i*6+y])
+            drones[i].updateTasks(diviedGoto)
+            drones[i].completeTasks()
 
 print(stopCondition)
