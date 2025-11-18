@@ -148,7 +148,7 @@ class Client:
             case 513:
                 # Client receives response - set final download time
                 receiveTime = time.perf_counter()
-                responseData = json.loads(serverResponseData.decode())
+                responseData: MessageData = json.loads(serverResponseData.decode())
                 # Calculate Upload Speed (client send → server receive)
                 uploadTime = float(responseData["data"]["finalUploadTime"]) - float(
                     originalMessage["data"]["initialUploadTime"]

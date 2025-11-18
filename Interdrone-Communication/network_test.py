@@ -150,8 +150,8 @@ async def main():
         print("=" * 70 + "\n")
     except KeyboardInterrupt:
         print("Shutting down...")
-        serverTask.cancel()
-        clientTask.cancel()
+        _ = serverTask.cancel()
+        _ = clientTask.cancel()
 
 
 if __name__ == "__main__":

@@ -79,7 +79,7 @@ async def main():
                 try:
                     # result = json.loads(clientMsg)
                     print(f"Client Data: {clientMsg}")
-                except:
+                except Exception:
                     print(f"Client Data: {clientMsg}")
 
             # If previous heartbeat message has been sent, add new one to queue to be sent
@@ -90,8 +90,8 @@ async def main():
 
     except KeyboardInterrupt:
         print("Shutting down...")
-        serverTask.cancel()
-        clientTask.cancel()
+        _ = serverTask.cancel()
+        _ = clientTask.cancel()
 
 
 if __name__ == "__main__":
