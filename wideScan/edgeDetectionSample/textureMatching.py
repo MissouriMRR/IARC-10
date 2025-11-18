@@ -21,10 +21,8 @@ def main():
     #try all the different pictures we have
     file: str
     for file in files:
-        '''print()'''
         # get our image
         img: npt.NDArray[np.uint8] = cv2.imread(file)
-        '''print(img.shape)'''
         # make some copies that we can draw on
         copy: npt.NDArray[np.uint8] = img # where I'll draw all boxes that are picked up
         finalCopy: npt.NDArray[np.uint8] = img # where I'll draw the boxes that pass
@@ -53,8 +51,8 @@ def main():
                 #show all of the boxes in the normal copy
                 num += 1
                 text: str = f"Box {num}"
-                cv2.putText(copy,text,(x,y), cv2.FONT_HERSHEY_COMPLEX, 2, (0,0,255), 2, cv2.LINE_AA)
-                cv2.rectangle(copy, (x, y), (x + w, y + h), (0, 0, 255), 5)
+                cv2.putText(copy,text,(x,y), cv2.FONT_HERSHEY_COMPLEX, 3, (255,255,255), 2, cv2.LINE_AA)
+                cv2.rectangle(copy, (x, y), (x + w, y + h), (255,255,255), 10)
 
                 '''print(f'Box{num}: x,y,w,h ={x},{y},{w},{h}')'''
                 #get a cropped image of just the bounding rectangle
@@ -70,16 +68,18 @@ def main():
                     cropped_hist: npt.NDArray[np.float64] = get_lbp_hist(cropped)
                     #get the box's similarity to our sample image
                     comparison: float = compare_textures(cropped_hist,ref_pic_hist,method='euclidean')#bhattacharyya is current best
-                    print(f'Box {num} rating: {comparison}')
+                    print(f'Box {num} Confidence Interval: {comparison}')
                     print()
-        newSize = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
+        # resize copy images so they aren't huge on the screen
+        newSize: tuple[int] = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
         copy = cv2.resize(copy, newSize, interpolation=cv2.INTER_LINEAR)
         finalCopy = cv2.resize(finalCopy, newSize, interpolation=cv2.INTER_LINEAR)
+        # show both copies
         cv2.imshow('All boxes',copy)
         #cv2.imshow('w/ texture matching',finalCopy)
         while(True):
             # Check for a key press
-            key = cv2.waitKey(1) & 0xFF
+            key: int = cv2.waitKey(1) & 0xFF
             # If 'q' is pressed, break the loop
             if key == ord('q'):  
                 break  
@@ -87,8 +87,8 @@ def main():
         os.system('clear')
 
 def get_lbp_hist(image):
-    r = 2
-    p = 16*r
+    r: int = 2
+    p: int = 16*r
     #find the lbp first
     lbp = local_binary_pattern(image,P=p,R=r,method='uniform')
 
