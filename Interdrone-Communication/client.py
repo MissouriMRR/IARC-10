@@ -70,12 +70,14 @@ class Client:
 
     # Create messageTasks to send data to all other drones
     async def handle_message(self, message: MessageData):
+        # Message Preprocessing
         if message["messageId"] == 513:
             message["data"]["initialUploadTime"] = time.perf_counter()
         clientMessage = json.dumps(message)
 
         # Create tasks for all drone connections
         messageTasks: list[asyncio.Task[str]] = []
+        # TODO implement a way to only send messages to select drones
         for i in range(len(self.otherDronesIps)):
             messageTask = asyncio.create_task(
                 self.send_data_async(

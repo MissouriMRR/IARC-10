@@ -5,6 +5,8 @@ from asyncio import StreamReader, StreamWriter
 import json
 import time
 
+from message_types import MessageData
+
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
@@ -44,12 +46,13 @@ class Server:
 
             if messageData:
                 message = messageData.decode()
-                jsonMessage = json.loads(message)
+                jsonMessage: MessageData = json.loads(message)
                 responseMessage = "Server received your message!"
                 # Check for messageId and perform required operations
                 match int(jsonMessage["messageId"]):
                     # App test message
                     case 400:
+                        print(jsonMessage)
                         await self.serverOutData.put(item="OMG the app contacted us!")
                     case 513:
                         # Set final upload time when server receives

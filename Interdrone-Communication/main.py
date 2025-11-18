@@ -62,7 +62,9 @@ async def main():
 
             # Check for serverOutData from the server task
             if not serverOutData.empty():
-                # print(f"Server Data: {await serverOutData.get()}")
+                # data= serverOutData.get()
+                print(f"Server Data: {await serverOutData.get()}")
+
                 pass
 
             # Check for clientOutData from the client task
