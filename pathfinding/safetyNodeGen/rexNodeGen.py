@@ -2,19 +2,16 @@ import math as m
 import matplotlib.pyplot as plt
 import random as rand
 import numpy as np
-from rexAlg import nodeGen as obj
+#from rexAlg import nodeGen as ng
+
 #todo
-#Function: reads two random points from nodeCorlist, assigns x of both points to start and end x variables etc.. 
-# then creates another array of goto points using linspace and plots those contents. 
+#function takes in node list and connection type (linear or arc), and then creates goto points between each pair in list. 
+#arc length: angle * radius of circle 
 
-#select random two nodes using rand.choice form nodecorlist 
-#create goto points in arc --> like linspace?
-# distance between two nodes  place x number of gotopoints along distance within the range of distance 
-
+#have a list of mine coordinates and then put a check if 
 
 plt.xlim(0, 200)
 plt.ylim(0, 200)
-
 
 mx1 = rand.randrange(200) #1st node coordinate
 my1 = rand.randrange(200)  
@@ -25,36 +22,19 @@ my2 = rand.randrange(200)
 nodeCorList = [[mx1,my1], #node 1
                [mx2,my2]]  #node 2
 
-mineCorList = [[6,7], [7,9]] #2D array of mine coordinates.
-connectionTracker = [[1,2,3]]  #primary node, secondary node, distance between nodes. integer index values that correpsonden to nodeCorList
-
-
-def gotoPath(node1, node2, minDist):
-    #get node 1 and node 2 coords
-    
-    
-    #print random nodes
-    plt.plot(mx1, my1, marker='o', linestyle='-', color='red', markersize=8, markerfacecolor='red')
-    plt.plot(mx2, my2, marker='o', linestyle='-', color='red', markersize=8, markerfacecolor='red')
-    print(mx1)
-    print(my1)
-    print(mx2)
-    print(my2)
-
+def gotoPath(mx1, my1, mx2, my2):
+        
     #distance between node calculations
     distance = int((m.sqrt((mx2 - mx1)**2 + (my2 - my1)**2))/10)
 
-    #x and y arrays of goto points
-    #number 3 subject to change based on calculations on the distance between nodes (max-min range)?
-    
-    #endpoint removes last node point in x & y array.
+    #endpoint = false removes last node point in x & y array.
     x_values = np.linspace(mx1, mx2, num = distance, endpoint = False) #gives array of x_values coords= [mx1, mx2]
-    y_values = np.linspace(my1, my2, num = distance, endpoint = False) #gives array of y_values coords = [my1, my2]
+    y_values = np.linspace(my1, my2, num = distance, endpoint = False) 
 
     #creates tuple of first node point and goto points [(x1,y1),...etc] 
     allPts = list(zip(x_values, y_values))
 
-    #Gets rid of first node point 
+    #Gets rid of first node point, so now gotoPts does not have either node coords.
     gotoPts = allPts[1:] 
 
     #plots generated goto points.
@@ -68,12 +48,21 @@ def gotoPath(node1, node2, minDist):
     plt.xlabel("X-axis")
     plt.ylabel("Y-axis")
     plt.title("2 coordinates and generated points")
+    plt.grid(True)
 
     plt.show()
     
-    return 
-    
+    #return list of points in between.
+    return [[float(x), float(y)] for x, y in gotoPts]
+ 
+print(gotoPath(mx1, my1, mx2, my2))
 
+
+
+
+'''
+mineCorList = [[6,7], [7,9]] #2D array of mine coordinates.
+connectionTracker = [[1,2,3]]  #primary node, secondary node, distance between nodes. integer index values that correpsonden to nodeCorList
 def addMine(x, y): 
     mineCorList.append([x, y])
     return mineCorList
@@ -85,3 +74,4 @@ def addNode(x, y):
 def addConnection(primaryNodeIndex, secondaryNodeIndex, distance):
     connectionTracker.append([primaryNodeIndex, secondaryNodeIndex, distance])
     return connectionTracker
+'''
