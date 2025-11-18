@@ -8,3 +8,8 @@ class MessageData(TypedDict):
     data: dict[
         str, float | str | int | bool
     ]  # str is dict key. Value can be float, str, int, or bool
+
+
+class JsonConfigData(TypedDict):
+    drones: dict[str, dict[str, str]]
+    localInfo: dict[str, str]

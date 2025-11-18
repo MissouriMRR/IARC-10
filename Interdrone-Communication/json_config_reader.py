@@ -1,5 +1,5 @@
 import json
-from message_types import JsonConfigData
+from typed_dicts_classes import JsonConfigData
 
 
 class json_config_reader:

@@ -1,5 +1,5 @@
 from asyncio.queues import Queue
-from message_types import MessageData
+from typed_dicts_classes import MessageData
 from json_config_reader import json_config_reader
 
 import asyncio

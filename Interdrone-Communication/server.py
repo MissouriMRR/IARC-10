@@ -6,7 +6,7 @@ from asyncio import StreamReader, StreamWriter
 import json
 import time
 
-from message_types import MessageData
+from typed_dicts_classes import MessageData
 
 
 class Server:

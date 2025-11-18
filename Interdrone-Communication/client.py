@@ -5,7 +5,7 @@ import time
 import asyncio
 import sys
 import json
-from message_types import MessageData
+from typed_dicts_classes import MessageData
 
 
 class Client:
