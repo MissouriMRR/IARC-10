@@ -235,6 +235,14 @@ class Mine:
 class Node:
     nodeNum = 0
     nodes = []
+    def __init__(self,selfLocal:tuple[int,int],targetLocal:tuple[int,int],primary:bool=True,name:str=''):
+        Node.nodeNum += 1
+        if len(name) < 1:
+            self.name = "Node ID: "+ str(Node.nodeNum)
+        else:
+            self.name = name 
+
+
     def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str=''):
         Node.nodeNum += 1
         if len(name) < 1:
