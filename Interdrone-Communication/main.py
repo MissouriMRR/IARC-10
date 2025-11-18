@@ -7,6 +7,7 @@ import server
 import client
 import json
 import sys
+import json_reader
 
 # DOCS: How to merge this with path finding:
 """
@@ -27,9 +28,10 @@ async def main():
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
-    serverInstance = server.Server(jsonData=data, serverOutData=serverOutData)
+    jsonReaderInstance = json_reader()
+    serverInstance = server.Server(jsonData=jsonReaderInstance, serverOutData=serverData)
     clientInstance = client.Client(
-        jsonData=data, clientInData=clientInData, clientOutData=clientOutData
+        jsonData=jsonReaderInstance, clientInData=clientInData, clientOutData=clientOutData
     )
 
     # Run both server and client concurrently
@@ -40,7 +42,7 @@ async def main():
     try:
         droneId = sys.argv[1]
     except Exception:
-        droneId = str(data["localInfo"]["selfId"])
+        droneId = jsonReaderInstance.get_self_id()
 
     heartBeatMessage: MessageData = {
         "messageId": 504,
