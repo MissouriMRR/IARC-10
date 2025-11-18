@@ -7,12 +7,16 @@ import server
 import client
 import json
 import sys
+import json_reader
+
 
 
 async def main():
     # Get JSON Data
     with open("config.json", "r") as file:
         data: dict[str, Any] = json.load(file)
+
+    jsonReaderInstance = json_reader()
 
     # Create Server and Client Data queues to pass data in and out of tasks
     serverData: Queue[str] = asyncio.Queue()
@@ -23,7 +27,7 @@ async def main():
     # Instantiate Server and Client
     serverInstance = server.Server(jsonData=data, serverOutData=serverData)
     clientInstance = client.Client(
-        jsonData=data, clientInData=clientInData, clientOutData=clientOutData
+        jsonData=jsonReaderInstance, clientInData=clientInData, clientOutData=clientOutData
     )
 
     # Run both server and client concurrently
@@ -35,7 +39,7 @@ async def main():
     try:
         droneId = sys.argv[1]
     except Exception:
-        droneId = str(data["localInfo"]["selfId"])
+        droneId = jsonReaderInstance.get_self_id()
 
     speedTestMessage: MessageData = {
         "messageId": 513,

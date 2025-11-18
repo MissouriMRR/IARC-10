@@ -5,16 +5,12 @@ import asyncio
 import sys
 import json
 from message_types import MessageData
+import json_reader
 
 
 class Client:
     # Client Class constructor. Used to pass in JSON Data
-    def __init__(
-        self,
-        jsonData,
-        clientInData: Queue[MessageData],
-        clientOutData: Queue[str],
-    ):
+    def __init__(self, jsonData: json_reader,clientInData: Queue[dict[str, int | float | str]], clientOutData: Queue[str]):
         self.jsonData = jsonData
         self.clientInData: Queue[MessageData] = clientInData
         self.clientOutData: Queue[str] = clientOutData
@@ -24,7 +20,7 @@ class Client:
         try:
             self.droneId = sys.argv[1]
         except Exception:
-            self.droneId = jsonData["localInfo"]["selfId"]
+            self.droneId = jsonData.get_self_id() #?# need to add "(self)"?
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -40,7 +36,7 @@ class Client:
                     self.jsonData["drones"][str(i)]["ip"]
                 )  # This will be simplified after JSON parser is implemented
                 self.otherDronesPorts.append(
-                    int(self.jsonData["drones"][str(i)]["port"])
+                    int(jsonData.get_drone_port(i)) #?#
                 )
 
     # Start client code and call the client_loop()
