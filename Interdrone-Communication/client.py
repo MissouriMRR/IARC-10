@@ -1,26 +1,31 @@
 from asyncio.queues import Queue
+from json_config_reader import json_config_reader
 
 import time
 import asyncio
 import sys
 import json
 from message_types import MessageData
-import json_reader
 
 
 class Client:
     # Client Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData: json_reader,clientInData: Queue[dict[str, int | float | str]], clientOutData: Queue[str]):
-        self.jsonData = jsonData
+    def __init__(
+        self,
+        jsonConfigData: json_config_reader,
+        clientInData: Queue[MessageData],
+        clientOutData: Queue[str],
+    ):
+        self.jsonConfigData: json_config_reader = jsonConfigData
         self.clientInData: Queue[MessageData] = clientInData
         self.clientOutData: Queue[str] = clientOutData
 
         # Check for sys arg for drone selfId
-        self.droneId: str
+        self.droneId: int
         try:
-            self.droneId = sys.argv[1]
+            self.droneId = int(sys.argv[1])
         except Exception:
-            self.droneId = jsonData.get_self_id() #?# need to add "(self)"?
+            self.droneId = jsonConfigData.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -30,13 +35,11 @@ class Client:
         # Loop through drones 1-4
         for i in range(1, 5):
             # If drone is self (drone running this script) don't add them otherDrones list
-            if i != int(self.droneId):
+            if i != self.droneId:
                 # Add other drones IP and Ports to their respective lists
-                self.otherDronesIps.append(
-                    self.jsonData["drones"][str(i)]["ip"]
-                )  # This will be simplified after JSON parser is implemented
+                self.otherDronesIps.append(self.jsonConfigData.get_drone_ip(droneId=i))
                 self.otherDronesPorts.append(
-                    int(jsonData.get_drone_port(i)) #?#
+                    self.jsonConfigData.get_drone_port(droneId=i)
                 )
 
     # Start client code and call the client_loop()

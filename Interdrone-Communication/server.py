@@ -1,4 +1,5 @@
 from asyncio.queues import Queue
+from json_config_reader import json_config_reader
 import asyncio
 import sys
 from asyncio import StreamReader, StreamWriter
@@ -10,23 +11,23 @@ from message_types import MessageData
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonData, serverOutData: Queue[str]):
-        self.jsonData = jsonData
+    def __init__(self, jsonConfigData: json_config_reader, serverOutData: Queue[str]):
+        self.jsonConfigData: json_config_reader = jsonConfigData
         self.serverOutData: Queue[str] = serverOutData
 
         # Check for sys arg for drone selfId
-        self.droneId: str
+        self.droneId: int
         try:
-            self.droneId = sys.argv[1]
+            self.droneId = int(sys.argv[1])
         except Exception:
-            self.droneId = jsonData["localInfo"]["selfId"]
+            self.droneId = jsonConfigData.get_self_id()
 
     # Async server startup
     async def start_server_async(self):
         server = await asyncio.start_server(
             self.handle_client,
-            str(self.jsonData["drones"][self.droneId]["ip"]),
-            int(self.jsonData["drones"][self.droneId]["port"]),
+            self.jsonConfigData.get_drone_ip(self.droneId),
+            self.jsonConfigData.get_drone_port(self.droneId),
         )
 
         try:

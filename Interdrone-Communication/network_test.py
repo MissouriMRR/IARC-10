@@ -1,45 +1,43 @@
 from asyncio.queues import Queue
 from message_types import MessageData
+from json_config_reader import json_config_reader
 
 import asyncio
-from typing import Any
 import server
 import client
 import json
 import sys
-import json_reader
-
 
 
 async def main():
-    # Get JSON Data
-    with open("config.json", "r") as file:
-        data: dict[str, Any] = json.load(file)
-
-    jsonReaderInstance = json_reader()
+    # Create jsonConfigData instance to get data from config file
+    jsonConfigData: json_config_reader = json_config_reader()
 
     # Create Server and Client Data queues to pass data in and out of tasks
-    serverData: Queue[str] = asyncio.Queue()
-
+    serverOutData: Queue[str] = asyncio.Queue()
     clientInData: Queue[MessageData] = asyncio.Queue()
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
-    serverInstance = server.Server(jsonData=data, serverOutData=serverData)
+    serverInstance = server.Server(
+        jsonConfigData=jsonConfigData, serverOutData=serverOutData
+    )
     clientInstance = client.Client(
-        jsonData=jsonReaderInstance, clientInData=clientInData, clientOutData=clientOutData
+        jsonConfigData=jsonConfigData,
+        clientInData=clientInData,
+        clientOutData=clientOutData,
     )
 
     # Run both server and client concurrently
     serverTask = asyncio.create_task(serverInstance.start_server_async())
     clientTask = asyncio.create_task(clientInstance.start_client_async())
 
-    # Get our drones id
-    droneId: str
+    # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
+    droneId: int
     try:
-        droneId = sys.argv[1]
+        droneId = int(sys.argv[1])
     except Exception:
-        droneId = jsonReaderInstance.get_self_id()
+        droneId = jsonConfigData.get_self_id()
 
     speedTestMessage: MessageData = {
         "messageId": 513,
@@ -49,11 +47,11 @@ async def main():
             "initialDownloadTime": 0.0,
             "finalDownloadTime": 0.0,
             "senderId": droneId,
-            "payloadSize": (int(data["localInfo"]["speedTestKbDataSize"])) * 1024,
+            "payloadSize": jsonConfigData.get_speed_test_data_size() * 1024,
             "payload": "X"
             * (
-                (int(data["localInfo"]["speedTestKbDataSize"])) * 1024
-            ),  # Multiply string by a specified size of Kb to create a payload size
+                jsonConfigData.get_speed_test_data_size() * 1024
+            ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     }
 
