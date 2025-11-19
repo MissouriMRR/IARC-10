@@ -30,10 +30,10 @@ class Client:
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
         self.otherDronesPorts: list[int] = []
+        self.otherDronesIds: list[int] = []
 
-        # Parse JSON to get IPs and Ports of drones to connect to
-        # Loop through drones 1-4
-        for i in range(1, 5):
+        # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
+        for i in range(1, self.jsonConfigData.get_number_of_drones() + 1):
             # If drone is self (drone running this script) don't add them otherDrones list
             if i != self.droneId:
                 # Add other drones IP and Ports to their respective lists
@@ -41,6 +41,7 @@ class Client:
                 self.otherDronesPorts.append(
                     self.jsonConfigData.get_drone_port(droneId=i)
                 )
+                self.otherDronesIds.append(i)
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
