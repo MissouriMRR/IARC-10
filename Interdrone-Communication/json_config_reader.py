@@ -24,5 +24,15 @@ class json_config_reader:
     def get_speed_test_data_size(self) -> int:
         return int(self.config["localInfo"]["speedTestKbDataSize"])
 
-    # TODO find here in code above is used, like selfID or
-    # drone port
+    # TODO make this good after sprint
+    # Gets current config file and edits selfId to be used for startup script
+    def get_json_text_data_for_startup(self, droneId: str):
+        ogId = self.get_self_id()
+        self.config["localInfo"]["selfId"] = droneId
+        jsonExport = json.dumps(self.config)
+        self.config["localInfo"]["selfId"] = str(ogId)
+        return jsonExport
+
+    # Gets number of drones
+    def get_number_of_drones(self):
+        return len(self.config["drones"])
