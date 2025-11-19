@@ -70,23 +70,35 @@ class Client:
 
     # Create messageTasks to send data to all other drones
     async def handle_message(self, message: MessageData):
+        # Determine which drones to send message to
+        dronesToSendData: list[int] = []
+
+        # If dronesToSendData list has id values, only send message to those drones
+        if message["dronesToSendData"] != []:
+            dronesToSendData = message["dronesToSendData"]
+        # Else dronesToSendData list is empty, attempt to send data to all other drones
+        else:
+            dronesToSendData = self.otherDronesIds
+
         # Message Preprocessing
         if message["messageId"] == 513:
             message["data"]["initialUploadTime"] = time.perf_counter()
         clientMessage = json.dumps(message)
 
-        # Create tasks for all drone connections
+        # Create messageTasks list to store tasks for all drone connections
         messageTasks: list[asyncio.Task[str]] = []
-        # TODO implement a way to only send messages to select drones
-        for i in range(len(self.otherDronesIps)):
-            messageTask = asyncio.create_task(
-                self.send_data_async(
-                    serverIP=self.otherDronesIps[i],
-                    serverPort=self.otherDronesPorts[i],
-                    clientMessage=clientMessage,
+
+        # Loop through otherDronesIds and create to task to send message data to them if they're in dronesToSendData to list
+        for i in range(len(self.otherDronesIds)):
+            if self.otherDronesIds[i] in dronesToSendData:
+                messageTask = asyncio.create_task(
+                    self.send_data_async(
+                        serverIP=self.otherDronesIps[i],
+                        serverPort=self.otherDronesPorts[i],
+                        clientMessage=clientMessage,
+                    )
                 )
-            )
-            messageTasks.append(messageTask)
+                messageTasks.append(messageTask)
 
         # Run all messageTasks concurrently
         _ = await asyncio.gather(*messageTasks, return_exceptions=True)

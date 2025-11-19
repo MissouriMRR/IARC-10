@@ -41,6 +41,7 @@ async def main():
 
     speedTestMessage: MessageData = {
         "messageId": 513,
+        "dronesToSendData": [],
         "data": {
             "initialUploadTime": 0.0,  # Set when queued to send
             "finalUploadTime": 0.0,

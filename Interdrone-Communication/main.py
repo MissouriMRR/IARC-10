@@ -20,6 +20,14 @@ async def main():
     # Create jsonConfigData instance to get data from config file
     jsonConfigData: json_config_reader = json_config_reader()
 
+    # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
+    droneId: int
+    try:
+        droneId = int(sys.argv[1])
+    except Exception:
+        droneId = jsonConfigData.get_self_id()
+
+    # if drone 1, start up server and client normally. Then, send messages to other servers to set their values (send current config file but with changed selfId value)
     # Create Server and Client Data queues to pass data in and out of tasks
     serverOutData: Queue[str] = asyncio.Queue()
     clientInData: Queue[MessageData] = asyncio.Queue()
@@ -49,15 +57,19 @@ async def main():
     # Create heartbeat message
     heartBeatMessage: MessageData = {
         "messageId": 504,
+        "dronesToSendData": [],
         "data": {
             "timestamp": 0.0,
             "senderId": droneId,
             "payload": "Hello server!",
         },
     }
-
     try:
         print("Server and Client started")
+
+        # Startup loop to send updated config to all other drones
+
+        jsonConfigData.get_number_of_drones()
 
         await clientInData.put(item=heartBeatMessage)
 
