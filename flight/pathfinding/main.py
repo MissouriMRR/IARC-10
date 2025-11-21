@@ -48,7 +48,7 @@ class Drone:
             self.goto(self.tasks[i])
             self.takePhoto() # Small Placeholder should be self explainitory
             self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
-            # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated)
+            # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated also current path should be updated)
             # Recalculation is contingent on found mine being exigent
             # Call for a remeet if path is changed, clears current task cache is that happens and breaks
         # Clears task cache
@@ -74,7 +74,7 @@ fieldSizeY = 960 # The max size of the field in inches
 startTime = t.time() # Starting time (Based on global clock)
 previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODe GENERATION
 currentPath = Path() # Current Working Path SEE ABOVE
-drones = [Drone(), Drone(), Drone(), Drone()] # Note that the mine radii
+drones = [Drone(), Drone(), Drone(), Drone()] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
 
 # Main loop of the canoptek scarab hive mind
@@ -111,8 +111,16 @@ while (True):
         
         # Something to wait for all drones to finish their tasks
 
+        # Drones reconvene after finishing performing their respective tasks confirming the found path and saving it as the previous path before incrementing
         for i in range(len(drones)):
             drones[i].goto(gotoCoords[len(gotoCoords)/2]) # DO NOT LEAVE THIS IN AND THEN FLY THE DRONES, THIS NEEDS TO BE REPLACED WITH SOMETHING SMARTER
+
+            # Confirm Current Path
+            # Save Current Path as Previous
+            drones[i].mineRadius += 1
+            # Recalculate Path
+            # Loop (⌐▨_▨)
+
 
         
 
