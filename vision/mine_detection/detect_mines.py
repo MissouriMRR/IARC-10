@@ -102,6 +102,42 @@ def detect_mines_in_image(image: cv2.typing.MatLike) -> Iterable[BoundingBox]:
                 cropped_hist: npt.NDArray[np.float64] = get_lbp_hist(cropped)
                 #get the box's similarity to our sample image
                 comparison: float = compare_textures(cropped_hist,ref_pic_hist,method='euclidean')#bhattacharyya is current best
+
+                #ANOTHER WAY OF TESTING IF THE MINE IS ACTUALLY A MINE USING HSV
+
+                #convert color to hsv
+                """hsv_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
+                
+                #mine hsv bounds (MIGHT NEED TO CHANGE DEPENDING ON LIGHTING/OTHER CONDITIONS)
+                mine_lower = np.array([90, 40, 100]) 
+                mine_upper = np.array([130, 150, 220])
+
+                #Find all the pixels that are between the hsv color range
+                mask_crop = cv2.inRange(hsv_crop, mine_lower, mine_upper)
+
+                # Count how many pixels are white (255) in the mask (inside the hsv color range)
+                matching_pixels = cv2.countNonZero(mask_crop)
+                total_pixels = mask_crop.shape[0] * mask_crop.shape[1] # width * height
+
+                #determine the ratio of pixels inside the hsv range to total pixels                
+                color_ratio = matching_pixels / total_pixels
+
+                #SAME CODE AS BELOW, BUT ONLY ADDING THE BOX IF IT HAS ENOUGH PIXELS IN THE HSV RANGE
+                #find box coord values
+                box = BoundingBox()
+                box.x_min = x
+                box.y_min = y
+                box.width = w
+                box.height = h
+                box.confidence = color_ratio #percent of pixels in hsv range
+                
+                # Add box only if it has box.confidence(ratio of hsv:total) percent values in the box
+                if box.confidence > 0.3:
+                    allBoxes.append(box)
+                    confidences.append(box.confidence)"""
+                
+                
+
             box: BoundingBox
             box.x_min = x
             box.y_min = y
