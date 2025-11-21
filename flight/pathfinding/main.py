@@ -1,7 +1,7 @@
-import rexAlg.nodeGen as nodeg
-import sightWeights.seenByDrone as seebd
-import dijkstrasPathfindingAlg.basicDijkstras as dijk
-import safetyNodeGen.rexNodeGen as gotoDiv
+import flight.pathfinding.rexAlg.nodeGen as nodeg
+import flight.pathfinding.sightWeights.seenByDrone as seebd
+import flight.pathfinding.dijkstrasPathfindingAlg.basicDijkstras as dijk
+import flight.pathfinding.safetyNodeGen.rexNodeGen as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
@@ -28,7 +28,7 @@ class Drone:
         self.visionRange = ((1,1), (1,1), (1,1), (1,1))
         self.mineRadius = mineRadius
         self.tasks = []
-    
+
     # Updates the corners tracking what the drone is seeing
     def updateVision(self, corners:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = ((1,1), (1,1), (1,1), (1,1))):
         self.visionRange = corners
@@ -77,12 +77,12 @@ currentPath = Path() # Current Working Path SEE ABOVE
 drones = [Drone(), Drone(), Drone(), Drone()] # Note that the mine radii
 stopCondition = "Timed out"
 
-# Main loop of the canoptek scarab hive mind 
+# Main loop of the canoptek scarab hive mind
 while (True):
     if (t.time() - startTime > timeLimit):
 
         # Dumps the current path to app
-        
+
         # Rudimentary implementation
         for i in range(len(drones)):
                     drones[i].recall()
