@@ -1,7 +1,7 @@
-import rexAlg.nodeGen as nodeg
-import sightWeights.seenByDrone as seebd
-import dijkstrasPathfindingAlg.basicDijkstras as dijk
-import safetyNodeGen.rexNodeGen as gotoDiv
+import flight.pathfinding.rexAlg.nodeGen as nodeg
+import flight.pathfinding.sightWeights.seenByDrone as seebd
+import flight.pathfinding.dijkstrasPathfindingAlg.basicDijkstras as dijk
+import flight.pathfinding.safetyNodeGen.rexNodeGen as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
@@ -27,7 +27,7 @@ class Drone:
         self.state = state
         self.visionRange = ((1,1), (1,1), (1,1), (1,1))
         self.tasks = []
-    
+
     # Updates the corners tracking what the drone is seeing
     def updateVision(self, corners:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = ((1,1), (1,1), (1,1), (1,1))):
         self.visionRange = corners
@@ -35,7 +35,7 @@ class Drone:
     def updateTasks(self, goto:tuple[tuple[int, int]]):
         for i in range(len(goto)):
             self.tasks.append(goto[i])
-    
+
     # This will be the function that sends a drone to a given location
     # Right now its built a simple placeholder
     def goto(self, coords:tuple[int, int]):
@@ -67,13 +67,13 @@ currentPath = Path() # Current Working Path
 drones = [Drone(), Drone(), Drone(), Drone()]
 stopCondition = "Timed out"
 
-# Main loop of the canoptek scarab hive mind 
+# Main loop of the canoptek scarab hive mind
 while (True):
     if (t.time() - startTime > timeLimit):
         # Some implementation of desperate evacuation code
 
         # Dumps the current path to app
-        
+
         stopCondition = "Timed out"
         break
     if (previousPath.weight < currentPath.weight):

@@ -1,0 +1,14 @@
+{
+    "run_title": "IARC Test Flight",
+    "run_description": "Test flight for IARC 2026",
+    "real_mode_config": {
+        "mission_data_path": "flight/data/golf_data.json"
+    },
+    "sim_mode_config": {
+        "mission_data_path": "flight/data/golf_data.json"
+    },
+    "airsim_mode_config": {
+        "mission_data_path": "flight/data/golf_data.json"
+    },
+    "simple_takeoff": false
+}

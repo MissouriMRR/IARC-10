@@ -1,5 +1,5 @@
 import turtle as t
-from minefield import *
+from flight.pathfinding.weightedMinefieldGen.minefield import *
 
 length = 70
 width = 70
