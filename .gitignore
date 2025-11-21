@@ -2,3 +2,5 @@
 .venv/
 .vscode/
 **__pycache__/
+
+state_machine/state.json

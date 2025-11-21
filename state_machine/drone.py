@@ -26,9 +26,6 @@ class Drone:
     baud : int | None
         The baud rate, or None to use the default.
     is_connected
-    odlc_scan : bool
-        A boolean to tell if the odlc zone needs to be scanned, used the
-        first run and if odlc needs to be scanned any other time
     sim_mode
     _sim_mode : SimMode | None
         The simulation mode of this drone, or None if one has not been specified.
@@ -81,10 +78,6 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
-        self.odlc_scan: bool = True
-
-        with open("flight/data/attempted_drops.json", "w", encoding="utf8") as file:
-            json.dump({}, file)
 
     async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:
         """Send a DO_SET_SERVO MAVLink message to the drone.

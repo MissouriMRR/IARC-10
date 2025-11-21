@@ -140,8 +140,8 @@ def extract_gps(path: str) -> GPSData:
         boundary_points=boundary_points,
         boundary_points_utm=boundary_points_utm,
         altitude_limits=AltitudeLimit(
-            json_data["flyzones"]["minAltitude"],
-            json_data["flyzones"]["maxAltitude"],
+            json_data["flyzones"]["altitudeMin"],
+            json_data["flyzones"]["altitudeMax"],
         ),
     )
     return waypoint_data

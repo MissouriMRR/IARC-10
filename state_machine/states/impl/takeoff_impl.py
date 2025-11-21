@@ -11,7 +11,7 @@ from state_machine.state_tracker import (
 )
 from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
-from state_machine.states.lands import Land
+from state_machine.states.land import Land
 
 
 async def run(self: Takeoff) -> State:
@@ -44,7 +44,7 @@ async def run(self: Takeoff) -> State:
 
         # Set takeoff altitude to the minimum allowed altitude, plus one meter
         takeoff_altitude: float = (
-            extract_gps(self.flight_settings.mission_data_path)["altitude_limits"][0] + 1.0
+            extract_gps(self.flight_settings.mission_data_path).altitude_limits.min_altitude + 1.0
         )
         await self.drone.takeoff(takeoff_altitude)
 
