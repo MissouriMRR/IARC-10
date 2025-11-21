@@ -5,8 +5,15 @@ import numpy as np
 #from rexAlg import nodeGen as ng
 
 #todo
-#function takes in node list and connection type (linear or arc), and then creates goto points between each pair in list. 
-#arc length: angle * radius of circle 
+#function takes in nodeCorlist and then creates goto points between each pair in list. 
+#between every node point, print/append goto points to final goto points path list that is returned at the end. 
+#constantly check for path type, and implement arc gotos. 
+#steps:
+#1. visual output should show all the nodes and goto points between them on screen. 
+#2. work on appending to final goto-list after going through nodecorlist and return it.
+#3. check node path type everytime, and if arc, create arc gotos, if line, use linspace.
+
+#arc length: angle * radius of circle  (16)
 
 #have a list of mine coordinates and then put a check if 
 
@@ -19,10 +26,8 @@ my1 = rand.randrange(200)
 mx2 = rand.randrange(200) #2nd node coordinates
 my2 = rand.randrange(200)  
 
-nodeCorList = [[mx1,my1], #node 1
-               [mx2,my2]]  #node 2
-
-def gotoPath(mx1, my1, mx2, my2):
+def gotoPath(nodeCorList):
+    (mx1, my1) = nodeCorList[0]
         
     #distance between node calculations
     distance = int((m.sqrt((mx2 - mx1)**2 + (my2 - my1)**2))/10)
@@ -55,7 +60,11 @@ def gotoPath(mx1, my1, mx2, my2):
     #return list of points in between.
     return [[float(x), float(y)] for x, y in gotoPts]
  
-print(gotoPath(mx1, my1, mx2, my2))
+ 
+nodeCorList = [[mx1,my1], #node 1
+               [mx2,my2]]  #node 2
+
+print(gotoPath(nodeCorList))
 
 
 
