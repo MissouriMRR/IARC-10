@@ -104,6 +104,11 @@ def detect_mines_in_image(image: cv2.typing.MatLike) -> Iterable[BoundingBox]:
                 comparison: float = compare_textures(cropped_hist,ref_pic_hist,method='euclidean')#bhattacharyya is current best
 
                 #ANOTHER WAY OF TESTING IF THE MINE IS ACTUALLY A MINE USING HSV
+                #CHECK THIS OUT GUYS :)
+                #           |
+                #           |
+                #           |
+                #           V
 
                 #convert color to hsv
                 """hsv_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
