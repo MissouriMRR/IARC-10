@@ -45,11 +45,19 @@ class Drone:
     def completeTasks(self, path, mines):
         for i in range(len(self.tasks)):
             self.goto(self.tasks[i])
-            self.takePhoto() # Small Placeholder
+            self.takePhoto() # Small Placeholder should be self explainitory
             self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
             # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated)
+            # Recalculation is contingent on found mine being exigent
             # Call for a remeet if path is changed, clears current task cache is that happens and breaks
         # Clears task cache
+    
+    def recall(self, ):
+        # Some kind of logic to calculate the best path the drone can take to leave the confines of the mine field
+        # This happens as fast as possible as this could disqualify us
+        # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
+        self.x
+        self.y
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
@@ -63,22 +71,32 @@ timeLimit = 120 # Time limit in seconds
 fieldSizeX = 3600 # The max size of the field in inches
 fieldSizeY = 960 # The max size of the field in inches
 startTime = t.time() # Starting time (Based on Global clock)
-previousPath = Path() # Previous Path
-currentPath = Path() # Current Working Path
+previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODe GENERATION
+currentPath = Path() # Current Working Path SEE ABOVE
 drones = [Drone(), Drone(), Drone(), Drone()]
 stopCondition = "Timed out"
 
 # Main loop of the canoptek scarab hive mind 
 while (True):
     if (t.time() - startTime > timeLimit):
-        # Some implementation of desperate evacuation code
 
         # Dumps the current path to app
         
+        # Rudimentary implementation
+        for i in range(len(drones)):
+                    drones[i].recall()
+
         stopCondition = "Timed out"
         break
     if (previousPath.weight < currentPath.weight):
         stopCondition = "Optimal Path Found"
+
+        # Dumps the most optimal path to the app (This would be a function)
+
+        # Rudimentary implementation
+        for i in range(len(drones)):
+            drones[i].recall()
+
         break
     else:
         gotoCoords = gotoDiv.gotoPath(currentPath)
@@ -87,6 +105,6 @@ while (True):
             for y in range(len(gotoCoords)/len(drones)):
                 diviedGoto.append(gotoCoords[i*6+y])
             drones[i].updateTasks(diviedGoto)
-            drones[i].completeTasks()
+            drones[i].completeTasks() # This will likely need to be changed to allow for the code to continue while this runs
 
 print(stopCondition)
