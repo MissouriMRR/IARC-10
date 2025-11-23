@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Any, TypedDict
 
 
 # Class used to structure the dictionaries for messaging via JSON
@@ -6,9 +6,7 @@ class MessageData(TypedDict):
     messageId: int
     dronesToSendData: list[int]
     # Update and add types here as needed
-    data: dict[
-        str, float | str | int | bool
-    ]  # str is dict key. Value can be float, str, int, or bool
+    data: dict[str, Any]  # Data has a str type and can be any type
 
 
 class JsonConfigData(TypedDict):
