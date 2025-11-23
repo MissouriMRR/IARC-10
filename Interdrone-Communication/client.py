@@ -51,13 +51,11 @@ class Client:
     async def client_loop(self) -> None:
         # Keep track of background clientMessageTasks
         clientMessageTasks: set[asyncio.Task[None]] = set()
-
         while True:
             # Check for new message from clientInData
             if not self.clientInData.empty():
                 # Get new message from clientInData
                 message: MessageData = await self.clientInData.get()
-
                 # Create a background task to handle this message (allows for asynchronous messaging)
                 clientMessageTask = asyncio.create_task(self.handle_message(message))
                 clientMessageTasks.add(clientMessageTask)
@@ -117,10 +115,12 @@ class Client:
             writer.write((clientMessage + "\n").encode())
             await writer.drain()
 
-            # Receive response
-            serverResponseData = await asyncio.wait_for(
+            # Receive response and decode
+            serverResponseBytes = await asyncio.wait_for(
                 reader.readuntil(b"\n"), timeout=2.0
             )
+            serverResponseData: str = serverResponseBytes.decode()
+
             # Close connection
             writer.close()
             await writer.wait_closed()
@@ -130,9 +130,18 @@ class Client:
                 clientMessage, serverResponseData, serverIP, serverPort
             )
 
-            return serverResponseData.decode()
+            return serverResponseBytes.decode()
 
         except asyncio.TimeoutError:
+            # If timeout and message is a JSON startup message (messageId = 501), resend message
+            print(f"Timeout connecting to {serverIP}:{serverPort}")
+            try:
+                clientMessageJson: MessageData = json.loads(clientMessage)
+                if clientMessageJson["messageId"] == 501:
+                    clientMessageJson["data"]["payload"] = "Timeout"
+                    await self.clientOutData.put(json.dumps(clientMessageJson))
+            except Exception as e:
+                print(f"Error processing timeout message: {e}")
             raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
         except ConnectionRefusedError:
             raise Exception(f"Connection refused by {serverIP}:{serverPort}")
@@ -142,7 +151,7 @@ class Client:
     async def process_client_data(
         self,
         clientMessage: str,
-        serverResponseData: bytes,
+        serverResponseData: str,
         serverIP: str,
         serverPort: int,
     ) -> None:
@@ -154,14 +163,18 @@ class Client:
             # App test message
             case 400:
                 await self.clientOutData.put(item="OMG the app contacted us!")
+            # JSON Startup message
+            case 501:
+                # Return the servers response which should hopefully state that the overwrite is true
+                await self.clientOutData.put(serverResponseData)
             # Heartbeat Message
             case 504:
-                await self.clientOutData.put(item=serverResponseData.decode())
+                await self.clientOutData.put(item=serverResponseData)
             # Speedtest Message
             case 513:
                 # Client receives response - set final download time
                 receiveTime = time.perf_counter()
-                responseData: MessageData = json.loads(serverResponseData.decode())
+                responseData: MessageData = json.loads(serverResponseData)
                 # Calculate Upload Speed (client send → server receive)
                 uploadTime = float(responseData["data"]["finalUploadTime"]) - float(
                     originalMessage["data"]["initialUploadTime"]
@@ -195,7 +208,7 @@ class Client:
                 await self.clientOutData.put(item=json.dumps(result))
             case _:
                 # If no message ID, return server response data
-                await self.clientOutData.put(item=serverResponseData.decode())
+                await self.clientOutData.put(item=serverResponseData)
 
     # Helper method to run the async client
     def run(self):

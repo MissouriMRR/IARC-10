@@ -5,6 +5,8 @@ import sys
 from asyncio import StreamReader, StreamWriter
 import json
 import time
+from pathlib import Path
+
 
 from typed_dicts_classes import MessageData
 
@@ -44,17 +46,37 @@ class Server:
         try:
             # Read all data from client until end of data char (\n)
             messageData = await reader.readuntil(b"\n")
-
             if messageData:
                 message = messageData.decode()
                 jsonMessage: MessageData = json.loads(message)
                 responseMessage = "Server received your message!"
                 # Check for messageId and perform required operations
-                match int(jsonMessage["messageId"]):
+                match jsonMessage["messageId"]:
                     # App test message
                     case 400:
                         print(jsonMessage)
                         await self.serverOutData.put(item="OMG the app contacted us!")
+                    # Startup JSON message
+                    case 501:
+                        # TODO need to finish having this overwrite the json file, catching the change in main, and simplifying logic in main to flow better
+                        try:
+                            # TODO clean this up with MessageData change to have this output MessageData rather than string
+                            config_path = Path(__file__).with_name("config.json")
+                            temp_path = config_path.with_suffix(".json.tmp")
+
+                            # Extract payload and parse it as JSON
+                            payload_str = jsonMessage["data"]["payload"]
+                            config_data = json.loads(payload_str)
+
+                            temp_path.write_text(
+                                json.dumps(config_data, indent=4), encoding="utf-8"
+                            )
+                            temp_path.replace(config_path)
+                            jsonMessage["data"]["successfulOverwrite"] = True
+                            await self.serverOutData.put(item="JSON Overwritten!")
+                            responseMessage = json.dumps(jsonMessage)
+                        except Exception as e:
+                            print(f"Failed to overwrite JSON file: {e}")
                     case 513:
                         # Set final upload time when server receives
                         jsonMessage["data"]["finalUploadTime"] = time.perf_counter()
@@ -64,7 +86,8 @@ class Server:
 
                         # Echo back the message with timing data
                         responseMessage = json.dumps(jsonMessage)
-
+                    case _:
+                        pass
                 writer.write((responseMessage + "\n").encode())
                 await writer.drain()
         except asyncio.TimeoutError:

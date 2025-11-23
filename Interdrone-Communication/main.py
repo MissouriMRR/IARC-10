@@ -1,4 +1,5 @@
 from asyncio.queues import Queue
+import json
 from typed_dicts_classes import MessageData
 from json_config_reader import json_config_reader
 
@@ -27,10 +28,32 @@ async def main():
     except Exception:
         droneId = jsonConfigData.get_self_id()
 
-    # if drone 1, start up server and client normally. Then, send messages to other servers to set their values (send current config file but with changed selfId value)
+    # If not drone 1, start a temporary server and wait for update json file
+    if droneId != 1:
+        # Only start temp server and then move on to standard execution
+        print("creating statupServer")
+        startupServerOutData: Queue[str] = asyncio.Queue()
+        startupServerInstance = server.Server(
+            jsonConfigData=jsonConfigData, serverOutData=startupServerOutData
+        )
+        serverTask = asyncio.create_task(startupServerInstance.start_server_async())
+        while True:
+            # check for updated json message
+            if not startupServerOutData.empty():
+                # Check to see if JSON has been overwritten
+                if await startupServerOutData.get() == "JSON Overwritten!":
+                    break
+            await asyncio.sleep(1)
+        # Re-init jsonConfigData
+        await asyncio.sleep(10)
+        print(f"JSON overwritten on drone {droneId} and reinitializing the reader")
+        jsonConfigData = json_config_reader()
+        # may need code in here to get ip from pi and then it manually in config
+
     # Create Server and Client Data queues to pass data in and out of tasks
     serverOutData: Queue[str] = asyncio.Queue()
     clientInData: Queue[MessageData] = asyncio.Queue()
+    # TODO POST LVP: TALK TO TEAM AND TRANSITION OVER TO USING MESSAGE DATA FOR CLIENT OUTPUT. MAJOR CHANGE
     clientOutData: Queue[str] = asyncio.Queue()
 
     # Instantiate Server and Client
@@ -64,14 +87,70 @@ async def main():
             "payload": "Hello server!",
         },
     }
+    jsonOverwriteStartupMessage: MessageData = {
+        "messageId": 501,
+        "dronesToSendData": [],
+        "data": {
+            "successfulOverwrite": False,
+            "payload": "",
+        },
+    }
+
     try:
         print("Server and Client started")
 
-        # Startup loop to send updated config to all other drones
+        # Startup loop for drone 1 to send updated config to all other drones
+        if droneId == 1:
+            # Instantiate otherDrones lists
+            otherDronesIds: list[int] = []
+            # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
+            for i in range(1, jsonConfigData.get_number_of_drones() + 1):
+                # If drone is self (drone running this script) don't add them otherDrones list
+                if i != droneId:
+                    # Add other drones IP and Ports to their respective lists
+                    otherDronesIds.append(i)
+            print(otherDronesIds)
+            # move this up to above while loop and then have time out else logic inside if not empty
+            for id in otherDronesIds:
+                messageToSend = jsonOverwriteStartupMessage.copy()
+                messageToSend["dronesToSendData"] = [id]
+                messageToSend["data"] = messageToSend["data"].copy()
+                messageToSend["data"]["payload"] = (
+                    jsonConfigData.get_json_text_data_for_startup(id)
+                )
+                print(messageToSend["dronesToSendData"])
+                await clientInData.put(messageToSend)
+            while otherDronesIds:
+                if not clientOutData.empty():
+                    clientMsg: str = await clientOutData.get()
+                    try:
+                        clientMsgJson: MessageData = json.loads(clientMsg)
+                        if clientMsgJson.get("messageId") == 501:
+                            if clientMsgJson["data"]["successfulOverwrite"]:
+                                idToRemove = clientMsgJson["dronesToSendData"][0]
+                                if idToRemove in otherDronesIds:
+                                    otherDronesIds.remove(idToRemove)
+                                    print(
+                                        f"Successfully sent new json data to drone {idToRemove} and updated it's file. Now removing it from otherDronesIds list"
+                                    )
+                            else:
+                                # Put time out logic here to add in new message
+                                print("Timeout received, resending...")
+                                idToResend = clientMsgJson["dronesToSendData"][0]
+                                messageToSend = jsonOverwriteStartupMessage.copy()
+                                messageToSend["dronesToSendData"] = [idToResend]
+                                messageToSend["data"] = messageToSend["data"].copy()
+                                messageToSend["data"]["payload"] = (
+                                    jsonConfigData.get_json_text_data_for_startup(
+                                        idToResend
+                                    )
+                                )
+                                await clientInData.put(messageToSend)
 
-        jsonConfigData.get_number_of_drones()
-
-        await clientInData.put(item=heartBeatMessage)
+                    except Exception:
+                        print("Trouble reading clientMsgJson in ")
+                await asyncio.sleep(1)
+            await clientInData.put(item=heartBeatMessage)
 
         # Continuous loop to send and receive data from server and client
         while True:
