@@ -79,6 +79,7 @@ class Server:
                             print(f"Failed to overwrite JSON file: {e}")
                     case 513:
                         # Set final upload time when server receives
+                        # Note: We use perf_counter for high precision. While this value is local to the server, the client will use (initialDownloadTime - finalUploadTime) to calculate server processing time.
                         jsonMessage["data"]["finalUploadTime"] = time.perf_counter()
 
                         # Set initial download time when server sends response

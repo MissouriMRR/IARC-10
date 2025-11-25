@@ -134,7 +134,7 @@ class Client:
 
         except asyncio.TimeoutError:
             # If timeout and message is a JSON startup message (messageId = 501), resend message
-            print(f"Timeout connecting to {serverIP}:{serverPort}")
+            # print(f"Timeout connecting to {serverIP}:{serverPort}")
             try:
                 clientMessageJson: MessageData = json.loads(clientMessage)
                 if clientMessageJson["messageId"] == 501:
@@ -175,26 +175,37 @@ class Client:
                 # Client receives response - set final download time
                 receiveTime = time.perf_counter()
                 responseData: MessageData = json.loads(serverResponseData)
-                # Calculate Upload Speed (client send → server receive)
-                uploadTime = float(responseData["data"]["finalUploadTime"]) - float(
-                    originalMessage["data"]["initialUploadTime"]
-                )
+
+                # Calculate Server Processing Time (Delta on Server Clock)
+                serverProcessingTime = float(responseData["data"]["initialDownloadTime"]) - float(responseData["data"]["finalUploadTime"])
+
+                # Calculate Total Round Trip Time (Delta on Client Clock)
+                totalRtt = receiveTime - float(originalMessage["data"]["initialUploadTime"])
+
+                # Calculate Network RTT (Total - Processing)
+                networkRtt = totalRtt - serverProcessingTime
+
+                # Since the server echoes the payload, upload and download sizes are roughly equal,
+                # so we estimate upload and download time as half of the network RTT.
+                estimatedOneWayTime = networkRtt / 2
+
+                uploadTime = estimatedOneWayTime
+                downloadTime = estimatedOneWayTime
+
                 uploadSizeBytes = len(clientMessage.encode("utf-8"))
                 uploadThroughputKbps = (
                     (uploadSizeBytes * 8 / 1000) / uploadTime
                     if uploadTime > 0
                     else float("inf")
                 )
-                # Calculate Download Speed (server send → client receive)
-                downloadTime = receiveTime - float(
-                    responseData["data"]["initialDownloadTime"]
-                )
+
                 downloadSizeBytes = len(serverResponseData)
                 downloadThroughputKbps = (
                     (downloadSizeBytes * 8 / 1000) / downloadTime
                     if downloadTime > 0
                     else float("inf")
                 )
+
                 result = {
                     "messageId": 513,
                     "data": {
