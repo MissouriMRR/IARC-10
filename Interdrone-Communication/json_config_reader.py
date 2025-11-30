@@ -19,8 +19,16 @@ class json_config_reader:
     def get_app_ip(self) -> str:
         return str(self.config["app"]["ip"])
 
+    def set_app_ip(self, newIP: int):
+        # TODO test this with app
+        self.config["app"]["ip"] = newIP
+
     def get_app_port(self) -> int:
         return int(self.config["app"]["port"])
+
+    def set_app_port(self, newPort: int):
+        # TODO test this with app
+        self.config["app"]["port"] = newPort
 
     # get own ip
     def get_self_id(self) -> int:

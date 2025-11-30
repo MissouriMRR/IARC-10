@@ -59,8 +59,8 @@ class Server:
                     # App config message
                     case 401:
                         # Set json config app fields based on received data here
-                        print(jsonMessage)
-                        await self.serverOutData.put(item="OMG the app contacted us!")
+                        self.jsonConfigData.set_app_ip(jsonMessage["data"]["IP"])
+                        self.jsonConfigData.set_app_port(jsonMessage["data"]["Port"])
                     # Startup JSON message
                     case 501:
                         # TODO need to finish having this overwrite the json file, catching the change in main, and simplifying logic in main to flow better
