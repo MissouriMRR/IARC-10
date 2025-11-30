@@ -16,6 +16,12 @@ class json_config_reader:
     def get_drone_port(self, droneId: int) -> int:
         return int(self.config["drones"][str(droneId)]["port"])
 
+    def get_app_ip(self) -> str:
+        return str(self.config["app"]["ip"])
+
+    def get_app_port(self) -> int:
+        return int(self.config["app"]["port"])
+
     # get own ip
     def get_self_id(self) -> int:
         return int(self.config["localInfo"]["selfId"])

@@ -11,4 +11,5 @@ class MessageData(TypedDict):
 
 class JsonConfigData(TypedDict):
     drones: dict[str, dict[str, str]]
+    app: dict[str, str | int]
     localInfo: dict[str, int]
