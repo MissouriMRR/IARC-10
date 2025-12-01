@@ -28,8 +28,20 @@ async def main():
     except Exception:
         droneId = jsonConfigData.get_self_id()
 
-    # If not drone 1, start a temporary server and wait for update json file
-    if droneId != 1:
+    # TODO temporary startup skip flag. Need to rework this for a better system flag system
+    # Check for system to arg to skip json config startup sequence
+    startUpOverride: bool
+    try:
+        value = int(sys.argv[2])
+        if value == 1:
+            startUpOverride = True
+        else:
+            startUpOverride = False
+    except Exception:
+        startUpOverride = False
+
+    # If not drone 1 and we're not overriding startup, start a temporary server and wait for update json file.
+    if droneId != 1 and not startUpOverride:
         # Only start temp server and then move on to standard execution
         print("creating statupServer")
         startupServerOutData: Queue[str] = asyncio.Queue()
@@ -99,8 +111,8 @@ async def main():
     try:
         print("Server and Client started")
 
-        # Startup loop for drone 1 to send updated config to all other drones
-        if droneId == 1:
+        # Startup loop for drone 1 to send updated config to all other drones. Does not run if start up is overridden
+        if droneId == 1 and not startUpOverride:
             # Instantiate otherDrones lists
             otherDronesIds: list[int] = []
             # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
@@ -154,8 +166,6 @@ async def main():
 
         # Continuous loop to send and receive data from server and client
         while True:
-            # Add heartbeat message to clientQueue to send
-
             # Check for serverOutData from the server task
             if not serverOutData.empty():
                 # data= serverOutData.get()
