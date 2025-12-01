@@ -206,8 +206,12 @@ class Client:
                     else float("inf")
                 )
 
+                # For now, this will be a separate message from 513 to maintain
+                # the immutability of the fields in 513. This is an ugly hack,
+                # but it works for now before I refactor messages and make them
+                # their own class in order to enforce immutability.
                 result = {
-                    "messageId": 513,
+                    "messageId": 514,
                     "data": {
                         "target": f"{serverIP}:{serverPort}",
                         "uploadRttMs": round(uploadTime * 1000, 2),
