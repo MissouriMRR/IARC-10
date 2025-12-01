@@ -1,0 +1,14 @@
+[project]
+name = "iarc"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dt-apriltags>=3.1.7",
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.4",
+    "opencv-python>=4.11.0.86",
+    "picamera2>=0.3.31",
+    "scikit-image>=0.25.2",
+]
