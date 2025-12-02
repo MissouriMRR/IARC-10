@@ -89,6 +89,16 @@ class Drone:
         self.recall()    
 
 
+        # Some kind of logic to calculate the best path the drone can take to leave the confines of the mine field
+        # This happens as fast as possible as this could disqualify us
+        # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
+        self.x
+        self.y
+    
+    # Recieve mine coordinates and adds it to an existing field
+    def addMine(self,field:gotoDiv.Field,x:int,y:int):
+        field.addMine(x,y,self.mineRadius)
+
 # This is a place holder for the output from generating the fastest path.
 class Path:
     def __init__(self, chain:tuple[nodeg.Node], length:float = 9999999, width:float = 1):
