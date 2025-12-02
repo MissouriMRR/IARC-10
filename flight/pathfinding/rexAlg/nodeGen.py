@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-
+#from dijkstrasPathfindingAlg import basicDijkstras
 
 from enum import Enum
 
@@ -68,7 +68,7 @@ class Connection:
         
 
         
-        if(node1.parentMine != node2.parentMine):
+        if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
             
             self.connectionType=seg.LINE
         else:
@@ -359,14 +359,33 @@ class Mine:
         #self.nodes.append(node) 
         return node
     def connectMineNodes(self):
-        for node in self.nodes:
-            for connectedNode in self.nodes:
-                
-                if Node.nodeGraph[node]==None or connectedNode not in Node.nodeGraph[node].keys():
-                    if(connectedNode!=node):
-                        node.connectNode(connectedNode).addGraph()
+        sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-                    #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
+        print(sortedNodes)
+        for nodes in sortedNodes:
+            print(nodes.angle)
+        
+        #delete connections
+        for node in self.nodes:
+            for connection in node.connections:
+                if connection.connectionType==seg.ARC:
+                    connection.deleteConnection()
+        #print(f"length : {len(sortedNodes)}")
+        for i in range(len(sortedNodes)-1):
+            #print(f"i:{i},i2:{i+1}")
+            arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
+            if(arcConnection.validPath()):
+                arcConnection.addGraph()
+        arcConnection = Connection(sortedNodes[len(sortedNodes)-1],sortedNodes[0])
+        if(arcConnection.validPath()):
+            arcConnection.addGraph()
+       
+
+
+
+            
+
+        #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
 
                     
         
@@ -507,6 +526,7 @@ class MineNode(Node):
                 self.angle=internalAngle-(offsetAngle)
                 self.x = (parentMine.radius) * np.cos(self.angle) + parentMine.x
                 self.y = (parentMine.radius) * np.sin(self.angle+np.pi) + parentMine.y
+            
         else:
             # Create external angle
             externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
@@ -516,12 +536,15 @@ class MineNode(Node):
                 self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
                 self.y = ((parentMine.radius) * np.sin(self.angle)) + parentMine.y
             else:
-                self.angle=externalAngle-offsetAngle
-                self.x = (parentMine.radius) * np.cos(self.angle) + parentMine.x
-                self.y = (parentMine.radius) * np.sin(self.angle+np.pi) + parentMine.y
+                self.angle=externalAngle-offsetAngle+np.pi
+                self.x = (parentMine.radius) * np.cos(self.angle-np.pi) + parentMine.x
+                self.y = (parentMine.radius) * np.sin(self.angle) + parentMine.y
+        
+        self.angle=np.atan2(self.x-parentMine.x,self.y-parentMine.y)
+
+
         self.x = round(self.x,3)
         self.y = round(self.y,3)
-
         super().__init__(self.x,self.y,False,self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
@@ -590,9 +613,9 @@ class MineNode(Node):
 
 
 
-numMines = 10
+numMines = 3
 radius = 16
-debug = False
+debug = True
 xMin = -numMines*radius*0.45
 xMax = numMines*radius*0.45
 yMin = -numMines*radius*0.45
@@ -626,9 +649,8 @@ if not debug:
         print("added a mine")
     print("done adding mines, connecting nodes on mine")
 
-    for mine in field.mines:
-        mine.connectMineNodes()
-    print(Node.nodeGraph)
+
+    #print(Node.nodeGraph)
         
     
 
@@ -660,8 +682,9 @@ if debug:
     field.addMine(-150,0,radius)
 
     
-    field.addMine(150,0,radius)
     
+    field.addMine(150,0,radius)
+    """
     field.addMine(0,-150,radius)
     
     field.addMine(0,150,radius)
@@ -711,11 +734,12 @@ if debug:
     field.addMine(75,225,radius)
     field.addMine(100,225,radius)
     field.addMine(125,225,radius)
-
+    """
 
     for mine in field.mines:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
-    
+
+        mine.connectMineNodes()
 field.plotField()
 """
 TODO:
