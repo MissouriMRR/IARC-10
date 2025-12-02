@@ -65,22 +65,18 @@ class Connection:
         
         self.node1=node1
         self.node2=node2
-        
-
-        
-        if(node1.parentMine != node2.parentMine):
-            
-            self.connectionType=seg.LINE
+        if node1.parentMine and node2.parentMine:
+            if(node1.parentMine != node2.parentMine):
+                
+                self.connectionType=seg.LINE
+            else:
+                self.connectionType=seg.ARC
         else:
-            self.connectionType=seg.ARC
-
-
+            self.connectionType = seg.LINE
         self.distance=self.updateDistance()
 
         #checking for a valid path and updating the graph must be done manually
         
-
-
         # DISTANCE
     def updateDistance(self):
         distance = 0.0
@@ -174,12 +170,14 @@ class Connection:
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
                     if distanceFromMine < radius:
                         return False
+            
+
         #This is kinda complicated, but we have to check the hugging edge. 
         if self.connectionType==seg.ARC:
             print("We haven't implemented this yet")
             #raise NotImplemented()
         return True
-    
+
     #checks if a path collides with a specific mine
     def mineCollision(self,mine):
         x1 = float(self.node1.x)
@@ -221,15 +219,24 @@ class Field:
         self.mines = []
         Connection.connectionField=self
 
+    # This type of node will not have a parent mine, primarily used for start/end points
+    def addFloatingNode(self,x:int,y:int):
+        fNode = Node(x,y,True) # Floating Node
+        for node in Node.nodeGraph.keys():
+            connect = Connection(fNode,node)
+            connect.addGraph()
+            if not connect.validPath():
+                connect.deleteConnection()
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
     def placeStartNode(self,xVal:int ,yVal:int ):
-        print("hello")
-        
-    def placeEndNodes(self, yVal: int, density: int):
-        print("hello")  
+        self.addFloatingNode(xVal,yVal)
     
-
+    # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
+    def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
+        xVals = [x for x in range(xMin,xMax,xMax//(density//2))]
+        for x in xVals:
+            self.addFloatingNode(x,yVal)
 
 
     def addMine(self,centerX,centerY,radius,color:str=''):
@@ -290,7 +297,6 @@ class Field:
                 if(connection.mineCollision(newMine)):
                     
                     connection.deleteConnection()
-                    
         
         
 
@@ -326,6 +332,7 @@ class Field:
         plt.show()
 
 """MATH STUFF"""
+
 # Mine class keeps track of mine position and radii      
 class Mine:
     numMines = 0
@@ -402,10 +409,6 @@ class Node:
         self.parentMine=None
         self.floating=floating
 
-
-
-
-
     # Establishes a connection between nodes
     # Does not add it to the nodegraph yet however
     def connectNode(self,node:"Node") -> Connection:
@@ -458,9 +461,6 @@ class MineNode(Node):
         self.targetMine = targetMine
         self.terminated = False
         
-        
-        
-    
         # categorize nodes
         if internal and primary:
             self.type = 'internal primary'
@@ -546,18 +546,6 @@ class MineNode(Node):
             result.append("disconnected")
         result.append("referenced " + str(getrefcount(self)) + " times")
         return result
-    
-
-    
-    # Check if node is within another mines' radius
-    def validateNode(self):
-        for mine in Mine.mines:
-            if mine != self.parentMine:
-                if (mine.x - radius <= self.x <= mine.x + radius and
-                    mine.y - radius <= self.y <= mine.y + radius):
-                    self.terminated = True
-                    self.connectedNodes[0].terminated = True
-
 
     # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
     def getPathType(self,node:'Node') -> list:
@@ -615,7 +603,8 @@ genYMin = -radius*(numMines//5)
 genYMax = radius*(numMines//5)
 position = [0,0] 
 mineGenTolerance = 0*radius
-# Mine generation
+
+# Mine generation, do not add floating nodes before this point
 if not debug:
     for num in range(numMines):
         while True: # To make sure generated mines arent clipping off the edges of the field
@@ -636,8 +625,12 @@ if not debug:
 
     for mine in field.mines:
         mine.connectMineNodes()
+    
+    ## Add floating nodes after this point##
+    field.placeStartNode(0,-60)
+    field.placeEndNodes(-30,30,60,10)
     print(Node.nodeGraph)
-        
+    
     
 
     ## Example Concept for a single start point end point(s)
@@ -730,14 +723,12 @@ TODO:
 X=Done
 - = Todo
  X Arc lengths
- - Find a way to set a viable and efficient end/start point
-      - Overload Node __init__ to allow for a lone node as a start node
  X Terminate nodes if the nodes themselves are created within another mine
- - Establish a list of paths between connected Nodes
+ X Establish a list of paths between connected Nodes
  - Terminate internal bitangents unless external bitangents are intersecting ???
- - Combine all node lists into one
+ X Combine all node lists into one
  - Generate Hugging Nodes
- - Generate Floating Nodes
+ X Generate Floating Nodes
  - Termination Way?:
-    + check if a pair of nodes can exist before actually cerating them.
+    + check if a pair of nodes can exist before actually creating them.
 """

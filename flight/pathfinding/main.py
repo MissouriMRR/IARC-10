@@ -59,6 +59,10 @@ class Drone:
         # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
         self.x
         self.y
+    
+    # Recieve mine coordinates and adds it to an existing field
+    def addMine(self,field:gotoDiv.Field,x:int,y:int):
+        field.addMine(x,y,self.mineRadius)
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
