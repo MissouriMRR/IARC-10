@@ -241,12 +241,11 @@ class Field:
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
     def placeStartNode(self,xVal:int ,yVal:int ):
-        print("hello")
-        
-    def placeEndNodes(self, yVal: int, density: int):
-        print("hello")  
-    
         self.addFloatingNode(xVal,yVal)
+        
+    def placeEndNodes(self, xMin,xMax,yVal: int, density: int):
+        for x in range(xMin,xMax,xMax//density):
+            self.addFloatingNode(x,yVal)
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
     def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
@@ -624,9 +623,9 @@ class MineNode(Node):
 
 
 
-numMines = 3
+numMines = 10
 radius = 16
-debug = True
+debug = False
 xMin = -numMines*radius*0.45
 xMax = numMines*radius*0.45
 yMin = -numMines*radius*0.45
@@ -669,8 +668,8 @@ if not debug:
         mine.connectMineNodes()
     
     ## Add floating nodes after this point##
-    field.placeStartNode(0,-60)
-    field.placeEndNodes(-30,30,60,10)
+    field.placeStartNode(0,(genYMin-radius)-20)
+    field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
     print(Node.nodeGraph)
     
     
