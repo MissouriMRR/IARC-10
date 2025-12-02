@@ -13,6 +13,8 @@ from state_machine.states.state import State
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.app_share import AppShare
 
+import flight.pathfinding.safetyNodeGen.intermediateNodeGen as gotoDiv
+
 
 async def run(self: CalcScanPath) -> State:
     """
@@ -42,6 +44,11 @@ async def run(self: CalcScanPath) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("CalcScanPath state running")
 
+        gotoCoords = gotoDiv.gotoPath(currentPath)
+        diviedGoto = []
+        for y in range(len(gotoCoords)/4):
+            diviedGoto.append(gotoCoords[id*6+y])
+        self.drone.updateTasks(diviedGoto)
         # Add CalcScanPath code here
 
         return AppShare(self.drone, self.flight_settings)

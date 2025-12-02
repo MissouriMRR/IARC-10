@@ -62,7 +62,7 @@ class Drone:
         Get the Dronekit Vehicle object owned by this Drone object.
     """
 
-    def __init__(self, address: str = "", baud: int | None = None) -> None:
+    def __init__(self, address: str = "", baud: int | None = None, mineRadius: int = 36, id: int = 0) -> None:
         """
         Initialize a new Drone object, but do not connect to a drone.
 
@@ -78,6 +78,10 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
+        self.mineRadius = mineRadius
+        self.tasks = []
+        self.id = id
+        # TODO: add reference to mine and path data classes
 
     async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:
         """Send a DO_SET_SERVO MAVLink message to the drone.
@@ -310,3 +314,26 @@ class Drone:
                 self.baud = None
             case _:
                 raise ValueError("invalid sim mode")
+    
+    def updateTasks(self, gotoCoords:tuple[tuple[int, int]]):
+        self.tasks = []
+        for i in range(len(gotoCoords)):
+            self.tasks.append(gotoCoords[i])
+
+    def goto(self, coords: tuple[int, int]):
+        pass
+
+    def completeTasks(self):
+        for i in range(len(self.tasks)):
+            self.goto(self.tasks[i])
+            photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
+            self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
+    
+    #Smart landing sequence, Should be usable in final product!!
+    def recall(self):
+        if (fieldSizeX - self.x < fieldSizeY - self.y):
+            landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
+        else:
+            landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
+    
+

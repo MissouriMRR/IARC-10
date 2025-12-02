@@ -42,6 +42,13 @@ async def run(self: DroneShare) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("DroneShare state running")
 
+        for i in range(1,5):
+            if (self.drone.id == i):
+                # Broadcast new minedata and new sight data
+                broadcast()
+            else:
+                # Recieve new minedata and new sight data
+                recieve()
         # Add drone share code here
 
         return CalcScanPath(self.drone, self.flight_settings)

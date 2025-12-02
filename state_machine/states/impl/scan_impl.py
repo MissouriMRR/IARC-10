@@ -42,6 +42,7 @@ async def run(self: Scan) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Scan state running")
 
+        self.drone.completeTasks()
         # Add scan code here
 
         return DroneShare(self.drone, self.flight_settings)
