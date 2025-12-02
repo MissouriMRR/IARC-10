@@ -38,6 +38,10 @@ class Drone:
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
     
+    # Checks to see if the area needs to be checked
+    def checkSeen(self, centerCoords:tuple[int, int]):
+        self.x = centerCoords[0]
+
     # This will be the function that sends a drone to a given location
     # Right now its built a simple placeholder
     def goto(self, coords:tuple[int, int]):
@@ -46,11 +50,9 @@ class Drone:
 
     def completeTasks(self):
         for i in range(len(self.tasks)):
-            if ():
-                self.goto(self.tasks[i])
-                self.takePhoto() # Small Placeholder should be self explainitory
-                self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
-
+            self.goto(self.tasks[i])
+            photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
+            self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
 
             '''
             FUTURE IMPLEMENTATIONS
@@ -60,16 +62,16 @@ class Drone:
             '''
         # Clears task cache
     
+    #Smart landing sequence, Should be usable in final product!!
     def recall(self):
-        # Some kind of logic to calculate the best path the drone can take to leave the confines of the mine field
-        # This happens as fast as possible as this could disqualify us
-        # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
-        self.x
-        self.y
+        if (fieldSizeX - self.x < fieldSizeY - self.y):
+            landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
+        else:
+            landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
     
     # This is a hard coded mess and will need to be done
     def selfLoop(self, path:Path):
-        while (True):
+        for i in range(10):
             gotoCoords = gotoDiv.gotoPath(currentPath)
             diviedGoto = []
             for y in range(len(gotoCoords)/len(drones)):
@@ -83,7 +85,18 @@ class Drone:
                 else:
                     # Recieve new minedata and new sight data
                     recieve()
+        self.recall()    
 
+
+        # Some kind of logic to calculate the best path the drone can take to leave the confines of the mine field
+        # This happens as fast as possible as this could disqualify us
+        # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
+        self.x
+        self.y
+    
+    # Recieve mine coordinates and adds it to an existing field
+    def addMine(self,field:gotoDiv.Field,x:int,y:int):
+        field.addMine(x,y,self.mineRadius)
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
@@ -102,6 +115,11 @@ previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO
 currentPath = Path() # Current Working Path SEE ABOVE
 drones = [Drone(id=0), Drone(id=1), Drone(id=2), Drone(id=3)] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
+
+drones[0].selfLoop(currentPath)
+drones[1].selfLoop(currentPath)
+drones[2].selfLoop(currentPath)
+drones[3].selfLoop(currentPath)
 
 '''
 # Vestigial at the moment, but will be the "lead drone's" commanding thread
