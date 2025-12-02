@@ -46,10 +46,6 @@ nodeCorList = [n1, n2, n3, n4]
 def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radians
     finalGotoList = []
 
-    # Gets angle of a node around a center (mine coord)
-    def angle_of_point(px, py, cx, cy):
-        return m.atan2(py - cy, px - cx) #atan2 because it identifies the right quadrant and has inbuilt undefined checks.
-
     for i in range(len(nodeCorList) - 1):
         n1 = nodeCorList[i] #first node
         n2 = nodeCorList[i + 1] #second node in each iteration
@@ -57,13 +53,13 @@ def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radi
         pathType = n1.getPathType(n2)   # "line" or "arc". Don't need to know the rest of details for that node.
 
         # linear gotos
-        if n1.parentMine!=n2.parentMine or n1.parentMine==None or n2.parentMine==None:
+        if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             x_vals = np.linspace(n1.x, n2.x, step)
             y_vals = np.linspace(n1.y, n2.y, step)
 
             for x, y in zip(x_vals, y_vals):
                 finalGotoList.append((float(x), float(y)))
-        else:
+        elif n1.parentMine==n2.parentMine:
             #arc gotos
             print("there is an arc")
             #get center coords
@@ -72,8 +68,8 @@ def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radi
             r = mine.getRadius()
 
             # Compute angles of each node around the circle
-            angle1 = angle_of_point(n1.x, n1.y, cx, cy)
-            angle2 = angle_of_point(n2.x, n2.y, cx, cy)
+            angle1 = n1.angle
+            angle2 = n2.angle
 
             #Choose the smaller arc
             delta_theta = angle2 - angle1
