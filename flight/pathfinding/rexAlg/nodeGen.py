@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-
+#from dijkstrasPathfindingAlg import basicDijkstras
 
 from enum import Enum
 
@@ -68,7 +68,7 @@ class Connection:
         
 
         
-        if(node1.parentMine != node2.parentMine):
+        if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
             
             self.connectionType=seg.LINE
         else:
@@ -229,7 +229,6 @@ class Field:
     
 
 
-
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
@@ -347,27 +346,46 @@ class Mine:
         self.overlappingMines = []
         Mine.mines.append(self)
         
-        
     def getPos(self):
         return self.x,self.y
     def getRadius(self):
         return self.radius
     def getNodes(self):
-        return self.nodes
+        return self.nodes    
+
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
         self.nodes.append(node)
         #self.nodes.append(node) 
         return node
     def connectMineNodes(self):
-        for node in self.nodes:
-            for connectedNode in self.nodes:
-                
-                if Node.nodeGraph[node]==None or connectedNode not in Node.nodeGraph[node].keys():
-                    if(connectedNode!=node):
-                        node.connectNode(connectedNode).addGraph()
+        sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-                    #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
+        
+        for nodes in sortedNodes:
+            print(nodes.angle)
+        mine.connectMineNodes()
+        #delete connections
+        for node in self.nodes:
+            for connection in node.connections:
+                if connection.connectionType==seg.ARC:
+                    connection.deleteConnection()
+        #print(f"length : {len(sortedNodes)}")
+        for i in range(len(sortedNodes)-1):
+            #print(f"i:{i},i2:{i+1}")
+            arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
+            if(arcConnection.validPath()):
+                arcConnection.addGraph()
+        arcConnection = Connection(sortedNodes[len(sortedNodes)-1],sortedNodes[0])
+        if(arcConnection.validPath()):
+            arcConnection.addGraph()
+       
+
+
+
+            
+
+        #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
 
                     
         
@@ -567,12 +585,7 @@ class MineNode(Node):
         elif node.parentMine == self.parentMine:
             types.append("arc")
         
-        # Connection exists 
-        if node in self.connectedNodes:
-            types.append("established")
-        elif node not in self.connectedNodes:
-            types.append("unestablished")
-        
+
         # Connection follows bitangency, such that moving from node to node has no sharp/perpendicular turns
         if (self.type == "internal primary" and node.type == "internal primary" or
             self.type == "external primary" and node.type == "external secondary" or
@@ -596,9 +609,9 @@ class MineNode(Node):
 
 
 
-numMines = 10
+numMines = 3
 radius = 16
-debug = False
+debug = True
 xMin = -numMines*radius*0.45
 xMax = numMines*radius*0.45
 yMin = -numMines*radius*0.45
@@ -634,7 +647,7 @@ if not debug:
 
     for mine in field.mines:
         mine.connectMineNodes()
-    print(Node.nodeGraph)
+    #print(Node.nodeGraph)
         
     
 
@@ -665,6 +678,7 @@ if debug:
     
     field.addMine(-150,0,radius)
 
+    """
     
     field.addMine(150,0,radius)
     
@@ -717,7 +731,7 @@ if debug:
     field.addMine(75,225,radius)
     field.addMine(100,225,radius)
     field.addMine(125,225,radius)
-
+    """
 
     for mine in field.mines:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
