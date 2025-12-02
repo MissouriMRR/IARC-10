@@ -3,7 +3,6 @@ from json_config_reader import json_config_reader
 
 import time
 import asyncio
-import sys
 import json
 from typed_dicts_classes import MessageData
 
@@ -15,17 +14,14 @@ class Client:
         jsonConfigData: json_config_reader,
         clientInData: Queue[MessageData],
         clientOutData: Queue[str],
+        droneId: int = None
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.clientInData: Queue[MessageData] = clientInData
         self.clientOutData: Queue[str] = clientOutData
 
-        # Check for sys arg for drone selfId
-        self.droneId: int
-        try:
-            self.droneId = int(sys.argv[1])
-        except Exception:
-            self.droneId = jsonConfigData.get_self_id()
+        # Check for droneId from flag in main.py
+        self.droneId = droneId if droneId is not None else jsonConfigData.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []

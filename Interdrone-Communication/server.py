@@ -1,7 +1,6 @@
 from asyncio.queues import Queue
 from json_config_reader import json_config_reader
 import asyncio
-import sys
 from asyncio import StreamReader, StreamWriter
 import json
 import time
@@ -13,16 +12,13 @@ from typed_dicts_classes import MessageData
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonConfigData: json_config_reader, serverOutData: Queue[str]):
+    def __init__(self, jsonConfigData: json_config_reader, serverOutData: Queue[str], droneId: int = None):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.serverOutData: Queue[str] = serverOutData
 
-        # Check for sys arg for drone selfId
-        self.droneId: int
-        try:
-            self.droneId = int(sys.argv[1])
-        except Exception:
-            self.droneId = jsonConfigData.get_self_id()
+        # Check for droneId from flag in main.py
+        self.droneId = droneId if droneId is not None else jsonConfigData.get_self_id()
+     
 
     # Async server startup
     async def start_server_async(self):
