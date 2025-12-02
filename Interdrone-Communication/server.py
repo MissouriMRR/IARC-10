@@ -12,13 +12,16 @@ from typed_dicts_classes import MessageData
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
-    def __init__(self, jsonConfigData: json_config_reader, serverOutData: Queue[str], droneId: int = None):
+    def __init__(
+        self,
+        jsonConfigData: json_config_reader,
+        serverOutData: Queue[str],
+    ):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.serverOutData: Queue[str] = serverOutData
 
         # Check for droneId from flag in main.py
-        self.droneId = droneId if droneId is not None else jsonConfigData.get_self_id()
-     
+        self.droneId = jsonConfigData.get_self_id()
 
     # Async server startup
     async def start_server_async(self):

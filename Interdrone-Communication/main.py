@@ -20,27 +20,28 @@ async def main():
     # Create jsonConfigData instance to get data from config file
     jsonConfigData: json_config_reader = json_config_reader()
 
-    # Create flag parser 
+    # Create flag parser
     parser = argparse.ArgumentParser()
 
-    # ID flag -i <Drone ID> 
-    parser.add_argument("-i", "--id", help="Self ID", type= int)
+    # ID flag -i <Drone ID>
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
     # Startup override flag -i (1=override, anything else does not override)
-    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type= int)
+    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
 
     # Stores flag arguments passed on startup
     args = parser.parse_args()
-   
+
     # Get our drones id from the flag if provided
     droneId: int
     if args.id is not None:
         droneId = args.id
+        jsonConfigData.set_self_id(droneId)
     else:
         droneId = int(jsonConfigData.get_self_id())
-    
+
     # TODO temporary startup skip flag. Need to rework this for a better system flag system
     # Check for system to arg to skip json config startup sequence
-    
+
     startUpOverride: bool
     try:
         value = args.skip
@@ -53,8 +54,10 @@ async def main():
 
     # If not drone 1 and we're not overriding startup, start a temporary server and wait for update json file.
     if droneId != 1 and not startUpOverride:
+        # TODO FIX THIS TO GET CURRENT IP FROM SYSTEM AND USE THAT FOR TEMP IP
         # Only start temp server and then move on to standard execution
-        print("creating statupServer")
+
+        print("creating startupServer")
         startupServerOutData: Queue[str] = asyncio.Queue()
         startupServerInstance = server.Server(
             jsonConfigData=jsonConfigData, serverOutData=startupServerOutData
@@ -81,15 +84,12 @@ async def main():
 
     # Instantiate Server and Client
     serverInstance = server.Server(
-        jsonConfigData=jsonConfigData, 
-        serverOutData=serverOutData,
-        droneId=droneId
+        jsonConfigData=jsonConfigData, serverOutData=serverOutData
     )
     clientInstance = client.Client(
         jsonConfigData=jsonConfigData,
         clientInData=clientInData,
         clientOutData=clientOutData,
-        droneId=droneId
     )
 
     # Run both server and client concurrently
@@ -97,11 +97,20 @@ async def main():
     clientTask = asyncio.create_task(clientInstance.start_client_async())
 
     # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
-    
+
     # Create heartbeat message
     heartBeatMessage: MessageData = {
         "messageId": 504,
         "dronesToSendData": [],
+        "data": {
+            "timestamp": 0.0,
+            "senderId": droneId,
+            "payload": "Hello server!",
+        },
+    }
+    taskMessage: MessageData = {
+        "messageId": 604,
+        "dronesToSendData": [1],
         "data": {
             "timestamp": 0.0,
             "senderId": droneId,

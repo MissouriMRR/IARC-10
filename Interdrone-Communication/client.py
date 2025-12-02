@@ -14,14 +14,13 @@ class Client:
         jsonConfigData: json_config_reader,
         clientInData: Queue[MessageData],
         clientOutData: Queue[str],
-        droneId: int = None
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.clientInData: Queue[MessageData] = clientInData
         self.clientOutData: Queue[str] = clientOutData
 
         # Check for droneId from flag in main.py
-        self.droneId = droneId if droneId is not None else jsonConfigData.get_self_id()
+        self.droneId = jsonConfigData.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -173,10 +172,14 @@ class Client:
                 responseData: MessageData = json.loads(serverResponseData)
 
                 # Calculate Server Processing Time (Delta on Server Clock)
-                serverProcessingTime = float(responseData["data"]["initialDownloadTime"]) - float(responseData["data"]["finalUploadTime"])
+                serverProcessingTime = float(
+                    responseData["data"]["initialDownloadTime"]
+                ) - float(responseData["data"]["finalUploadTime"])
 
                 # Calculate Total Round Trip Time (Delta on Client Clock)
-                totalRtt = receiveTime - float(originalMessage["data"]["initialUploadTime"])
+                totalRtt = receiveTime - float(
+                    originalMessage["data"]["initialUploadTime"]
+                )
 
                 # Calculate Network RTT (Total - Processing)
                 networkRtt = totalRtt - serverProcessingTime
