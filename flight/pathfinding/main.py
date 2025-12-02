@@ -38,6 +38,10 @@ class Drone:
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
     
+    # Checks to see if the area needs to be checked
+    def checkSeen(self, centerCoords:tuple[int, int]):
+        self.x = centerCoords[0]
+
     # This will be the function that sends a drone to a given location
     # Right now its built a simple placeholder
     def goto(self, coords:tuple[int, int]):
@@ -46,11 +50,10 @@ class Drone:
 
     def completeTasks(self):
         for i in range(len(self.tasks)):
-            if ():
-                self.goto(self.tasks[i])
-                self.takePhoto() # Small Placeholder should be self explainitory
-                self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
-
+            self.goto(self.tasks[i])
+            self.takePhoto() # Small Placeholder should be self explainitory
+            self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
+            self.addMine()
 
             '''
             FUTURE IMPLEMENTATIONS
@@ -69,7 +72,7 @@ class Drone:
     
     # This is a hard coded mess and will need to be done
     def selfLoop(self, path:Path):
-        while (True):
+        for i in range(10):
             gotoCoords = gotoDiv.gotoPath(currentPath)
             diviedGoto = []
             for y in range(len(gotoCoords)/len(drones)):
@@ -83,6 +86,7 @@ class Drone:
                 else:
                     # Recieve new minedata and new sight data
                     recieve()
+            
 
 
 # This is a place holder for the output from generating the fastest path.
