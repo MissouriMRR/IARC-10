@@ -7,7 +7,7 @@ import asyncio
 import server
 import client
 import sys
-
+import argparse
 
 # DOCS: How to merge this with path finding:
 """
@@ -21,18 +21,31 @@ async def main():
     # Create jsonConfigData instance to get data from config file
     jsonConfigData: json_config_reader = json_config_reader()
 
-    # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
+    # Create flag parser 
+    parser = argparse.ArgumentParser()
+
+    # ID flag -i <Drone ID> 
+    parser.add_argument("-i", "--id", help="Self ID", type= int)
+    # Startup override flag -i (1=override, anything else does not override)
+    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type= int)
+
+    # Stores flag arguments passed on startup
+    args = parser.parse_args()
+   
+    # Get our drones id from the flag if provided
     droneId: int
     try:
-        droneId = int(sys.argv[1])
+        droneId = args.id
     except Exception:
         droneId = jsonConfigData.get_self_id()
 
     # TODO temporary startup skip flag. Need to rework this for a better system flag system
     # Check for system to arg to skip json config startup sequence
+
+    
     startUpOverride: bool
     try:
-        value = int(sys.argv[2])
+        value = args.skip
         if value == 1:
             startUpOverride = True
         else:
