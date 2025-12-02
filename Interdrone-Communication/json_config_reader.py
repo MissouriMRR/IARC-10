@@ -30,9 +30,13 @@ class json_config_reader:
         # TODO test this with app
         self.config["app"]["port"] = newPort
 
-    # get own ip
+    # get self id
     def get_self_id(self) -> int:
         return int(self.config["localInfo"]["selfId"])
+
+    # set self id
+    def set_self_id(self, newId: int):
+        self.config["localInfo"]["selfId"] = newId
 
     # Get speed test data size for network test
     def get_speed_test_data_size(self) -> int:
