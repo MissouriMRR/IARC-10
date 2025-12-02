@@ -1,0 +1,28 @@
+
+======================================================================
+NETWORK SPEED TEST RESULTS FROM 4 -> 3
+======================================================================
+
+Total Tests: 100
+
+--- UPLOAD STATISTICS ---
+Throughput:
+  Average: 275.00 Mbps (275001.84 Kbps)
+  Minimum: 132.75 Mbps
+  Maximum: 514.52 Mbps
+Round-Trip Time:
+  Average: 0.52 ms
+  Minimum: 0.26 ms
+  Maximum: 1.00 ms
+
+--- DOWNLOAD STATISTICS ---
+Throughput:
+  Average: 275.38 Mbps (275378.90 Kbps)
+  Minimum: 132.93 Mbps
+  Maximum: 515.24 Mbps
+Round-Trip Time:
+  Average: 0.52 ms
+  Minimum: 0.26 ms
+  Maximum: 1.00 ms
+======================================================================
+
