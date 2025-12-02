@@ -761,11 +761,11 @@ if debug:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
 
         mine.connectMineNodes()
-    newgraph=basicDijkstras.Graph(Node.nodeGraph)
-    print("AHHHHHHHHHHH")
-    print(list(Node.nodeGraph.keys())[0])
-    print(list(Node.nodeGraph.keys())[10])
-    print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+    #newgraph=basicDijkstras.Graph(Node.nodeGraph)
+    #print("AHHHHHHHHHHH")
+    #print(list(Node.nodeGraph.keys())[0])
+    #print(list(Node.nodeGraph.keys())[10])
+    #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
 
 field.plotField()
 """
