@@ -563,7 +563,7 @@ class MineNode(Node):
                 self.x = (parentMine.radius) * np.cos(self.angle-np.pi) + parentMine.x
                 self.y = (parentMine.radius) * np.sin(self.angle) + parentMine.y
         
-        self.angle=np.atan2(self.x-parentMine.x,self.y-parentMine.y)
+        self.angle=np.atan2(self.y-parentMine.y,self.x-parentMine.x)
 
 
         self.x = round(self.x,3)
