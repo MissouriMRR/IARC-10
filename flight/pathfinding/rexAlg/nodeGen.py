@@ -415,9 +415,12 @@ class Node:
         node.connections.append(nodeConnection)
         #self.connected = True
         #node.connected = True
+        """
         if node.parentMine not in self.parentMine.connectedMines and self.parentMine not in node.parentMine.connectedMines:
             self.parentMine.connectedMines.append(node.parentMine)
             node.parentMine.connectedMines.append(self.parentMine)
+
+        """
         return nodeConnection
 
     def getPos(self) -> float:
@@ -466,7 +469,7 @@ class MineNode(Node):
         elif not internal and not primary:
             self.type = 'external secondary'
 
-            d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
+        d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
 
         self.internal = internal
         self.primary= primary # Primary node is the first node where it is placed 
@@ -542,16 +545,6 @@ class MineNode(Node):
         return result
     
 
-
-    # Establishes a connection between nodes
-    def connectNode(self,node:"Node") -> None:
-        self.connectedNodes.append(node)
-        node.connectedNodes.append(self)
-        self.connected = True
-        node.connected = True
-        if node.parentMine not in self.parentMine.connectedMines and self.parentMine not in node.parentMine.connectedMines:
-            self.parentMine.connectedMines.append(node.parentMine)
-            node.parentMine.connectedMines.append(self.parentMine)
     
     # Check if node is within another mines' radius
     def validateNode(self):
