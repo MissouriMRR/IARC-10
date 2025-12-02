@@ -74,10 +74,12 @@ class Graph:
             visited.add(current_node) #else, add the node to visited set
 
             for neighbor, weight in self.graph[current_node].items():
+
                 #calculate the distance from currentNode to the neighbor
                 tentative_distance = current_distance + weight
                 if tentative_distance < distances[neighbor]:
                     distances[neighbor] = tentative_distance
+
                     heapq.heappush(pq, (tentative_distance, neighbor))
 
             predecessors = {node: None for node in self.graph}
