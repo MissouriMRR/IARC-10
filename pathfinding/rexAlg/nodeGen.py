@@ -3,6 +3,10 @@ import numpy as np
 import random
 from itertools import combinations
 import time
+from sys import getrefcount
+import gc
+
+
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
 
@@ -12,6 +16,8 @@ KEY MINE ATTRIBUTES/METHODS:
  - Mine.connectedMines -> [Mine,Mine,...] A list of other mines connected to the Mine through at least one Node
 
 KEY NODE ATTRIBUTES/METHODS:
+ - Node(primaryType) -> Constructor key parameter, either 'default','start', or 'end', must 
+                        explicitely define primaryType if not a default node when constructing
 
  - Node.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
                     |-For some reason, trying to completely delete all references to a Node breaks stuff-| 
@@ -20,7 +26,7 @@ KEY NODE ATTRIBUTES/METHODS:
  - Node.parentMine -> Mine object that the node is primarily on
  - Node.connectedNodes -> [Node,Node,...] A list of connected nodes, excluding the Node itself.
                                           Usually a list length of one as a result of connecting bitangents,
-                                          unless furthur connections are established.
+                                         unless furthur connections are established.
  - Node.connectNode(Node) -> Connects nodes by appending to each other's connectedNodes list.
  - Node.status() -> ["terminated"/"exists", "connected"/"disconnected"]
                      A list of strings describing the status of a single node
@@ -48,17 +54,16 @@ Ex:
 
 # Field generates nodes off of mines, temporarily generates mines too
 class Field:
+
     def __init__(self,xMin,xMax,yMin,yMax):
         self.xMin = xMin
         self.yMin = yMin
         self.xMax = xMax
         self.yMax = yMax
-        self.mines = []
     
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
-        self.mines.append(newMine)
-        mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
+        mineCombo = [[newMine, mine] for mine in Mine.mines[:-1]]
         for pair in mineCombo:
             mine = pair[0]
             target = pair[1]
@@ -106,7 +111,7 @@ class Field:
                 x2 = float(connectedNode.x)
                 y2 = float(connectedNode.y)
 
-                for mine in self.mines:
+                for mine in Mine.mines:
                     x3 = mine.x
                     y3 = mine.y
                     
@@ -129,8 +134,15 @@ class Field:
                         if distanceFromMine < radius:
                             node.terminated = True
                             connectedNode.terminated = True
+
+                # Checks for nodes within another mine's radius
+                for mine in Mine.mines:
+                    if mine != node.parentMine:
+                        if (mine.x - radius <= node.x <= mine.x + radius and
+                            mine.y - radius <= node.y <= mine.y + radius):
+                            node.terminated = True
+                            node.connectedNodes[0].terminated = True
             
-                node.validateNode()
                     
                     
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
@@ -164,7 +176,14 @@ class Field:
                     if distanceFromMine < radius:
                         node.terminated = True
                         connectedNode.terminated = True
-                node.validateNode()
+                
+                # Check for nodes within another mine's radius
+                for mine in Mine.mines:
+                    if mine != node.parentMine:
+                        if (mine.x - radius <= node.x <= mine.x + radius and
+                            mine.y - radius <= node.y <= mine.y + radius):
+                            node.terminated = True
+                            node.connectedNodes[0].terminated = True
         
     def plotField(self):
         plt = pyplot
@@ -175,7 +194,7 @@ class Field:
         
         # Create a list of circles representing mines, centered to their correlated mine's center
 
-        circles = [plt.Circle(self.mines[i].getPos(),self.mines[i].getRadius(),color=self.mines[i].color) for i in range(len(self.mines))]
+        circles = [plt.Circle(Mine.mines[i].getPos(),Mine.mines[i].getRadius(),color=Mine.mines[i].color) for i in range(len(Mine.mines))]
         
         # Plot the mines
         for circle in circles:
@@ -224,6 +243,9 @@ class Mine:
         Node.nodes.append(node)
         self.nodes.append(node)
         return node
+    def getNumReferences(self):
+        return getrefcount(self)
+
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -233,79 +255,88 @@ class Mine:
 class Node:
     nodeNum = 0
     nodes = []
-    def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str=''):
+    
+    def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str='',primaryType='default'):
+        
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "Node ID: "+ str(Node.nodeNum)
         else:
-            self.name = name 
-        self.parentMine = parentMine
-        self.connectedNodes = []
-        self.x = 0.0
-        self.y = 0.0
-        self.connected = False
-        self.plotted = False # To prevent hopefully duplicate plotting
-        self.__targetMine = targetMine
-        self.terminated = False
-
-
-        # categorize nodes
-        if internal and primary:
-            self.type = 'internal primary'
-        elif internal and not primary:
-            self.type = 'internal secondary'
-        elif not internal and primary:
-            self.type = 'external primary'
-        elif not internal and not primary:
-            self.type = 'external secondary'
-
-        d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
-
-        self.internal = internal
-        self.primary= primary # Primary node is the first node where it is placed 
-                              # (typically towards the top of the circle)
-        # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
-        # Formula is: arccos(x1-x2)/d+pi
-        if parentMine.y > targetMine.y:
-               offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-        elif parentMine.y < targetMine.y:
-            offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-        elif parentMine.y == targetMine.y:
-            if parentMine.x < targetMine.x:
-                offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-            elif parentMine.x > targetMine.x:
-                offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-
-        # Offset Angle is the same for internal and external bitangents
-        if internal:
-            # Create internal angle
-            internalCos = (parentMine.radius + targetMine.radius)/d
-            if internalCos < 1:
-                internalAngle = np.arccos(np.clip(((parentMine.radius)+(targetMine.radius))/d,-1,1))
-            else:
-                self.terminated = True
-                return None
-            
-            if primary:
-                self.x = ((parentMine.radius) * np.cos(internalAngle+offsetAngle)) + parentMine.x
-                self.y = ((parentMine.radius) * np.sin(internalAngle+offsetAngle)) + parentMine.y
-            else:
-                self.x = (parentMine.radius) * np.cos(internalAngle-(offsetAngle)) + parentMine.x
-                self.y = (parentMine.radius) * np.sin(internalAngle-(offsetAngle)+np.pi) + parentMine.y
-        else:
-            # Create external angle
-            externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
-
-            if primary:
-                self.x = ((parentMine.radius) * np.cos(externalAngle+offsetAngle)) + parentMine.x
-                self.y = ((parentMine.radius) * np.sin(externalAngle+offsetAngle)) + parentMine.y
-            else:
-                self.x = (parentMine.radius) * np.cos(externalAngle-(offsetAngle)) + parentMine.x
-                self.y = (parentMine.radius) * np.sin(externalAngle-(offsetAngle)+np.pi) + parentMine.y
+            self.name = name
         
-        self.x = round(self.x,3)
-        self.y = round(self.y,3)
-    
+        if primaryType == 'default':
+            self.parentMine = parentMine
+            self.connectedNodes = []
+            self.x = 0.0
+            self.y = 0.0
+            self.connected = False
+            self.plotted = False # To prevent hopefully duplicate plotting
+            self.__targetMine = targetMine
+            self.terminated = False
+            self.lowest = False # Is there any other nodes below self
+                              # /\ Determines start/end connections \/
+            self.highest = False # Is there any other nodes above self
+
+            # categorize nodes
+            if internal and primary:
+                self.type = 'internal primary'
+            elif internal and not primary:
+                self.type = 'internal secondary'
+            elif not internal and primary:
+                self.type = 'external primary'
+            elif not internal and not primary:
+                self.type = 'external secondary'
+
+            d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
+
+            self.internal = internal
+            self.primary= primary # Primary node is the first node where it is placed 
+                                # (typically towards the top of the circle)
+            # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
+            # Formula is: arccos(x1-x2)/d+pi
+
+            if parentMine.y > targetMine.y:
+                offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
+            elif parentMine.y < targetMine.y:
+                offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
+            elif parentMine.y == targetMine.y:
+                if parentMine.x < targetMine.x:
+                    offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
+                elif parentMine.x > targetMine.x:
+                    offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
+
+            # Offset Angle is the same for internal and external bitangents
+            if internal:
+                # Create internal angle
+                internalCos = (parentMine.radius + targetMine.radius)/d
+                if internalCos < 1:
+                    internalAngle = np.arccos(np.clip(((parentMine.radius)+(targetMine.radius))/d,-1,1))
+                else:
+                    self.terminated = True
+                    return None
+                
+                if primary:
+                    self.x = ((parentMine.radius) * np.cos(internalAngle+offsetAngle)) + parentMine.x
+                    self.y = ((parentMine.radius) * np.sin(internalAngle+offsetAngle)) + parentMine.y
+                else:
+                    self.x = (parentMine.radius) * np.cos(internalAngle-(offsetAngle)) + parentMine.x
+                    self.y = (parentMine.radius) * np.sin(internalAngle-(offsetAngle)+np.pi) + parentMine.y
+            else:
+                # Create external angle
+                externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
+
+                if primary:
+                    self.x = ((parentMine.radius) * np.cos(externalAngle+offsetAngle)) + parentMine.x
+                    self.y = ((parentMine.radius) * np.sin(externalAngle+offsetAngle)) + parentMine.y
+                else:
+                    self.x = (parentMine.radius) * np.cos(externalAngle-(offsetAngle)) + parentMine.x
+                    self.y = (parentMine.radius) * np.sin(externalAngle-(offsetAngle)+np.pi) + parentMine.y
+            
+            self.x = round(self.x,3)
+            self.y = round(self.y,3)
+    def setPosition(self,x:float,y:float):
+        self.x = x
+        self.y = y
     # DISTANCE
     def distanceFromNode(self,node:"Node") -> float:
         distance = 0.0
@@ -334,7 +365,10 @@ class Node:
             result.append("connected")
         else:
             result.append("disconnected")
+        result.append("referenced " + str(getrefcount(self)) + " times")
         return result
+    
+
 
     # Establishes a connection between nodes
     def connectNode(self,node:"Node") -> None:
@@ -417,7 +451,7 @@ if not debug:
         while True: # To make sure generated mines arent clipping off the edges of the field
             position[0], position[1] = random.randint(genXMin,genXMax+1),random.randint(genYMin,genYMax+1)
             invalidPosition = False
-            for mine in field.mines:
+            for mine in Mine.mines:
                 if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
                     invalidPosition = True
                     break
@@ -428,6 +462,9 @@ if not debug:
             break
         field.addMine(position[0],position[1],radius)
         print(num)
+    
+    # for node in Node.nodes:
+    #     print(node.getReferences())
     
     ## Example Concept for a single start point end point(s)
     # Start
@@ -505,9 +542,11 @@ if debug:
     field.addMine(125,225,radius)
 
 
-    for mine in field.mines:
+    for mine in Mine.mines:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
     print(Node.nodes)
+    for node in Node.nodes:
+        print()
 
 field.plotField()
 """
@@ -515,9 +554,12 @@ TODO:
 X=Done
 - = Todo
  X Arc lengths
- - Find a way to set a viable and efficient end point
+ - Find a way to set a viable and efficient end/start point
+      - Overload Node __init__ to allow for a lone node as a start node
  X Terminate nodes if the nodes themselves are created within another mine
- - Establish a list of paths of connected Nodes
- - ########## Terminate internal bitangents unless external bitangents are intersecting ##################
+ - Establish a list of paths between connected Nodes
+ - Terminate internal bitangents unless external bitangents are intersecting ???
+ - Combine all node lists into one
+
 
 """
