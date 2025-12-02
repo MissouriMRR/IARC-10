@@ -1,19 +1,19 @@
-"""Declares the CalcScanPath state class."""
+"""Declares the Recall state class."""
 
 from typing import Awaitable, Callable, ClassVar
 
 from state_machine.states.state import State
 
 
-class CalcScanPath(State):
+class Recall(State):
     """
-    The CalcScanPath state of the state machine.
+    The Recall state of the state machine.
 
-    This state represents the phase in which the drone is calculating the path to scan.
+    This state represents the phase in which the drone navigates to the landing point.
 
     Attributes
     ----------
-    run_callable : ClassVar[Callable[["CalcScanPath"], Awaitable[State]]]
+    run_callable : ClassVar[Callable[["Recall"], Awaitable[State]]]
         The callable object to call when this state is run. This object is
         shared between all instances of this class.
 
@@ -24,7 +24,7 @@ class CalcScanPath(State):
         to transition to.
     """
 
-    run_callable: ClassVar[Callable[["CalcScanPath"], Awaitable[State]]]
+    run_callable: ClassVar[Callable[["Recall"], Awaitable[State]]]
 
     def run(self) -> Awaitable[State]:
         return self.run_callable()

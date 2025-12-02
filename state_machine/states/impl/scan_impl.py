@@ -1,4 +1,4 @@
-"""Implements the behavior of the Takeoff state."""
+"""Implements the behavior of the Scan state."""
 
 import asyncio
 import logging
@@ -42,11 +42,7 @@ async def run(self: Scan) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Scan state running")
 
-        # Set takeoff altitude to the minimum allowed altitude, plus one meter
-        takeoff_altitude: float = (
-            extract_gps(self.flight_settings.mission_data_path).altitude_limits.min_altitude + 1.0
-        )
-        await self.drone.takeoff(takeoff_altitude)
+        # Add scan code here
 
         return DroneShare(self.drone, self.flight_settings)
     except asyncio.CancelledError as ex:
@@ -56,5 +52,5 @@ async def run(self: Scan) -> State:
         pass
 
 
-# Setting the run_callable attribute of the Takeoff class to the run function
+# Setting the run_callable attribute of the Scan class to the run function
 Scan.run_callable = run

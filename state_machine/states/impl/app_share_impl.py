@@ -1,4 +1,4 @@
-"""Implements the behavior of the Takeoff state."""
+"""Implements the behavior of the AppShare state."""
 
 import asyncio
 import logging
@@ -56,5 +56,5 @@ async def run(self: AppShare) -> State:
         pass
 
 
-# Setting the run_callable attribute of the Takeoff class to the run function
+# Setting the run_callable attribute of the AppShare class to the run function
 AppShare.run_callable = run
