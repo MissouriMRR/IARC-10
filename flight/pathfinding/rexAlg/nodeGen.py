@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-#from dijkstrasPathfindingAlg import basicDijkstras
+from ..dijkstrasPathfindingAlg import basicDijkstras
 
 from enum import Enum
 
@@ -338,6 +338,8 @@ class Field:
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         for node in Node.nodeGraph.keys():
+            plt.text(node.x, node.y, str(node))
+
             if not node.plotted and not node.terminated:
                 for connectedNode in Node.nodeGraph[node].keys():
                     try:
@@ -471,6 +473,8 @@ class Node:
         return self.name
     def __repr__(self):
         return self.__str__()
+    def __gt__(self, node1):
+        return True
 
 
 class MineNode(Node):
@@ -653,6 +657,7 @@ if not debug:
                 continue
             break
         field.addMine(position[0],position[1],radius)
+        
         print("added a mine")
     print("done adding mines, connecting nodes on mine")
 
@@ -755,6 +760,12 @@ if debug:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
 
         mine.connectMineNodes()
+    #newgraph=basicDijkstras.Graph(Node.nodeGraph)
+    #print("AHHHHHHHHHHH")
+    #print(list(Node.nodeGraph.keys())[0])
+    #print(list(Node.nodeGraph.keys())[10])
+    #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+
 field.plotField()
 """
 TODO:
