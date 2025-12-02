@@ -36,19 +36,19 @@ nodeCorList = [n1, n2, n3, n4]
 '''
 field = Field(0, 200, 0, 200)
 field.addMine(100, 100, 10)
-field.addMine(100,100,10) #same mine to see arc
-field.addMine(50, 30, 10)
-field.addMine(70, 80, 10)
-nodeCorList = [n1, n2, n3, n4]
+field.addMine(100, 200, 10) #same mine to see arc
 
-
+nodeList = []
+for mine in field.mines:
+    nodeList.extend(mine.getNodes())
+  
 #step for linear, arc_step for arc to determine number of gotopts.
-def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radians
+def generateGotoPoints(nodeList, step = 10, arc_step=0.05): #arc step in radians
     finalGotoList = []
 
-    for i in range(len(nodeCorList) - 1):
-        n1 = nodeCorList[i] #first node
-        n2 = nodeCorList[i + 1] #second node in each iteration
+    for i in range(len(nodeList) - 1):
+        n1 = nodeList[i] #first node
+        n2 = nodeList[i + 1] #second node in each iteration
 
         pathType = n1.getPathType(n2)   # "line" or "arc". Don't need to know the rest of details for that node.
 
@@ -99,7 +99,7 @@ def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radi
     plt.plot(goto_x, goto_y, marker='o', color='red', linestyle='-', label='Goto Points')
 
     # Plot the nodes in blue
-    for node in nodeCorList:
+    for node in nodeList:
         plt.plot(node.x, node.y, marker='o', color='blue', markersize=8, label='Node')
 
     # Add labels and grid
@@ -110,5 +110,5 @@ def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radi
     plt.show()
     return finalGotoList
 
-path = generateGotoPoints(nodeCorList)
+path = generateGotoPoints(nodeList)
 print(path)
