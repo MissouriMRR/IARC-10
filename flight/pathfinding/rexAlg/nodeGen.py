@@ -399,6 +399,7 @@ class Node:
         self.plotted = False # To prevent hopefully duplicate plotting
         self.terminated = False
         self.nodeGraph.update({self:None})
+        self.parentMine=None
 
 
 
@@ -524,6 +525,7 @@ class MineNode(Node):
         self.y = round(self.y,3)
 
         super().__init__(self.x,self.y,self.name)
+        self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
             self.name = "ID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
