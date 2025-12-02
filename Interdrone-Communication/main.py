@@ -6,7 +6,6 @@ from json_config_reader import json_config_reader
 import asyncio
 import server
 import client
-import sys
 import argparse
 
 # DOCS: How to merge this with path finding:
@@ -34,14 +33,13 @@ async def main():
    
     # Get our drones id from the flag if provided
     droneId: int
-    try:
+    if args.id is not None:
         droneId = args.id
-    except Exception:
-        droneId = jsonConfigData.get_self_id()
-
+    else:
+        droneId = int(jsonConfigData.get_self_id())
+    
     # TODO temporary startup skip flag. Need to rework this for a better system flag system
     # Check for system to arg to skip json config startup sequence
-
     
     startUpOverride: bool
     try:
@@ -83,12 +81,15 @@ async def main():
 
     # Instantiate Server and Client
     serverInstance = server.Server(
-        jsonConfigData=jsonConfigData, serverOutData=serverOutData
+        jsonConfigData=jsonConfigData, 
+        serverOutData=serverOutData,
+        droneId=droneId
     )
     clientInstance = client.Client(
         jsonConfigData=jsonConfigData,
         clientInData=clientInData,
         clientOutData=clientOutData,
+        droneId=droneId
     )
 
     # Run both server and client concurrently
@@ -96,12 +97,7 @@ async def main():
     clientTask = asyncio.create_task(clientInstance.start_client_async())
 
     # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
-    droneId: int
-    try:
-        droneId = int(sys.argv[1])
-    except Exception:
-        droneId = jsonConfigData.get_self_id()
-
+    
     # Create heartbeat message
     heartBeatMessage: MessageData = {
         "messageId": 504,
