@@ -106,6 +106,11 @@ currentPath = Path() # Current Working Path SEE ABOVE
 drones = [Drone(id=0), Drone(id=1), Drone(id=2), Drone(id=3)] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
 
+drones[0].selfLoop(currentPath)
+drones[1].selfLoop(currentPath)
+drones[2].selfLoop(currentPath)
+drones[3].selfLoop(currentPath)
+
 '''
 # Vestigial at the moment, but will be the "lead drone's" commanding thread
 def mainLoop():
