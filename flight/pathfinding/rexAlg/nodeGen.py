@@ -229,7 +229,6 @@ class Field:
     
 
 
-
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
@@ -347,13 +346,13 @@ class Mine:
         self.overlappingMines = []
         Mine.mines.append(self)
         
-        
     def getPos(self):
         return self.x,self.y
     def getRadius(self):
         return self.radius
     def getNodes(self):
-        return self.nodes
+        return self.nodes    
+
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
         self.nodes.append(node)
@@ -586,12 +585,7 @@ class MineNode(Node):
         elif node.parentMine == self.parentMine:
             types.append("arc")
         
-        # Connection exists 
-        if node in self.connectedNodes:
-            types.append("established")
-        elif node not in self.connectedNodes:
-            types.append("unestablished")
-        
+
         # Connection follows bitangency, such that moving from node to node has no sharp/perpendicular turns
         if (self.type == "internal primary" and node.type == "internal primary" or
             self.type == "external primary" and node.type == "external secondary" or
