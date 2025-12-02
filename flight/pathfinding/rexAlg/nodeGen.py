@@ -4,6 +4,7 @@ import random
 from itertools import combinations
 import time
 from enum import Enum
+
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
 
@@ -81,12 +82,15 @@ class Connection:
         
         if self.connectionType==seg.ARC: # Nodes are on the same mine
             angleTheta=abs(self.node1.angle-self.node2.angle)
+            
             mineRadius=self.node1.parentMine.radius
 
             distance = angleTheta*mineRadius
 
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
+
+            print(distance)
         return distance
     
 
@@ -103,17 +107,17 @@ class Connection:
 
 
         if(self.node1.nodeGraph[self.node1]==None): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
-            Node.nodeGraph[self.node1]={self.node2:self} #Must use = to get rid of the none value
+            Node.nodeGraph[self.node1]={self.node2:self.distance} #Must use = to get rid of the none value
         elif self.node2 not in Node.nodeGraph[self.node1]:
-            Node.nodeGraph[self.node1].update({self.node2:self})
+            Node.nodeGraph[self.node1].update({self.node2:self.distance})
 
                
         
         if(Node.nodeGraph[self.node2]==None): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
-            Node.nodeGraph[self.node2]={self.node1:self} #Must use = to get rid of the none value
+            Node.nodeGraph[self.node2]={self.node1:self.distance} #Must use = to get rid of the none value
         
         elif self.node1 not in Node.nodeGraph[self.node2]:
-            Node.nodeGraph[self.node2].update({self.node1:self})
+            Node.nodeGraph[self.node2].update({self.node1:self.distance})
         
     def deleteConnection(self):
 
@@ -383,7 +387,6 @@ class Node:
         self.connections= [] #this list makes things much easier when checking all connections
         self.x = xPosition
         self.y = yPosition
-        self.angle=0.0
         self.plotted = False # To prevent hopefully duplicate plotting
         self.terminated = False
         self.nodeGraph.update({self:None})
@@ -536,7 +539,7 @@ class MineNode(Node):
 
 
 
-numMines = 100
+numMines = 10
 radius = 16
 debug = False
 xMin = -numMines*radius*0.45
@@ -571,10 +574,13 @@ if not debug:
         field.addMine(position[0],position[1],radius)
         print("added a mine")
     print("done adding mines, connecting nodes on mine")
+
     for mine in field.mines:
         mine.connectMineNodes()
+    print(Node.nodeGraph)
         
     
+
     ## Example Concept for a single start point end point(s)
     # Start
     # field.addMine(-150,-300,radius,'green')
