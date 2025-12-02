@@ -3,6 +3,10 @@ import numpy as np
 import random
 from itertools import combinations
 import time
+from sys import getrefcount
+import gc
+
+
 from enum import Enum
 
 """
@@ -14,6 +18,8 @@ KEY MINE ATTRIBUTES/METHODS:
  - Mine.connectedMines -> [Mine,Mine,...] A list of other mines connected to the Mine through at least one Node
 
 KEY NODE ATTRIBUTES/METHODS:
+ - Node(primaryType) -> Constructor key parameter, either 'default','start', or 'end', must 
+                        explicitely define primaryType if not a default node when constructing
 
  - Node.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
                     |-For some reason, trying to completely delete all references to a Node breaks stuff-| 
@@ -22,7 +28,7 @@ KEY NODE ATTRIBUTES/METHODS:
  - Node.parentMine -> Mine object that the node is primarily on
  - Node.connectedNodes -> [Node,Node,...] A list of connected nodes, excluding the Node itself.
                                           Usually a list length of one as a result of connecting bitangents,
-                                          unless furthur connections are established.
+                                         unless furthur connections are established.
  - Node.connectNode(Node) -> Connects nodes by appending to each other's connectedNodes list.
  - Node.status() -> ["terminated"/"exists", "connected"/"disconnected"]
                      A list of strings describing the status of a single node
@@ -302,7 +308,7 @@ class Field:
         
         # Create a list of circles representing mines, centered to their correlated mine's center
 
-        circles = [plt.Circle(self.mines[i].getPos(),self.mines[i].getRadius(),color=self.mines[i].color) for i in range(len(self.mines))]
+        circles = [plt.Circle(Mine.mines[i].getPos(),Mine.mines[i].getRadius(),color=Mine.mines[i].color) for i in range(len(Mine.mines))]
         
         # Plot the mines
         for circle in circles:
@@ -367,6 +373,9 @@ class Mine:
 
                     
         
+    def getNumReferences(self):
+        return getrefcount(self)
+
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -457,7 +466,7 @@ class MineNode(Node):
         elif not internal and not primary:
             self.type = 'external secondary'
 
-        d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
+            d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
 
         self.internal = internal
         self.primary= primary # Primary node is the first node where it is placed 
@@ -529,7 +538,61 @@ class MineNode(Node):
             result.append("connected")
         else:
             result.append("disconnected")
+        result.append("referenced " + str(getrefcount(self)) + " times")
         return result
+    
+
+
+    # Establishes a connection between nodes
+    def connectNode(self,node:"Node") -> None:
+        self.connectedNodes.append(node)
+        node.connectedNodes.append(self)
+        self.connected = True
+        node.connected = True
+        if node.parentMine not in self.parentMine.connectedMines and self.parentMine not in node.parentMine.connectedMines:
+            self.parentMine.connectedMines.append(node.parentMine)
+            node.parentMine.connectedMines.append(self.parentMine)
+    
+    # Check if node is within another mines' radius
+    def validateNode(self):
+        for mine in Mine.mines:
+            if mine != self.parentMine:
+                if (mine.x - radius <= self.x <= mine.x + radius and
+                    mine.y - radius <= self.y <= mine.y + radius):
+                    self.terminated = True
+                    self.connectedNodes[0].terminated = True
+
+
+    # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
+    def getPathType(self,node:'Node') -> list:
+        types = []
+
+        # Connection based on parent mines
+        if node.parentMine != self.parentMine:
+            types.append("line")
+        elif node.parentMine == self.parentMine:
+            types.append("arc")
+        
+        # Connection exists 
+        if node in self.connectedNodes:
+            types.append("established")
+        elif node not in self.connectedNodes:
+            types.append("unestablished")
+        
+        # Connection follows bitangency, such that moving from node to node has no sharp/perpendicular turns
+        if (self.type == "internal primary" and node.type == "internal primary" or
+            self.type == "external primary" and node.type == "external secondary" or
+            self.type == "internal secondary" and node.type == "internal secondary" or
+            self.type == "external secondary" and node.type == "external primary"):
+            types.append("bitangent")
+        else:
+            types.append("normal")
+        
+        return types
+
+    def getPos(self) -> float:
+        return (round(float(self.x),3),round(float(self.y),3))
+
     def getTargetMine(self) -> Mine:
         return self.__targetMine
     def __str__(self):
@@ -562,7 +625,7 @@ if not debug:
         while True: # To make sure generated mines arent clipping off the edges of the field
             position[0], position[1] = random.randint(genXMin,genXMax+1),random.randint(genYMin,genYMax+1)
             invalidPosition = False
-            for mine in field.mines:
+            for mine in Mine.mines:
                 if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
                     invalidPosition = True
                     break
@@ -612,7 +675,7 @@ if debug:
     field.addMine(150,0,radius)
     
     field.addMine(0,-150,radius)
-    """
+    
     field.addMine(0,150,radius)
     field.addMine(50,50,radius)
     field.addMine(-50,50,radius)
@@ -660,7 +723,7 @@ if debug:
     field.addMine(75,225,radius)
     field.addMine(100,225,radius)
     field.addMine(125,225,radius)
-    """
+
 
     for mine in field.mines:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
@@ -671,9 +734,12 @@ TODO:
 X=Done
 - = Todo
  X Arc lengths
- - Find a way to set a viable and efficient end point
+ - Find a way to set a viable and efficient end/start point
+      - Overload Node __init__ to allow for a lone node as a start node
  X Terminate nodes if the nodes themselves are created within another mine
- - Establish a list of paths of connected Nodes
- - ########## Terminate internal bitangents unless external bitangents are intersecting ##################
+ - Establish a list of paths between connected Nodes
+ - Terminate internal bitangents unless external bitangents are intersecting ???
+ - Combine all node lists into one
+
 
 """
