@@ -386,7 +386,7 @@ class Node:
     nodeNum = 0
     connectionList = []
     nodeGraph={}
-    def __init__(self, xPosition: float, yPosition:float,name:str=""):
+    def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "ID: "+str(Node.nodeNum)
@@ -400,6 +400,7 @@ class Node:
         self.terminated = False
         self.nodeGraph.update({self:None})
         self.parentMine=None
+        self.floating=floating
 
 
 
@@ -524,7 +525,7 @@ class MineNode(Node):
         self.x = round(self.x,3)
         self.y = round(self.y,3)
 
-        super().__init__(self.x,self.y,self.name)
+        super().__init__(self.x,self.y,False,self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
             self.name = "ID:"+str(parentMine.number)+"."+str(Node.nodeNum)
