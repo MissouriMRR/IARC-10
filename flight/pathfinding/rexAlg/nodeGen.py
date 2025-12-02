@@ -361,10 +361,10 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-        
+        print(sortedNodes)
         for nodes in sortedNodes:
             print(nodes.angle)
-        mine.connectMineNodes()
+        
         #delete connections
         for node in self.nodes:
             for connection in node.connections:
@@ -526,6 +526,7 @@ class MineNode(Node):
                 self.angle=internalAngle-(offsetAngle)
                 self.x = (parentMine.radius) * np.cos(self.angle) + parentMine.x
                 self.y = (parentMine.radius) * np.sin(self.angle+np.pi) + parentMine.y
+            
         else:
             # Create external angle
             externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
@@ -535,12 +536,15 @@ class MineNode(Node):
                 self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
                 self.y = ((parentMine.radius) * np.sin(self.angle)) + parentMine.y
             else:
-                self.angle=externalAngle-offsetAngle
-                self.x = (parentMine.radius) * np.cos(self.angle) + parentMine.x
-                self.y = (parentMine.radius) * np.sin(self.angle+np.pi) + parentMine.y
+                self.angle=externalAngle-offsetAngle+np.pi
+                self.x = (parentMine.radius) * np.cos(self.angle-np.pi) + parentMine.x
+                self.y = (parentMine.radius) * np.sin(self.angle) + parentMine.y
+        
+        self.angle=np.atan2(self.x-parentMine.x,self.y-parentMine.y)
+
+
         self.x = round(self.x,3)
         self.y = round(self.y,3)
-
         super().__init__(self.x,self.y,False,self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
@@ -645,8 +649,7 @@ if not debug:
         print("added a mine")
     print("done adding mines, connecting nodes on mine")
 
-    for mine in field.mines:
-        mine.connectMineNodes()
+
     #print(Node.nodeGraph)
         
     
@@ -678,10 +681,10 @@ if debug:
     
     field.addMine(-150,0,radius)
 
-    """
+    
     
     field.addMine(150,0,radius)
-    
+    """
     field.addMine(0,-150,radius)
     
     field.addMine(0,150,radius)
@@ -735,7 +738,8 @@ if debug:
 
     for mine in field.mines:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
-    
+
+        mine.connectMineNodes()
 field.plotField()
 """
 TODO:
