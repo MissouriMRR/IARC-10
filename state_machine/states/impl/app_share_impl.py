@@ -12,17 +12,18 @@ from state_machine.state_tracker import (
 from state_machine.states.state import State
 from state_machine.states.app_share import AppShare
 from state_machine.states.scan import Scan
+from state_machine.states.recall import Recall
 
 
 async def run(self: AppShare) -> State:
     """
     Implements the run method for the AppShare state.
 
-    This method initiates the app share process and transitions to the Scan state.
+    This method initiates the app share process and transitions to the Scan or Recall state.
 
     Returns
     -------
-    Scan : State
+    Scan/Recall : State
         The next state after a successful App share.
 
     Raises
@@ -33,7 +34,7 @@ async def run(self: AppShare) -> State:
     Notes
     -----
     This method is responsible for sharing data with the app and transitioning it to the
-    scan state, which represents the phase to scan for mines.
+    scan state or the recall state, which represent the phase to scan for mines and the state to move the drone to the landing coordinates respectively.
 
     """
     try:
@@ -42,13 +43,13 @@ async def run(self: AppShare) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("AppShare state running")
 
-        # Set takeoff altitude to the minimum allowed altitude, plus one meter
-        takeoff_altitude: float = (
-            extract_gps(self.flight_settings.mission_data_path).altitude_limits.min_altitude + 1.0
-        )
-        await self.drone.takeoff(takeoff_altitude)
+        # App share code here
 
-        return Scan(self.drone, self.flight_settings)
+
+        # needs to be conditional, go to scan or recall
+        # return Scan(self.drone, self.flight_settings)
+    
+
     except asyncio.CancelledError as ex:
         logging.error("AppShare state canceled")
         raise ex
