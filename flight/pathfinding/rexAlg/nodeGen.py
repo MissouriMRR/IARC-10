@@ -79,8 +79,6 @@ class Connection:
 
         #checking for a valid path and updating the graph must be done manually
         
-
-
         # DISTANCE
     def updateDistance(self):
         distance = 0.0

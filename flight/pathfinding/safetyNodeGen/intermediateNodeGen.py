@@ -57,7 +57,7 @@ def generateGotoPoints(nodeCorList, step = 10, arc_step=0.05): #arc step in radi
         pathType = n1.getPathType(n2)   # "line" or "arc". Don't need to know the rest of details for that node.
 
         # linear gotos
-        if n1.parentMine!=n2.parentMine:
+        if n1.parentMine!=n2.parentMine or n1.parentMine==None or n2.parentMine==None:
             x_vals = np.linspace(n1.x, n2.x, step)
             y_vals = np.linspace(n1.y, n2.y, step)
 
