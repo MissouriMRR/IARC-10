@@ -44,14 +44,20 @@ class Drone:
         self.x = coords[0]
         self.y = coords[1]
 
-    def completeTasks(self, path, mines):
+    def completeTasks(self):
         for i in range(len(self.tasks)):
-            self.goto(self.tasks[i])
-            self.takePhoto() # Small Placeholder should be self explainitory
-            self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
+            if ():
+                self.goto(self.tasks[i])
+                self.takePhoto() # Small Placeholder should be self explainitory
+                self.processPhoto() # Big Placeholder (Will need to be in consideration with the current path and mine list)
+
+
+            '''
+            FUTURE IMPLEMENTATIONS
             # Meet with Jack to figure out how his code is designed to work (this is were the path is recalculated also current path should be updated)
             # Recalculation is contingent on found mine being exigent
             # Call for a remeet if path is changed, clears current task cache is that happens and breaks
+            '''
         # Clears task cache
     
     def recall(self):
@@ -61,7 +67,23 @@ class Drone:
         self.x
         self.y
     
-    
+    # This is a hard coded mess and will need to be done
+    def selfLoop(self, path:Path):
+        while (True):
+            gotoCoords = gotoDiv.gotoPath(currentPath)
+            diviedGoto = []
+            for y in range(len(gotoCoords)/len(drones)):
+                diviedGoto.append(gotoCoords[id*6+y])
+            self.updateTasks(diviedGoto)
+            self.completeTasks()
+            for i in range(4):
+                if (id == i):
+                    # Broadcast new minedata and new sight data
+                    broadcast()
+                else:
+                    # Recieve new minedata and new sight data
+                    recieve()
+
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
@@ -70,6 +92,7 @@ class Path:
         self.chain = chain
         self.width = width
         self.weight = length/width
+
 
 timeLimit = 120 # Time limit in seconds
 fieldSizeX = 3600 # The max size of the field in inches
@@ -80,6 +103,7 @@ currentPath = Path() # Current Working Path SEE ABOVE
 drones = [Drone(id=0), Drone(id=1), Drone(id=2), Drone(id=3)] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
 
+'''
 # Vestigial at the moment, but will be the "lead drone's" commanding thread
 def mainLoop():
     while (True):
@@ -125,3 +149,5 @@ def mainLoop():
                 # Recalculate Path
                 # Loop (⌐▨_▨)
     print(stopCondition)
+
+'''
