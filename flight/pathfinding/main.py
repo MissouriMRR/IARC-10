@@ -21,13 +21,14 @@ def polygonMask(node1:nodeg.Node, node2:nodeg.Node, array_size:tuple[int, int]):
 
 # This class represents the actual drones
 class Drone:
-    def __init__(self, coords:tuple[int,int] = (1800, 960), state:str = "Awaiting Task", mineRadius:int = 36):
+    def __init__(self, coords:tuple[int,int] = (1800, 960), state:str = "Awaiting Task", mineRadius:int = 36, id:int = 0):
         self.x = coords[0]
         self.y = coords[1]
         self.state = state
         self.visionRange = ((1,1), (1,1), (1,1), (1,1))
         self.mineRadius = mineRadius
         self.tasks = []
+        self.id = id
 
     # Updates the corners tracking what the drone is seeing
     def updateVision(self, corners:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = ((1,1), (1,1), (1,1), (1,1))):
@@ -59,6 +60,8 @@ class Drone:
         # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
         self.x
         self.y
+    
+    
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
@@ -72,56 +75,53 @@ timeLimit = 120 # Time limit in seconds
 fieldSizeX = 3600 # The max size of the field in inches
 fieldSizeY = 960 # The max size of the field in inches
 startTime = t.time() # Starting time (Based on global clock)
-previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODe GENERATION
+previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODE GENERATION
 currentPath = Path() # Current Working Path SEE ABOVE
-drones = [Drone(), Drone(), Drone(), Drone()] # Note that the mine radii is in inches and defaults to 
+drones = [Drone(id=0), Drone(id=1), Drone(id=2), Drone(id=3)] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
 
-# Main loop of the canoptek scarab hive mind
-while (True):
-    if (t.time() - startTime > timeLimit):
+# Vestigial at the moment, but will be the "lead drone's" commanding thread
+def mainLoop():
+    while (True):
+        if (t.time() - startTime > timeLimit):
 
-        # Dumps the current path to app
+            # Dumps the current path to app
 
-        # Rudimentary implementation
-        for i in range(len(drones)):
-                    drones[i].recall()
+            # Rudimentary implementation
+            for i in range(len(drones)):
+                        drones[i].recall()
 
-        stopCondition = "Timed out"
-        break
-    if (previousPath.weight < currentPath.weight):
-        stopCondition = "Optimal Path Found"
+            stopCondition = "Timed out"
+            break
+        if (previousPath.weight < currentPath.weight):
+            stopCondition = "Optimal Path Found"
 
-        # Dumps the most optimal path to the app (This would be a function)
+            # Dumps the most optimal path to the app (This would be a function)
 
-        # Rudimentary implementation
-        for i in range(len(drones)):
-            drones[i].recall()
+            # Rudimentary implementation
+            for i in range(len(drones)):
+                drones[i].recall()
 
-        break
-    else:
-        # Recursion needed here
-        gotoCoords = gotoDiv.gotoPath(currentPath)
-        for i in range(len(drones)):
-            diviedGoto = []
-            for y in range(len(gotoCoords)/len(drones)):
-                diviedGoto.append(gotoCoords[i*6+y])
-            drones[i].updateTasks(diviedGoto)
-            drones[i].completeTasks() # This will likely need to be changed to allow for the code to continue while this runs
-        
-        # Something to wait for all drones to finish their tasks
+            break
+        else:
+            # Recursion needed here
+            gotoCoords = gotoDiv.gotoPath(currentPath)
+            for i in range(len(drones)):
+                diviedGoto = []
+                for y in range(len(gotoCoords)/len(drones)):
+                    diviedGoto.append(gotoCoords[i*6+y])
+                drones[i].updateTasks(diviedGoto)
+                drones[i].completeTasks() # This will likely need to be changed to allow for the code to continue while this runs
+            
+            # Something to wait for all drones to finish their tasks
 
-        # Drones reconvene after finishing performing their respective tasks confirming the found path and saving it as the previous path before incrementing
-        for i in range(len(drones)):
-            drones[i].goto(gotoCoords[len(gotoCoords)/2]) # DO NOT LEAVE THIS IN AND THEN FLY THE DRONES, THIS NEEDS TO BE REPLACED WITH SOMETHING SMARTER
+            # Drones reconvene after finishing performing their respective tasks confirming the found path and saving it as the previous path before incrementing
+            for i in range(len(drones)):
+                drones[i].goto(gotoCoords[len(gotoCoords)/2]) # DO NOT LEAVE THIS IN AND THEN FLY THE DRONES, THIS NEEDS TO BE REPLACED WITH SOMETHING SMARTER
 
-            # Confirm Current Path
-            # Save Current Path as Previous
-            drones[i].mineRadius += 1
-            # Recalculate Path
-            # Loop (⌐▨_▨)
-
-
-        
-
-print(stopCondition)
+                # Confirm Current Path
+                # Save Current Path as Previous
+                drones[i].mineRadius += 1
+                # Recalculate Path
+                # Loop (⌐▨_▨)
+    print(stopCondition)
