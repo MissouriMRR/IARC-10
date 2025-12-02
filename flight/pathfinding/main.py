@@ -6,6 +6,16 @@ import numpy as np
 import time as t
 from PIL import Image, ImageDraw
 
+# Stuff that vision imported
+from vision.common import BoundingBox, Coordinate, Attitude, CameraInfo
+from vision.camera import takeImage, start_camera
+from vision.mine_detection import detect_mines
+from collections.abc import Iterable
+from picamera2 import Picamera2
+import cv2
+#import cv2.typing
+import numpy.typing as npt
+
 # Function for generating polygon masks based on node to node connections
 # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
 def polygonMask(node1:nodeg.Node, node2:nodeg.Node, array_size:tuple[int, int]):
@@ -59,6 +69,43 @@ class Drone:
         # Simple idea is drawing a line from the point center and finding that intersect with the bounds and sending the dorne there to land
         self.x
         self.y
+
+    def takePhoto(self, photo_path: str, camera: Picamera2) -> Iterable[Coordinate]:
+        # we have to pass in the camera object since it has to be set up before capturing the image, and is 
+        # only called to actually take the picture. This can be started up and created with the start_camera() function
+
+        #take the picture with the camera
+        takeImage(camera,photo_path)
+
+        # turn the photo into an image object
+        image: npt.NDArray[np.uint8] = cv2.imread('your_image.jpg')
+        #grab each corner and return them as coords
+        height, width = image.shape[:2]
+        
+        # some placeholder stuff
+        # I'LL HAVE TO SWAP THESE OUT FOR STUFF THAT I ACTUALLY GRAB FROM THE DRONE
+        tempCamCoord: Coordinate
+        tempAttitude: Attitude
+        tempCamInfo: CameraInfo
+
+        #convert to coordinate data type
+        top_left: Coordinate = Coordinate.from_image_coord(0,0,width,height,tempCamCoord,tempAttitude,tempCamInfo) # all four of these are (row,col)
+        top_right: Coordinate = Coordinate.from_image_coord(0,(width-1),width,height,tempCamCoord,tempAttitude,tempCamInfo)
+        bottom_left: Coordinate = Coordinate.from_image_coord((height-1),0,width,height,tempCamCoord,tempAttitude,tempCamInfo)
+        bottom_right: Coordinate = Coordinate.from_image_coord((height-1),(width-1),width,height,tempCamCoord,tempAttitude,tempCamInfo)
+        corners: Iterable[Coordinate] = [top_left,top_right,bottom_left,bottom_right]
+        return corners
+    
+    def processPhoto(photo_path: str):
+        image = cv2.imread(photo_path)
+
+        # some placeholder stuff
+        # I'LL HAVE TO SWAP THESE OUT FOR STUFF THAT I ACTUALLY GRAB FROM THE DRONE
+        tempCamCoord: Coordinate
+        tempAttitude: Attitude
+        tempCamInfo: CameraInfo
+
+        return detect_mines(image,tempCamCoord,tempAttitude,tempCamInfo)
 
 # This is a place holder for the output from generating the fastest path.
 class Path:

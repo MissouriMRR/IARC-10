@@ -15,7 +15,7 @@ def detect_mines(
     coord: Coordinate,
     attitude: Attitude,
     camera_info: CameraInfo,
-) -> Iterable[tuple[Coordinate, float]]:
+) -> Iterable[Coordinate]:
     """
     Detect mines and return coordinates.
 
@@ -32,6 +32,8 @@ def detect_mines(
     -------
     Iterable[tuple[Coordinate, float]]
         The coordinates and confidence scores of the detected mines.
+        The current version just returns an iterable of the coordinate objects, but the 
+        confidence scores can be added back
     """
     #get all of the boxes from the image detection
     mineBoxes: Iterable[BoundingBox] = detect_mines_in_image(image)
@@ -39,9 +41,11 @@ def detect_mines(
     coordBoxes: Iterable[tuple[Coordinate, float]]
     #loop through all box images and turn them into coordinates
     for box in mineBoxes:
-        coord: Coordinate = Coordinate.from_image_coord(box.x_min, box.y_min, box.width, box.height, attitude, camera_info)
-        coordBox: tuple[Coordinate, float] = (coord,box.confidence)
-        coordBoxes.append(coordBox)
+        tempCoord: Coordinate = Coordinate.from_image_coord(box.x_min, box.y_min, box.width, box.height, coord, attitude, camera_info)
+        coordBoxes.append(tempCoord)
+        #these lines are what you'll add back whenever you want the confidence intervals in with the coords
+        #coordBox: tuple[Coordinate, float] = (tempCoord,box.confidence)
+        #coordBoxes.append(coordBox)
     return coordBoxes
 
 def detect_mines_in_image(image: cv2.typing.MatLike) -> Iterable[BoundingBox]:
