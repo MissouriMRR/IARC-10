@@ -263,7 +263,7 @@ class Node:
             self.name = name 
 
 
-    def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str=''):
+    def __init__(self,parentMine:"Mine",targetMine:"Mine",internal:bool=True,primary:bool=True,name:str='',primaryType:str='default'):
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "Node ID: "+ str(Node.nodeNum)
@@ -566,6 +566,8 @@ X=Done
  - Establish a list of paths between connected Nodes
  - Terminate internal bitangents unless external bitangents are intersecting ???
  - Combine all node lists into one
-
-
+ - Generate Hugging Nodes
+ - Generate Floating Nodes
+ - Termination Way?:
+    + check if a pair of nodes can exist before actually cerating them.
 """
