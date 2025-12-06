@@ -6,12 +6,44 @@ import asyncio
 import server
 import client
 import json
-import sys
+import argparse
 
 
 async def main():
     # Create jsonConfigData instance to get data from config file
     jsonConfigData: json_config_reader = json_config_reader()
+
+    # Create flag parser
+    parser = argparse.ArgumentParser()
+
+    # ID flag -i <Drone ID>
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    # Startup override flag -i (1=override, anything else does not override)
+    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
+
+    # Stores flag arguments passed on startup
+    args = parser.parse_args()
+
+    # Get our drones id from the flag if provided
+    droneId: int
+    if args.id is not None:
+        droneId = args.id
+        jsonConfigData.set_self_id(droneId)
+    else:
+        droneId = int(jsonConfigData.get_self_id())
+
+    # TODO temporary startup skip flag. Need to rework this for a better system flag system
+    # Check for system to arg to skip json config startup sequence
+
+    startUpOverride: bool
+    try:
+        value = args.skip
+        if value == 1:
+            startUpOverride = True
+        else:
+            startUpOverride = False
+    except Exception:
+        startUpOverride = False
 
     # Create Server and Client Data queues to pass data in and out of tasks
     serverOutData: Queue[str] = asyncio.Queue()
@@ -20,7 +52,7 @@ async def main():
 
     # Instantiate Server and Client
     serverInstance = server.Server(
-        jsonConfigData=jsonConfigData, serverOutData=serverOutData
+        jsonConfigData=jsonConfigData, serverOutData=serverOutData, droneId=droneId
     )
     clientInstance = client.Client(
         jsonConfigData=jsonConfigData,
@@ -31,13 +63,6 @@ async def main():
     # Run both server and client concurrently
     serverTask = asyncio.create_task(serverInstance.start_server_async())
     clientTask = asyncio.create_task(clientInstance.start_client_async())
-
-    # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
-    droneId: int
-    try:
-        droneId = int(sys.argv[1])
-    except Exception:
-        droneId = jsonConfigData.get_self_id()
 
     speedTestMessage: MessageData = {
         "messageId": 513,
@@ -149,10 +174,16 @@ async def main():
             print("\nNo results collected!")
 
         print("=" * 70 + "\n")
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         print("Shutting down...")
-        _ = serverTask.cancel()
-        _ = clientTask.cancel()
+    finally:
+        serverTask.cancel()
+        clientTask.cancel()
+        # Wait for tasks to complete cancellation
+        try:
+            await asyncio.gather(serverTask, clientTask, return_exceptions=True)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
