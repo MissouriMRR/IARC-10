@@ -1,6 +1,5 @@
 from asyncio.queues import Queue as AsyncQueue
 import queue
-import json
 import threading
 import asyncio
 import concurrent.futures
@@ -119,24 +118,6 @@ async def start_networking(
     startupOverride: bool,
     jsonConfigData: json_config_reader,
 ) -> None:
-    # If not drone 1 and not overriding startup, wait for config update
-
-    if droneId != 1 and not startupOverride:
-        print("Creating startup server...")
-        startupServerOut: AsyncQueue[str] = asyncio.Queue()
-        startupServerInstance = server.Server(
-            jsonConfigData=jsonConfigData, serverOutData=startupServerOut
-        )
-        serverTask = asyncio.create_task(startupServerInstance.start_server_async())
-        while True:
-            if not startupServerOut.empty():
-                if await startupServerOut.get() == "JSON Overwritten!":
-                    break
-            await asyncio.sleep(1)
-        await asyncio.sleep(10)
-        print(f"JSON overwritten on drone {droneId}, reinitializing reader")
-        jsonConfigData = json_config_reader()
-
     # Instantiate Server and Client
     serverInstance = server.Server(
         jsonConfigData=jsonConfigData, serverOutData=serverOutData
@@ -206,66 +187,8 @@ def main() -> None:
             "payload": "Hello server!",
         },
     }
-    jsonOverwriteMessage: MessageData = {
-        "messageId": 501,
-        "dronesToSendData": [],
-        "data": {
-            "successfulOverwrite": False,
-            "payload": "",
-        },
-    }
 
-    # Startup sequence for drone 1
-    if droneId == 1 and not startupOverride:
-        otherDroneIds = [
-            i
-            for i in range(1, jsonConfigData.get_number_of_drones() + 1)
-            if i != droneId
-        ]
-        print(f"Other drones: {otherDroneIds}")
-
-        # Send config to all other drones
-        for targetId in otherDroneIds:
-            msg = jsonOverwriteMessage.copy()
-            msg["dronesToSendData"] = [targetId]
-            msg["data"] = msg["data"].copy()
-            msg["data"]["payload"] = jsonConfigData.get_json_text_data_for_startup(
-                targetId
-            )
-            print(f"Sending config to drone {targetId}")
-            networking.queue_client_message(msg)
-
-        # Wait for confirmations
-        while otherDroneIds:
-            clientMsg = networking.try_get_client_response(timeout=0.1)
-            if clientMsg is not None:
-                try:
-                    clientMsgJson: MessageData = json.loads(clientMsg)
-                    if clientMsgJson.get("messageId") == 501:
-                        if clientMsgJson["data"]["successfulOverwrite"]:
-                            idToRemove = clientMsgJson["dronesToSendData"][0]
-                            if idToRemove in otherDroneIds:
-                                otherDroneIds.remove(idToRemove)
-                                print(f"Drone {idToRemove} confirmed config update")
-                        else:
-                            # Resend on timeout
-                            idToResend = clientMsgJson["dronesToSendData"][0]
-                            print(f"Timeout, resending to drone {idToResend}")
-                            msg = jsonOverwriteMessage.copy()
-                            msg["dronesToSendData"] = [idToResend]
-                            msg["data"] = msg["data"].copy()
-                            msg["data"]["payload"] = (
-                                jsonConfigData.get_json_text_data_for_startup(
-                                    idToResend
-                                )
-                            )
-                            networking.queue_client_message(msg)
-                except Exception as e:
-                    print(f"Error parsing client message: {e}")
-
-            time.sleep(0.1)
-
-        networking.queue_client_message(heartbeatMessage)
+    networking.queue_client_message(heartbeatMessage)
 
     # Main loop
     try:
