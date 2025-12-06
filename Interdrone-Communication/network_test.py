@@ -52,7 +52,7 @@ async def main():
 
     # Instantiate Server and Client
     serverInstance = server.Server(
-        jsonConfigData=jsonConfigData, serverOutData=serverOutData, droneId=droneId
+        jsonConfigData=jsonConfigData, serverOutData=serverOutData
     )
     clientInstance = client.Client(
         jsonConfigData=jsonConfigData,

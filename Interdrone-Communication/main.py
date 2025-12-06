@@ -8,13 +8,6 @@ import server
 import client
 import argparse
 
-# DOCS: How to merge this with path finding:
-"""
-1: Change this to a async start_networking() function that runs as a task from real main function
-2. Pass in clientInData, clientOutData, and serverOutData 
-3. May need to put this code on a separate thread or something and find a way to pass queues in across threads (gonna be a necessary pain :( )
-"""
-
 
 async def main():
     # Create jsonConfigData instance to get data from config file
