@@ -1,3 +1,5 @@
+from asyncio.events import AbstractEventLoop
+from asyncio.queues import Queue
 from asyncio.queues import Queue as AsyncQueue
 import queue
 import threading
@@ -13,7 +15,7 @@ import argparse
 import time
 
 
-# Thread-safe interface to communicate with the async networking layer
+# Thread safe interface to communicate with the async networking layer
 class NetworkingInterface:
     def __init__(
         self,
@@ -22,21 +24,21 @@ class NetworkingInterface:
         clientOut: AsyncQueue[str],
         serverOut: AsyncQueue[str],
     ) -> None:
-        self.loop = loop
-        self.clientIn = clientIn
-        self.clientOut = clientOut
-        self.serverOut = serverOut
+        self.loop: AbstractEventLoop = loop
+        self.clientIn: Queue[MessageData] = clientIn
+        self.clientOut: Queue[str] = clientOut
+        self.serverOut: Queue[str] = serverOut
         self._clientOutFuture: concurrent.futures.Future[str] | None = None
         self._serverOutFuture: concurrent.futures.Future[str] | None = None
 
-    # Send a message to the client (thread-safe)
+    # Send a message to the client
     def queue_client_message(
         self, message: MessageData, timeout: float | None = None
     ) -> None:
         future = asyncio.run_coroutine_threadsafe(self.clientIn.put(message), self.loop)
         future.result(timeout=timeout)
 
-    # Check if client input queue is empty (thread-safe)
+    # Check if client input queue is empty
     def is_client_in_empty(self) -> bool:
         future = asyncio.run_coroutine_threadsafe(
             self.check_queue_empty(self.clientIn), self.loop
@@ -46,7 +48,7 @@ class NetworkingInterface:
     async def check_queue_empty(self, q: AsyncQueue[Any]) -> bool:
         return q.empty()
 
-    # Try to get a response from client (non-blocking with timeout)
+    # Try to get a response from client
     def try_get_client_response(self, timeout: float = 0.0) -> str | None:
         if self._clientOutFuture is None:
             self._clientOutFuture = asyncio.run_coroutine_threadsafe(
@@ -59,7 +61,7 @@ class NetworkingInterface:
         except concurrent.futures.TimeoutError:
             return None
 
-    # Try to get a message from server (non-blocking with timeout)
+    # Try to get a message from server
     def try_get_server_message(self, timeout: float = 0.0) -> str | None:
         if self._serverOutFuture is None:
             self._serverOutFuture = asyncio.run_coroutine_threadsafe(
@@ -76,11 +78,9 @@ class NetworkingInterface:
 # Run the async networking stack on its own thread
 def run_networking_thread(
     resourcesReady: queue.Queue[NetworkingInterface],
-    droneId: int,
-    startupOverride: bool,
     jsonConfigData: json_config_reader,
 ) -> None:
-    loop = asyncio.new_event_loop()
+    loop: AbstractEventLoop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     clientIn: AsyncQueue[MessageData] = asyncio.Queue()
@@ -102,8 +102,6 @@ def run_networking_thread(
             clientInData=clientIn,
             clientOutData=clientOut,
             serverOutData=serverOut,
-            droneId=droneId,
-            startupOverride=startupOverride,
             jsonConfigData=jsonConfigData,
         )
     )
@@ -114,8 +112,6 @@ async def start_networking(
     clientInData: AsyncQueue[MessageData],
     clientOutData: AsyncQueue[str],
     serverOutData: AsyncQueue[str],
-    droneId: int,
-    startupOverride: bool,
     jsonConfigData: json_config_reader,
 ) -> None:
     # Instantiate Server and Client
@@ -148,7 +144,7 @@ def main() -> None:
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--id", help="Self ID", type=int)
-    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
+    # parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
     args = parser.parse_args()
 
     # Load config
@@ -161,20 +157,17 @@ def main() -> None:
     else:
         droneId = int(jsonConfigData.get_self_id())
 
-    # Check startup override
-    startupOverride = args.skip == 1 if args.skip is not None else False
-
     # Start networking thread
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=run_networking_thread,
-        args=(resourcesReady, droneId, startupOverride, jsonConfigData),
+        args=(resourcesReady, jsonConfigData),
         daemon=True,
     )
     networkingThread.start()
 
     # Wait for networking to be ready
-    networking = resourcesReady.get()
+    networking: NetworkingInterface = resourcesReady.get()
     print("Networking interface ready")
 
     # Message templates
@@ -191,6 +184,7 @@ def main() -> None:
     networking.queue_client_message(heartbeatMessage)
 
     # Main loop
+    msgNum = 0  # Used for testing
     try:
         while True:
             # Check for server messages
@@ -201,7 +195,8 @@ def main() -> None:
             # Check for client responses
             clientMsg = networking.try_get_client_response(timeout=0.02)
             if clientMsg is not None:
-                print(f"Client Data: {clientMsg}")
+                msgNum += 1
+                print(f"Client Data: {msgNum}")
 
             # Send heartbeat if queue is empty
             if networking.is_client_in_empty():
