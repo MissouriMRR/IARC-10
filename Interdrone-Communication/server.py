@@ -21,7 +21,7 @@ class Server:
         self.serverOutData: Queue[str] = serverOutData
 
         # Check for droneId from flag in main.py
-        self.droneId = jsonConfigData.get_self_id()
+        self.droneId: int = jsonConfigData.get_self_id()
 
     # Async server startup
     async def start_server_async(self):
@@ -46,7 +46,7 @@ class Server:
             # Read all data from client until end of data char (\n)
             messageData = await reader.readuntil(b"\n")
             if messageData:
-                message = messageData.decode()
+                message: str = messageData.decode()
                 jsonMessage: MessageData = json.loads(message)
                 responseMessage = "Server received your message!"
                 # Check for messageId and perform required operations
