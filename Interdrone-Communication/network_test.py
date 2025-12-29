@@ -1,4 +1,3 @@
-from asyncio.queues import Queue
 from typed_dicts_classes import MessageData
 from json_config_reader import json_config_reader
 
@@ -7,49 +6,54 @@ import server
 import client
 import json
 import argparse
+from asyncio.events import AbstractEventLoop
+from asyncio.queues import Queue as AsyncQueue
+import queue
+import threading
 
 
-async def main():
-    # Create jsonConfigData instance to get data from config file
-    jsonConfigData: json_config_reader = json_config_reader()
+from networking_interface import NetworkingInterface
 
-    # Create flag parser
-    parser = argparse.ArgumentParser()
 
-    # ID flag -i <Drone ID>
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    # Startup override flag -i (1=override, anything else does not override)
-    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
+# Run the async networking stack on its own thread
+def run_networking_thread(
+    resourcesReady: queue.Queue[NetworkingInterface],
+    jsonConfigData: json_config_reader,
+) -> None:
+    loop: AbstractEventLoop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # Stores flag arguments passed on startup
-    args = parser.parse_args()
+    clientIn: AsyncQueue[MessageData] = asyncio.Queue()
+    clientOut: AsyncQueue[str] = asyncio.Queue()
+    serverOut: AsyncQueue[str] = asyncio.Queue()
 
-    # Get our drones id from the flag if provided
-    droneId: int
-    if args.id is not None:
-        droneId = args.id
-        jsonConfigData.set_self_id(droneId)
-    else:
-        droneId = int(jsonConfigData.get_self_id())
+    # Provide interface to main thread
+    resourcesReady.put(
+        NetworkingInterface(
+            loop=loop,
+            clientIn=clientIn,
+            clientOut=clientOut,
+            serverOut=serverOut,
+        )
+    )
 
-    # TODO temporary startup skip flag. Need to rework this for a better system flag system
-    # Check for system to arg to skip json config startup sequence
+    loop.run_until_complete(
+        start_networking(
+            clientInData=clientIn,
+            clientOutData=clientOut,
+            serverOutData=serverOut,
+            jsonConfigData=jsonConfigData,
+        )
+    )
 
-    startUpOverride: bool
-    try:
-        value = args.skip
-        if value == 1:
-            startUpOverride = True
-        else:
-            startUpOverride = False
-    except Exception:
-        startUpOverride = False
 
-    # Create Server and Client Data queues to pass data in and out of tasks
-    serverOutData: Queue[str] = asyncio.Queue()
-    clientInData: Queue[MessageData] = asyncio.Queue()
-    clientOutData: Queue[str] = asyncio.Queue()
-
+# Async networking entry point - runs server and client
+async def start_networking(
+    clientInData: AsyncQueue[MessageData],
+    clientOutData: AsyncQueue[str],
+    serverOutData: AsyncQueue[str],
+    jsonConfigData: json_config_reader,
+) -> None:
     # Instantiate Server and Client
     serverInstance = server.Server(
         jsonConfigData=jsonConfigData, serverOutData=serverOutData
@@ -60,9 +64,51 @@ async def main():
         clientOutData=clientOutData,
     )
 
-    # Run both server and client concurrently
+    # Run both concurrently
     serverTask = asyncio.create_task(serverInstance.start_server_async())
     clientTask = asyncio.create_task(clientInstance.start_client_async())
+
+    print("Server and Client started")
+
+    try:
+        # Keep the networking loop alive
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print("Networking shutting down...")
+        serverTask.cancel()
+        clientTask.cancel()
+
+
+async def main():
+    # Parse arguments in main thread
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    # parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
+    args = parser.parse_args()
+
+    # Load config
+    jsonConfigData = json_config_reader()
+
+    # Get drone ID
+    if args.id is not None:
+        droneId = args.id
+        jsonConfigData.set_self_id(droneId)
+    else:
+        droneId = int(jsonConfigData.get_self_id())
+
+    # Start networking thread
+    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    networkingThread = threading.Thread(
+        target=run_networking_thread,
+        args=(resourcesReady, jsonConfigData),
+        daemon=True,
+    )
+    networkingThread.start()
+
+    # Wait for networking to be ready
+    networking: NetworkingInterface = resourcesReady.get()
+    print("Networking interface ready")
 
     speedTestMessage: MessageData = {
         "messageId": 513,
@@ -89,12 +135,12 @@ async def main():
         i = 0
         speedResults: list[MessageData] = []
         # Add network test message to clientQueue to send
-        await clientInData.put(item=speedTestMessage)
+        networking.queue_client_message(message=speedTestMessage)
         # Send messages until numberOfQueries is hit
         while i < numberOfQueries:
-            # Check for clientOutData from the client task
-            if not clientOutData.empty():
-                clientMsg = await clientOutData.get()
+            # Check for client responses
+            clientMsg = networking.try_get_client_response(timeout=0.02)
+            if clientMsg is not None:
                 # Print speed test results
                 try:
                     result: MessageData = json.loads(clientMsg)
@@ -105,8 +151,8 @@ async def main():
                     print(f"Error processing result: {e}")
                     print(f"Client Data: {clientMsg}")
             # If previous message has been sent, add new one to queue
-            if clientInData.empty():
-                await clientInData.put(item=speedTestMessage)
+            if networking.is_client_in_empty():
+                networking.queue_client_message(message=speedTestMessage)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
         # Print results summary
@@ -176,14 +222,6 @@ async def main():
         print("=" * 70 + "\n")
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("Shutting down...")
-    finally:
-        serverTask.cancel()
-        clientTask.cancel()
-        # Wait for tasks to complete cancellation
-        try:
-            await asyncio.gather(serverTask, clientTask, return_exceptions=True)
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

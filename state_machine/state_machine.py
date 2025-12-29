@@ -35,7 +35,9 @@ class StateMachine:
         Cancel the currently running state loop.
     """
 
-    def __init__(self, initial_state: State, drone: Drone, flight_settings: FlightSettings):
+    def __init__(
+        self, initial_state: State, drone: Drone, flight_settings: FlightSettings
+    ):
         """
         Initialize a new state machine object.
 
@@ -68,7 +70,14 @@ class StateMachine:
 
         if initial_state is not None:
             self.current_state = initial_state
+        """
+        #Interdrone start networking basic:
+        serverOutData: Queue[str] = asyncio.Queue()
+        clientInData: Queue[MessageData] = asyncio.Queue()
+        clientOutData: Queue[str] = asyncio.Queue()
+        networkingThread = startNetworking
 
+        """
         run_task: Task[None] = asyncio.ensure_future(self._run())
         self.run_task = run_task
         logging.info("State Machine started")
