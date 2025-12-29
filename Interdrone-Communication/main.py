@@ -1,80 +1,57 @@
-from asyncio.queues import Queue
-import json
+from asyncio.events import AbstractEventLoop
+from asyncio.queues import Queue as AsyncQueue
+import queue
+import threading
+import asyncio
+
 from typed_dicts_classes import MessageData
 from json_config_reader import json_config_reader
-
-import asyncio
+from networking_interface import NetworkingInterface
 import server
 import client
 import argparse
+import time
 
 
-async def main():
-    # Create jsonConfigData instance to get data from config file
-    jsonConfigData: json_config_reader = json_config_reader()
+# Run the async networking stack on its own thread
+def run_networking_thread(
+    resourcesReady: queue.Queue[NetworkingInterface],
+    jsonConfigData: json_config_reader,
+) -> None:
+    loop: AbstractEventLoop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # Create flag parser
-    parser = argparse.ArgumentParser()
+    clientIn: AsyncQueue[MessageData] = asyncio.Queue()
+    clientOut: AsyncQueue[str] = asyncio.Queue()
+    serverOut: AsyncQueue[str] = asyncio.Queue()
 
-    # ID flag -i <Drone ID>
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    # Startup override flag -i (1=override, anything else does not override)
-    parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
-
-    # Stores flag arguments passed on startup
-    args = parser.parse_args()
-
-    # Get our drones id from the flag if provided
-    droneId: int
-    if args.id is not None:
-        droneId = args.id
-        jsonConfigData.set_self_id(droneId)
-    else:
-        droneId = int(jsonConfigData.get_self_id())
-
-    # TODO temporary startup skip flag. Need to rework this for a better system flag system
-    # Check for system to arg to skip json config startup sequence
-
-    startUpOverride: bool
-    try:
-        value = args.skip
-        if value == 1:
-            startUpOverride = True
-        else:
-            startUpOverride = False
-    except Exception:
-        startUpOverride = False
-
-    # If not drone 1 and we're not overriding startup, start a temporary server and wait for update json file.
-    if droneId != 1 and not startUpOverride:
-        # TODO FIX THIS TO GET CURRENT IP FROM SYSTEM AND USE THAT FOR TEMP IP
-        # Only start temp server and then move on to standard execution
-
-        print("creating startupServer")
-        startupServerOutData: Queue[str] = asyncio.Queue()
-        startupServerInstance = server.Server(
-            jsonConfigData=jsonConfigData, serverOutData=startupServerOutData
+    # Provide interface to main thread
+    resourcesReady.put(
+        NetworkingInterface(
+            loop=loop,
+            clientIn=clientIn,
+            clientOut=clientOut,
+            serverOut=serverOut,
         )
-        serverTask = asyncio.create_task(startupServerInstance.start_server_async())
-        while True:
-            # check for updated json message
-            if not startupServerOutData.empty():
-                # Check to see if JSON has been overwritten
-                if await startupServerOutData.get() == "JSON Overwritten!":
-                    break
-            await asyncio.sleep(1)
-        # Re-init jsonConfigData
-        await asyncio.sleep(10)
-        print(f"JSON overwritten on drone {droneId} and reinitializing the reader")
-        jsonConfigData = json_config_reader()
-        # may need code in here to get ip from pi and then it manually in config
+    )
 
-    # Create Server and Client Data queues to pass data in and out of tasks
-    serverOutData: Queue[str] = asyncio.Queue()
-    clientInData: Queue[MessageData] = asyncio.Queue()
-    # TODO POST LVP: TALK TO TEAM AND TRANSITION OVER TO USING MESSAGE DATA FOR CLIENT OUTPUT. MAJOR CHANGE
-    clientOutData: Queue[str] = asyncio.Queue()
+    loop.run_until_complete(
+        start_networking(
+            clientInData=clientIn,
+            clientOutData=clientOut,
+            serverOutData=serverOut,
+            jsonConfigData=jsonConfigData,
+        )
+    )
 
+
+# Async networking entry point - runs server and client
+async def start_networking(
+    clientInData: AsyncQueue[MessageData],
+    clientOutData: AsyncQueue[str],
+    serverOutData: AsyncQueue[str],
+    jsonConfigData: json_config_reader,
+) -> None:
     # Instantiate Server and Client
     serverInstance = server.Server(
         jsonConfigData=jsonConfigData, serverOutData=serverOutData
@@ -85,14 +62,54 @@ async def main():
         clientOutData=clientOutData,
     )
 
-    # Run both server and client concurrently
+    # Run both concurrently
     serverTask = asyncio.create_task(serverInstance.start_server_async())
     clientTask = asyncio.create_task(clientInstance.start_client_async())
 
-    # Get our drones id (the sys arg here allows you pass in a self id from command line for efficient testing)
+    print("Server and Client started")
 
-    # Create heartbeat message
-    heartBeatMessage: MessageData = {
+    try:
+        # Keep the networking loop alive
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        print("Networking shutting down...")
+        serverTask.cancel()
+        clientTask.cancel()
+
+
+def main() -> None:
+    # Parse arguments in main thread
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    # parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
+    args = parser.parse_args()
+
+    # Load config
+    jsonConfigData = json_config_reader()
+
+    # Get drone ID
+    if args.id is not None:
+        droneId = args.id
+        jsonConfigData.set_self_id(droneId)
+    else:
+        droneId = int(jsonConfigData.get_self_id())
+
+    # Start networking thread
+    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    networkingThread = threading.Thread(
+        target=run_networking_thread,
+        args=(resourcesReady, jsonConfigData),
+        daemon=True,
+    )
+    networkingThread.start()
+
+    # Wait for networking to be ready
+    networking: NetworkingInterface = resourcesReady.get()
+    print("Networking interface ready")
+
+    # Message templates
+    heartbeatMessage: MessageData = {
         "messageId": 504,
         "dronesToSendData": [],
         "data": {
@@ -101,110 +118,33 @@ async def main():
             "payload": "Hello server!",
         },
     }
-    taskMessage: MessageData = {
-        "messageId": 604,
-        "dronesToSendData": [1],
-        "data": {
-            "timestamp": 0.0,
-            "senderId": droneId,
-            "payload": "Hello server!",
-        },
-    }
-    jsonOverwriteStartupMessage: MessageData = {
-        "messageId": 501,
-        "dronesToSendData": [],
-        "data": {
-            "successfulOverwrite": False,
-            "payload": "",
-        },
-    }
 
+    networking.queue_client_message(heartbeatMessage)
+
+    # Main loop
+    msgNum = 0  # Used for testing
     try:
-        print("Server and Client started")
-
-        # Startup loop for drone 1 to send updated config to all other drones. Does not run if start up is overridden
-        if droneId == 1 and not startUpOverride:
-            # Instantiate otherDrones lists
-            otherDronesIds: list[int] = []
-            # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
-            for i in range(1, jsonConfigData.get_number_of_drones() + 1):
-                # If drone is self (drone running this script) don't add them otherDrones list
-                if i != droneId:
-                    # Add other drones IP and Ports to their respective lists
-                    otherDronesIds.append(i)
-            print(otherDronesIds)
-            # move this up to above while loop and then have time out else logic inside if not empty
-            for id in otherDronesIds:
-                messageToSend = jsonOverwriteStartupMessage.copy()
-                messageToSend["dronesToSendData"] = [id]
-                messageToSend["data"] = messageToSend["data"].copy()
-                messageToSend["data"]["payload"] = (
-                    jsonConfigData.get_json_text_data_for_startup(id)
-                )
-                print(messageToSend["dronesToSendData"])
-                await clientInData.put(messageToSend)
-            while otherDronesIds:
-                if not clientOutData.empty():
-                    clientMsg: str = await clientOutData.get()
-                    try:
-                        clientMsgJson: MessageData = json.loads(clientMsg)
-                        if clientMsgJson.get("messageId") == 501:
-                            if clientMsgJson["data"]["successfulOverwrite"]:
-                                idToRemove = clientMsgJson["dronesToSendData"][0]
-                                if idToRemove in otherDronesIds:
-                                    otherDronesIds.remove(idToRemove)
-                                    print(
-                                        f"Successfully sent new json data to drone {idToRemove} and updated it's file. Now removing it from otherDronesIds list"
-                                    )
-                            else:
-                                # Put time out logic here to add in new message
-                                print("Timeout received, resending...")
-                                idToResend = clientMsgJson["dronesToSendData"][0]
-                                messageToSend = jsonOverwriteStartupMessage.copy()
-                                messageToSend["dronesToSendData"] = [idToResend]
-                                messageToSend["data"] = messageToSend["data"].copy()
-                                messageToSend["data"]["payload"] = (
-                                    jsonConfigData.get_json_text_data_for_startup(
-                                        idToResend
-                                    )
-                                )
-                                await clientInData.put(messageToSend)
-
-                    except Exception:
-                        print("Trouble reading clientMsgJson in ")
-                await asyncio.sleep(1)
-            await clientInData.put(item=heartBeatMessage)
-
-        # Continuous loop to send and receive data from server and client
         while True:
-            # Check for serverOutData from the server task
-            if not serverOutData.empty():
-                # data= serverOutData.get()
-                print(f"Server Data: {await serverOutData.get()}")
+            # Check for server messages
+            serverMsg = networking.try_get_server_message(timeout=0.02)
+            if serverMsg is not None:
+                print(f"Server Data: {serverMsg}")
 
-                pass
+            # Check for client responses
+            clientMsg = networking.try_get_client_response(timeout=0.02)
+            if clientMsg is not None:
+                msgNum += 1
+                print(f"Client Data: {msgNum}")
 
-            # Check for clientOutData from the client task
-            if not clientOutData.empty():
-                clientMsg = await clientOutData.get()
-                # Process speed test results if applicable
-                try:
-                    # result = json.loads(clientMsg)
-                    print(f"Client Data: {clientMsg}")
-                except Exception:
-                    print(f"Client Data: {clientMsg}")
+            # Send heartbeat if queue is empty
+            if networking.is_client_in_empty():
+                networking.queue_client_message(heartbeatMessage)
 
-            # If previous heartbeat message has been sent, add new one to queue to be sent
-            if clientInData.empty():
-                await clientInData.put(item=heartBeatMessage)
-
-            await asyncio.sleep(1)  # Adjust sleep time as needed
+            time.sleep(0.1)
 
     except KeyboardInterrupt:
         print("Shutting down...")
-        _ = serverTask.cancel()
-        _ = clientTask.cancel()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
