@@ -20,7 +20,7 @@ class Client:
         self.clientOutData: Queue[str] = clientOutData
 
         # Check for droneId from flag in main.py
-        self.droneId = jsonConfigData.get_self_id()
+        self.droneId: int = jsonConfigData.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
