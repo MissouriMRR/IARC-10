@@ -5,7 +5,6 @@ from typing import Any, TypedDict
 class MessageData(TypedDict):
     messageId: int
     dronesToSendData: list[int]
-    # Update and add types here as needed
     data: dict[str, Any]  # Data has a str type and can be any type
 
 

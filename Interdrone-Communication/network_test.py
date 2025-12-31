@@ -143,6 +143,7 @@ async def main():
             if clientMsg is not None:
                 # Print speed test results
                 try:
+                    # TODO look into the extreme numbers appearing here and try to fix them
                     result: MessageData = json.loads(clientMsg)
                     i += 1
                     speedResults.append(result)
@@ -169,7 +170,10 @@ async def main():
                 float(r["data"]["downloadThroughputKbps"]) for r in speedResults
             ]
             downloadRttMs = [float(r["data"]["downloadRttMs"]) for r in speedResults]
-
+            # TODO investigate issue with 250ms+ times in first couple sends
+            for i in range(len(downloadRttMs)):
+                if downloadRttMs[i] > 1:
+                    print(f"Download rttms was {downloadRttMs[i]} ms at index {i}")
             # Calculate upload statistics
             avgUploadThroughputKbps = sum(uploadThroughputs) / len(uploadThroughputs)
             avgUploadThroughputMbps = avgUploadThroughputKbps / 1000
