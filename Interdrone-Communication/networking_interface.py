@@ -14,15 +14,15 @@ class NetworkingInterface:
         self,
         loop: asyncio.AbstractEventLoop,
         clientIn: AsyncQueue[MessageData],
-        clientOut: AsyncQueue[str],
-        serverOut: AsyncQueue[str],
+        clientOut: AsyncQueue[MessageData],
+        serverOut: AsyncQueue[MessageData],
     ) -> None:
         self.loop: AbstractEventLoop = loop
         self.clientIn: Queue[MessageData] = clientIn
-        self.clientOut: Queue[str] = clientOut
-        self.serverOut: Queue[str] = serverOut
-        self._clientOutFuture: concurrent.futures.Future[str] | None = None
-        self._serverOutFuture: concurrent.futures.Future[str] | None = None
+        self.clientOut: Queue[MessageData] = clientOut
+        self.serverOut: Queue[MessageData] = serverOut
+        self._clientOutFuture: concurrent.futures.Future[MessageData] | None = None
+        self._serverOutFuture: concurrent.futures.Future[MessageData] | None = None
 
     # Send a message to the client
     def queue_client_message(
@@ -45,7 +45,7 @@ class NetworkingInterface:
         return q.empty()
 
     # Try to get a response from client
-    def try_get_client_response(self, timeout: float = 0.0) -> str | None:
+    def try_get_client_response(self, timeout: float = 0.0) -> MessageData | None:
         if self._clientOutFuture is None:
             self._clientOutFuture = asyncio.run_coroutine_threadsafe(
                 self.clientOut.get(), self.loop
@@ -58,7 +58,7 @@ class NetworkingInterface:
             return None
 
     # Try to get a message from server
-    def try_get_server_message(self, timeout: float = 0.0) -> str | None:
+    def try_get_server_message(self, timeout: float = 0.0) -> MessageData | None:
         if self._serverOutFuture is None:
             self._serverOutFuture = asyncio.run_coroutine_threadsafe(
                 self.serverOut.get(), self.loop

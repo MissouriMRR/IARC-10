@@ -13,11 +13,11 @@ class Client:
         self,
         jsonConfigData: json_config_reader,
         clientInData: Queue[MessageData],
-        clientOutData: Queue[str],
+        clientOutData: Queue[MessageData],
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.clientInData: Queue[MessageData] = clientInData
-        self.clientOutData: Queue[str] = clientOutData
+        self.clientOutData: Queue[MessageData] = clientOutData
 
         # Check for droneId from flag in main.py
         self.droneId: int = jsonConfigData.get_self_id()
@@ -148,7 +148,7 @@ class Client:
                 clientMessageJson: MessageData = json.loads(clientMessageDump)
                 if clientMessageJson["messageId"] == 501:
                     clientMessageJson["data"]["payload"] = "Timeout"
-                    await self.clientOutData.put(json.dumps(clientMessageJson))
+                    await self.clientOutData.put(clientMessageJson)
             except Exception as e:
                 print(f"Error processing timeout message: {e}")
             raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
@@ -217,8 +217,9 @@ class Client:
                 # the immutability of the fields in 513. This is an ugly hack,
                 # but it works for now before I refactor messages and make them
                 # their own class in order to enforce immutability.
-                result = {
+                result: MessageData = {
                     "messageId": 514,
+                    "dronesToSendData": [],
                     "data": {
                         "target": f"{serverIP}:{serverPort}",
                         "uploadRttMs": round(uploadTime * 1000, 2),
@@ -227,10 +228,10 @@ class Client:
                         "downloadThroughputKbps": round(downloadThroughputKbps, 2),
                     },
                 }
-                await self.clientOutData.put(item=json.dumps(result))
+                await self.clientOutData.put(item=result)
             case _:
                 # If no message ID, return server response data
-                await self.clientOutData.put(item=serverResponseDump)
+                await self.clientOutData.put(item=serverResponse)
 
     # Helper method to run the async client
     def run(self):
