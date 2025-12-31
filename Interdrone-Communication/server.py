@@ -15,10 +15,10 @@ class Server:
     def __init__(
         self,
         jsonConfigData: json_config_reader,
-        serverOutData: Queue[str],
+        serverOutData: Queue[MessageData],
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
-        self.serverOutData: Queue[str] = serverOutData
+        self.serverOutData: Queue[MessageData] = serverOutData
         self.serverDefaultResponseMessage: MessageData = {
             "messageId": 505,
             "dronesToSendData": [],
@@ -53,8 +53,8 @@ class Server:
             # Read all data from client until end of data char (\n)
             messageData = await reader.readuntil(b"\n")
             if messageData:
-                message: str = messageData.decode()
-                jsonMessage: MessageData = json.loads(message)
+                strMessage: str = messageData.decode()
+                jsonMessage: MessageData = json.loads(strMessage)
 
                 # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MESSAGE 513 FOR AN EXAMPLE
                 responseMessage: MessageData = self.serverDefaultResponseMessage
@@ -63,7 +63,7 @@ class Server:
                     # App test message
                     case 400:
                         print(jsonMessage)
-                        await self.serverOutData.put(item=message)
+                        await self.serverOutData.put(item=jsonMessage)
                     # App config message
                     case 401:
                         # Set json config app fields based on received data here
@@ -85,13 +85,13 @@ class Server:
                             )
                             temp_path.replace(config_path)
                             jsonMessage["data"]["successfulOverwrite"] = True
-                            await self.serverOutData.put(item="JSON Overwritten!")
+                            # await self.serverOutData.put(item="JSON Overwritten!")
                             # Overwrite response message with jsonMessage
                             responseMessage = jsonMessage
                         except Exception as e:
                             print(f"Failed to overwrite JSON file: {e}")
                     case 504:
-                        await self.serverOutData.put(item=message)
+                        await self.serverOutData.put(item=jsonMessage)
                     case 513:
                         # Set final upload time when server receives
                         # Note: We use perf_counter for high precision. While this value is local to the server, the client will use (initialDownloadTime - finalUploadTime) to calculate server processing time.

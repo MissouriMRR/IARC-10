@@ -4,7 +4,6 @@ from json_config_reader import json_config_reader
 import asyncio
 import server
 import client
-import json
 import argparse
 from asyncio.events import AbstractEventLoop
 from asyncio.queues import Queue as AsyncQueue
@@ -24,8 +23,8 @@ def run_networking_thread(
     asyncio.set_event_loop(loop)
 
     clientIn: AsyncQueue[MessageData] = asyncio.Queue()
-    clientOut: AsyncQueue[str] = asyncio.Queue()
-    serverOut: AsyncQueue[str] = asyncio.Queue()
+    clientOut: AsyncQueue[MessageData] = asyncio.Queue()
+    serverOut: AsyncQueue[MessageData] = asyncio.Queue()
 
     # Provide interface to main thread
     resourcesReady.put(
@@ -50,8 +49,8 @@ def run_networking_thread(
 # Async networking entry point - runs server and client
 async def start_networking(
     clientInData: AsyncQueue[MessageData],
-    clientOutData: AsyncQueue[str],
-    serverOutData: AsyncQueue[str],
+    clientOutData: AsyncQueue[MessageData],
+    serverOutData: AsyncQueue[MessageData],
     jsonConfigData: json_config_reader,
 ) -> None:
     # Instantiate Server and Client
@@ -144,9 +143,8 @@ async def main():
                 # Print speed test results
                 try:
                     # TODO look into the extreme numbers appearing here and try to fix them
-                    result: MessageData = json.loads(clientMsg)
                     i += 1
-                    speedResults.append(result)
+                    speedResults.append(clientMsg)
                     print(f"Test {i}/{numberOfQueries} completed")
                 except Exception as e:
                     print(f"Error processing result: {e}")
