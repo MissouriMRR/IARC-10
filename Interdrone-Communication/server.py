@@ -19,6 +19,13 @@ class Server:
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
         self.serverOutData: Queue[str] = serverOutData
+        self.serverDefaultResponseMessage: MessageData = {
+            "messageId": 505,
+            "dronesToSendData": [],
+            "data": {
+                "payload": "Server received your message!",
+            },
+        }
 
         # Check for droneId from flag in main.py
         self.droneId: int = jsonConfigData.get_self_id()
@@ -48,21 +55,22 @@ class Server:
             if messageData:
                 message: str = messageData.decode()
                 jsonMessage: MessageData = json.loads(message)
-                responseMessage = "Server received your message!"
+
+                # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MESSAGE 513 FOR AN EXAMPLE
+                responseMessage: MessageData = self.serverDefaultResponseMessage
                 # Check for messageId and perform required operations
                 match jsonMessage["messageId"]:
                     # App test message
                     case 400:
                         print(jsonMessage)
-                        await self.serverOutData.put(item="OMG the app contacted us!")
+                        await self.serverOutData.put(item=message)
                     # App config message
                     case 401:
                         # Set json config app fields based on received data here
                         self.jsonConfigData.set_app_ip(jsonMessage["data"]["IP"])
                         self.jsonConfigData.set_app_port(jsonMessage["data"]["Port"])
-                    # Startup JSON message
+                    # Startup JSON message TODO REMOVE THIS ONCE NEW PI STARTUP SCRIPT IS IMPLEMENTED
                     case 501:
-                        # TODO need to finish having this overwrite the json file, catching the change in main, and simplifying logic in main to flow better
                         try:
                             # TODO clean this up with MessageData change to have this output MessageData rather than string
                             config_path = Path(__file__).with_name("config.json")
@@ -78,9 +86,12 @@ class Server:
                             temp_path.replace(config_path)
                             jsonMessage["data"]["successfulOverwrite"] = True
                             await self.serverOutData.put(item="JSON Overwritten!")
-                            responseMessage = json.dumps(jsonMessage)
+                            # Overwrite response message with jsonMessage
+                            responseMessage = jsonMessage
                         except Exception as e:
                             print(f"Failed to overwrite JSON file: {e}")
+                    case 504:
+                        await self.serverOutData.put(item=message)
                     case 513:
                         # Set final upload time when server receives
                         # Note: We use perf_counter for high precision. While this value is local to the server, the client will use (initialDownloadTime - finalUploadTime) to calculate server processing time.
@@ -90,10 +101,11 @@ class Server:
                         jsonMessage["data"]["initialDownloadTime"] = time.perf_counter()
 
                         # Echo back the message with timing data
-                        responseMessage = json.dumps(jsonMessage)
+                        responseMessage = jsonMessage
                     case _:
                         pass
-                writer.write((responseMessage + "\n").encode())
+                # Convert responseMessage to string and send over
+                writer.write((json.dumps(responseMessage) + "\n").encode())
                 await writer.drain()
         except asyncio.TimeoutError:
             print("Client timeout - no data received")

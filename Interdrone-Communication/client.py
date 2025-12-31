@@ -80,7 +80,7 @@ class Client:
         # Message Preprocessing
         if message["messageId"] == 513:
             message["data"]["initialUploadTime"] = time.perf_counter()
-        clientMessage = json.dumps(message)
+        clientMessageDump = json.dumps(message)
 
         # Create messageTasks list to store tasks for all drone connections
         messageTasks: list[asyncio.Task[str]] = []
@@ -91,7 +91,7 @@ class Client:
                 self.send_data_async(
                     serverIP=self.jsonConfigData.get_app_ip(),
                     serverPort=self.jsonConfigData.get_app_port(),
-                    clientMessage=clientMessage,
+                    clientMessageDump=clientMessageDump,
                 )
             )
             messageTasks.append(messageTask)
@@ -102,7 +102,7 @@ class Client:
                         self.send_data_async(
                             serverIP=self.otherDronesIps[i],
                             serverPort=self.otherDronesPorts[i],
-                            clientMessage=clientMessage,
+                            clientMessageDump=clientMessageDump,
                         )
                     )
                     messageTasks.append(messageTask)
@@ -112,7 +112,7 @@ class Client:
 
     # Takes data and sends it passed in server
     async def send_data_async(
-        self, serverIP: str, serverPort: int, clientMessage: str
+        self, serverIP: str, serverPort: int, clientMessageDump: str
     ) -> str:
         try:
             # Open async connection with timeout
@@ -121,14 +121,14 @@ class Client:
             )
 
             # Send data with end of data char (\n)
-            writer.write((clientMessage + "\n").encode())
+            writer.write((clientMessageDump + "\n").encode())
             await writer.drain()
 
             # Receive response and decode
             serverResponseBytes = await asyncio.wait_for(
                 reader.readuntil(b"\n"), timeout=2.0
             )
-            serverResponseData: str = serverResponseBytes.decode()
+            serverResponseDump: str = serverResponseBytes.decode()
 
             # Close connection
             writer.close()
@@ -136,7 +136,7 @@ class Client:
 
             # Call process_client_data
             await self.process_client_data(
-                clientMessage, serverResponseData, serverIP, serverPort
+                clientMessageDump, serverResponseDump, serverIP, serverPort
             )
 
             return serverResponseBytes.decode()
@@ -145,7 +145,7 @@ class Client:
             # If timeout and message is a JSON startup message (messageId = 501), resend message
             # print(f"Timeout connecting to {serverIP}:{serverPort}")
             try:
-                clientMessageJson: MessageData = json.loads(clientMessage)
+                clientMessageJson: MessageData = json.loads(clientMessageDump)
                 if clientMessageJson["messageId"] == 501:
                     clientMessageJson["data"]["payload"] = "Timeout"
                     await self.clientOutData.put(json.dumps(clientMessageJson))
@@ -159,40 +159,34 @@ class Client:
 
     async def process_client_data(
         self,
-        clientMessage: str,
-        serverResponseData: str,
+        clientMessageDump: str,
+        serverResponseDump: str,
         serverIP: str,
         serverPort: int,
     ) -> None:
-        originalMessage: MessageData = json.loads(s=clientMessage)
-        match int(originalMessage["messageId"]):
-            # Pathfinding Message
-            case 1:
+        clientMessage: MessageData = json.loads(s=clientMessageDump)
+        serverResponse: MessageData = json.loads(s=serverResponseDump)
+
+        match int(
+            serverResponse["messageId"]
+        ):  # TODO may want to change this to serverResponse. Need to standardize this and talk to team. Server should send client MessageData instead of just a string and we should base processing on that
+            # Default Server Response Message
+            case 505:
+                # await self.clientOutData.put(item=serverResponseDump)  # Keep commented out for performance unless you want to see default server message
                 pass
-            # App test message
-            case 400:
-                await self.clientOutData.put(item="OMG the app contacted us!")
-            # JSON Startup message
-            case 501:
-                # Return the servers response which should hopefully state that the overwrite is true
-                await self.clientOutData.put(serverResponseData)
-            # Heartbeat Message
-            case 504:
-                await self.clientOutData.put(item=serverResponseData)
-            # Speedtest Message
+            # Network Speedtest Message (Needs a client response)\
             case 513:
                 # Client receives response - set final download time
                 receiveTime = time.perf_counter()
-                responseData: MessageData = json.loads(serverResponseData)
 
                 # Calculate Server Processing Time (Delta on Server Clock)
                 serverProcessingTime = float(
-                    responseData["data"]["initialDownloadTime"]
-                ) - float(responseData["data"]["finalUploadTime"])
+                    serverResponse["data"]["initialDownloadTime"]
+                ) - float(serverResponse["data"]["finalUploadTime"])
 
                 # Calculate Total Round Trip Time (Delta on Client Clock)
                 totalRtt = receiveTime - float(
-                    originalMessage["data"]["initialUploadTime"]
+                    clientMessage["data"]["initialUploadTime"]
                 )
 
                 # Calculate Network RTT (Total - Processing)
@@ -205,14 +199,14 @@ class Client:
                 uploadTime = estimatedOneWayTime
                 downloadTime = estimatedOneWayTime
 
-                uploadSizeBytes = len(clientMessage.encode("utf-8"))
+                uploadSizeBytes = len(clientMessageDump.encode("utf-8"))
                 uploadThroughputKbps = (
                     (uploadSizeBytes * 8 / 1000) / uploadTime
                     if uploadTime > 0
                     else float("inf")
                 )
 
-                downloadSizeBytes = len(serverResponseData)
+                downloadSizeBytes = len(serverResponseDump)
                 downloadThroughputKbps = (
                     (downloadSizeBytes * 8 / 1000) / downloadTime
                     if downloadTime > 0
@@ -236,7 +230,7 @@ class Client:
                 await self.clientOutData.put(item=json.dumps(result))
             case _:
                 # If no message ID, return server response data
-                await self.clientOutData.put(item=serverResponseData)
+                await self.clientOutData.put(item=serverResponseDump)
 
     # Helper method to run the async client
     def run(self):
