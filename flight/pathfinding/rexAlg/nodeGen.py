@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-#from dijkstrasPathfindingAlg import basicDijkstras
+from ..dijkstrasPathfindingAlg import basicDijkstras
 
 from enum import Enum
 
@@ -241,12 +241,11 @@ class Field:
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
     def placeStartNode(self,xVal:int ,yVal:int ):
-        print("hello")
-        
-    def placeEndNodes(self, yVal: int, density: int):
-        print("hello")  
-    
         self.addFloatingNode(xVal,yVal)
+        
+    def placeEndNodes(self, xMin,xMax,yVal: int, density: int):
+        for x in range(xMin,xMax,xMax//density):
+            self.addFloatingNode(x,yVal)
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
     def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
@@ -339,6 +338,8 @@ class Field:
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         for node in Node.nodeGraph.keys():
+            plt.text(node.x, node.y, str(node))
+
             if not node.plotted and not node.terminated:
                 for connectedNode in Node.nodeGraph[node].keys():
                     try:
@@ -472,6 +473,8 @@ class Node:
         return self.name
     def __repr__(self):
         return self.__str__()
+    def __gt__(self, node1):
+        return True
 
 
 class MineNode(Node):
@@ -559,7 +562,7 @@ class MineNode(Node):
                 self.x = (parentMine.radius) * np.cos(self.angle-np.pi) + parentMine.x
                 self.y = (parentMine.radius) * np.sin(self.angle) + parentMine.y
         
-        self.angle=np.atan2(self.x-parentMine.x,self.y-parentMine.y)
+        self.angle=np.atan2(self.y-parentMine.y,self.x-parentMine.x)
 
 
         self.x = round(self.x,3)
@@ -620,9 +623,9 @@ class MineNode(Node):
 
 
 
-numMines = 3
+numMines = 10
 radius = 16
-debug = True
+debug = False
 xMin = -numMines*radius*0.45
 xMax = numMines*radius*0.45
 yMin = -numMines*radius*0.45
@@ -654,6 +657,7 @@ if not debug:
                 continue
             break
         field.addMine(position[0],position[1],radius)
+        
         print("added a mine")
     print("done adding mines, connecting nodes on mine")
 
@@ -664,8 +668,8 @@ if not debug:
         mine.connectMineNodes()
     
     ## Add floating nodes after this point##
-    field.placeStartNode(0,-60)
-    field.placeEndNodes(-30,30,60,10)
+    field.placeStartNode(0,(genYMin-radius)-20)
+    field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
     print(Node.nodeGraph)
     
     
@@ -756,6 +760,12 @@ if debug:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
 
         mine.connectMineNodes()
+    #newgraph=basicDijkstras.Graph(Node.nodeGraph)
+    #print("AHHHHHHHHHHH")
+    #print(list(Node.nodeGraph.keys())[0])
+    #print(list(Node.nodeGraph.keys())[10])
+    #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+
 field.plotField()
 """
 TODO:

@@ -13,8 +13,10 @@ from state_machine.states.state import State
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 from state_machine.states.scan import Scan
 
+import flight.pathfinding.safetyNodeGen.subdividingNodeGen as gotoDiv
 
-async def run(self: CalcScanPath) -> State:
+
+async def run(self: InitialCalcScanPath) -> State:
     """
     Implements the run method for the InitialCalcScanPath state.
 
@@ -42,6 +44,11 @@ async def run(self: CalcScanPath) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("InitialCalcScanPath state running")
 
+        gotoCoords = gotoDiv.gotoPath(currentPath)
+        diviedGoto = []
+        for y in range(len(gotoCoords)/4):
+            diviedGoto.append(gotoCoords[id*6+y])
+        self.drone.updateTasks(diviedGoto)
         # Add InitialCalcScanPath code here
 
         return Scan(self.drone, self.flight_settings)
