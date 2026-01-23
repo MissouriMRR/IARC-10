@@ -1,7 +1,7 @@
 import flight.pathfinding.rexAlg.nodeGen as nodeg
 import flight.pathfinding.sightWeights.seenByDrone as seebd
 import flight.pathfinding.dijkstrasPathfindingAlg.basicDijkstras as dijk
-import flight.pathfinding.safetyNodeGen.intermediateNodeGen as gotoDiv
+import flight.pathfinding.safetyNodeGen.subdividingNodeGen as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
@@ -35,6 +35,7 @@ class Drone:
         self.visionRange = corners
 
     def updateTasks(self, gotoCoords:tuple[tuple[int, int]]):
+        self.tasks = []
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
     
@@ -75,11 +76,11 @@ class Drone:
             gotoCoords = gotoDiv.gotoPath(currentPath)
             diviedGoto = []
             for y in range(len(gotoCoords)/len(drones)):
-                diviedGoto.append(gotoCoords[id*6+y])
+                diviedGoto.append(gotoCoords[(id-0)*6+y])
             self.updateTasks(diviedGoto)
             self.completeTasks()
             for i in range(4):
-                if (id == i):
+                if (id-1 == i):
                     # Broadcast new minedata and new sight data
                     broadcast()
                 else:
@@ -113,7 +114,7 @@ fieldSizeY = 960 # The max size of the field in inches
 startTime = t.time() # Starting time (Based on global clock)
 previousPath = Path() # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODE GENERATION
 currentPath = Path() # Current Working Path SEE ABOVE
-drones = [Drone(id=0), Drone(id=1), Drone(id=2), Drone(id=3)] # Note that the mine radii is in inches and defaults to 
+drones = [Drone(id=1), Drone(id=2), Drone(id=3), Drone(id=4)] # Note that the mine radii is in inches and defaults to 
 stopCondition = "Timed out"
 
 drones[0].selfLoop(currentPath)
