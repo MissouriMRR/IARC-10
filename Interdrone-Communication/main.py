@@ -69,14 +69,15 @@ def main() -> None:
             # Check for server messages
             serverMsg = networking.try_get_server_message(timeout=0.02)
             if serverMsg is not None:
-                print(f"Server Data: {serverMsg}")
+                msgNum += 1
+                # print(f"Server Data: {serverMsg}")
+                print(f"Client Data: {msgNum}")
 
             # Check for client responses
             clientMsg = networking.try_get_client_response(timeout=0.02)
             if clientMsg is not None:
-                msgNum += 1
-                print(f"Client Data: {msgNum}")
-
+                # print(f"Client Data: {msgNum}")
+                pass
             # Send heartbeat if queue is empty
             if networking.is_client_in_empty():
                 heartbeatMessage["data"]["payload"] = msgNum

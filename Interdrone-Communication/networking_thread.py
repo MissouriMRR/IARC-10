@@ -22,8 +22,8 @@ class NetworkingThread:
         asyncio.set_event_loop(loop)
 
         clientIn: AsyncQueue[MessageData] = asyncio.Queue()
-        clientOut: AsyncQueue[str] = asyncio.Queue()
-        serverOut: AsyncQueue[str] = asyncio.Queue()
+        clientOut: AsyncQueue[MessageData] = asyncio.Queue()
+        serverOut: AsyncQueue[MessageData] = asyncio.Queue()
 
         # Provide interface to main thread
         resourcesReady.put(
@@ -48,8 +48,8 @@ class NetworkingThread:
     async def start_networking(
         self,
         clientInData: AsyncQueue[MessageData],
-        clientOutData: AsyncQueue[str],
-        serverOutData: AsyncQueue[str],
+        clientOutData: AsyncQueue[MessageData],
+        serverOutData: AsyncQueue[MessageData],
         jsonConfigData: json_config_reader,
     ) -> None:
         # Instantiate Server and Client

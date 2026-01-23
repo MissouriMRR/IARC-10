@@ -4,7 +4,6 @@ import asyncio
 from asyncio import StreamReader, StreamWriter
 import json
 import time
-from pathlib import Path
 
 
 from typed_dicts_classes import MessageData
@@ -69,27 +68,6 @@ class Server:
                         # Set json config app fields based on received data here
                         self.jsonConfigData.set_app_ip(jsonMessage["data"]["IP"])
                         self.jsonConfigData.set_app_port(jsonMessage["data"]["Port"])
-                    # Startup JSON message TODO REMOVE THIS ONCE NEW PI STARTUP SCRIPT IS IMPLEMENTED
-                    case 501:
-                        try:
-                            # TODO clean this up with MessageData change to have this output MessageData rather than string
-                            config_path = Path(__file__).with_name("config.json")
-                            temp_path = config_path.with_suffix(".json.tmp")
-
-                            # Extract payload and parse it as JSON
-                            payload_str = jsonMessage["data"]["payload"]
-                            config_data = json.loads(payload_str)
-
-                            temp_path.write_text(
-                                json.dumps(config_data, indent=4), encoding="utf-8"
-                            )
-                            temp_path.replace(config_path)
-                            jsonMessage["data"]["successfulOverwrite"] = True
-                            # await self.serverOutData.put(item="JSON Overwritten!")
-                            # Overwrite response message with jsonMessage
-                            responseMessage = jsonMessage
-                        except Exception as e:
-                            print(f"Failed to overwrite JSON file: {e}")
                     case 504:
                         await self.serverOutData.put(item=jsonMessage)
                     case 513:
