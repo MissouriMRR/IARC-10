@@ -1,7 +1,7 @@
 import math as m
-import matplotlib.pyplot as plt
-import random as rand
 import numpy as np
+import random as rand
+import matplotlib.pyplot as plt
 from flight.pathfinding.rexAlg.nodeGen import Node, Mine, Field
 
 #todo
@@ -46,7 +46,7 @@ for mine in field.mines:
 nodeList
 
 #step for linear, arc_step for arc to determine number of gotopts.
-def generateGotoPoints(nodeList, step = 10, arc_step= 0.349): #arc step in radians for 2 deg
+def generateGotoPoints(nodeList:Node, step: int = 10, arc_step: float= 0.349): #arc step in radians for 2 deg
     finalGotoList = []
 
     for i in range(len(nodeList) - 1):
