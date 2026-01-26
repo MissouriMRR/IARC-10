@@ -5,53 +5,76 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-from ..dijkstrasPathfindingAlg import basicDijkstras
+# from ..dijkstrasPathfindingAlg import basicDijkstras # import error here
 
 from enum import Enum
 
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
-
 KEY MINE ATTRIBUTES/METHODS:
  - Mine.getPos() -> (x,y) position on field of the Mine
  - Mine.getNodes() -> [Node,Node,...] A list of all mine's child Nodes, can be accessed directly with Mine.nodes
- - Mine.connectedMines -> [Mine,Mine,...] A list of other mines connected to the Mine through at least one Node
+ - Mine.connectMineNodes() -> establishes node connections from the nodes on the current mine to the rest of the nodes.
 
 KEY NODE ATTRIBUTES/METHODS:
- - Node(primaryType) -> Constructor key parameter, either 'default','start', or 'end', must 
-                        explicitely define primaryType if not a default node when constructing
+ = Class Variable: nodeGraph -> a dictionary containing Connection objects
+ - Node(xPosition:float,yPosition:float,floating:bool,name:str) -> Constructor for general nodes, floating or not.
+ - Node.connectNode(node:Node) -> returns Connection: Establishes connection between current and target Node
+ - Node.getPos() -> gets position of node
+ - Node.getTargetMine() -> returns Mine; gets the target mine
+ - Node.getParentMine() -> returns Mine or None if floating; gets the parent mien
+ - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,name:str)
+    -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
 
- - Node.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
-                    |-For some reason, trying to completely delete all references to a Node breaks stuff-| 
+ - MineNode.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
+                    |-For some reason, trying to completely delete all references to a Node breaks stuff-|
 
- - Node.type() -> "internal/external primary/secondary" (Either internal OR external AND primary OR secondary)
- - Node.parentMine -> Mine object that the node is primarily on
- - Node.connectedNodes -> [Node,Node,...] A list of connected nodes, excluding the Node itself.
-                                          Usually a list length of one as a result of connecting bitangents,
-                                         unless furthur connections are established.
- - Node.connectNode(Node) -> Connects nodes by appending to each other's connectedNodes list.
- - Node.status() -> ["terminated"/"exists", "connected"/"disconnected"]
-                     A list of strings describing the status of a single node
- - Node.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
+ - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
                               A list of strings describing the kind of connection each node has to another
- - Node.getPos() -> (x,y) position on field of the Node
- - Node.distanceFromNode(Node) -> distance between nodes, either a straight line distance or
-                                  arc length if nodes share the same parent mine
+ - MineNode.getPos() -> (x,y) position on field of the Node
+
+KEY CONNECTION ATTRIBUTES/METHODS:
+ - Connection(node1:Node,node2:Node) -> Constructor for pairing nodes to make a connection
+ - Connection.addGraph() -> adds connection to Node.nodeGraph
+    (Connection objects are two-way and shared)
+    {
+    Node1: {Node2:ConnectionObj 1<->2, Node3:ConnectionObj 1<->3},
+    Node2: {Node1:ConnectionObj 1<->2},
+    Node3: {Node1:ConnectionObj 1<->3}
+    }
+ - Connection.deleteConnection() -> Removes itself from nodeGraph
+ - Connection.validPath() -> Determines if any point along the connection collides with a mine.
+ - Connection.mineCollision(self,mine) -> Determines if the connection collides with a specific mine.
 
 KEY FIELD ATTRIBUTES/METHODS:
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
- - Field.plotField() -> Using matplotlib, plots the field.
-
+ - Field.plotField(labeled:bool) -> Using matplotlib, plots the field. If labeled=True, labels the nodes.
+                                    plot key: NID = Node ID; MID = Mine ID ; CID = [Parent Mine ID].[Node ID]
+ - addFloatingNode(x,y): -> adds a node to the field that does not have a parent mine,
+                            But does have a target mine.
+ - placeStartNode(xVal,yVal) -> adds the starting Node(s). Must have at least one.
+ - placeEndNodes(xMin,xMax,yVal,density) -> Places endpoint nodes along a certain y-value within
+                                            the limits of xMin and xMax with a certain density
+                                            or amount of nodes placed equidistantly.
 ---------------------------------------------------------------------
+
 Use the Field class to generate mines and their nodes.
-Ex:
-
-    field = Field(-100,150,-100,150)
-
+Unless you are optimizing or working on this program/code/algorithm, 
+I suggest you create mines and nodes via the Field class.
     Field(xMin,xMax,yMin,yMax)
     Field Setup:
      - xMin,xMax : The fields x axis range
      - yMin, yMax : The fields y axis range
+Ex: A basic setup of 3 Mines with start and end nodes.
+    field = Field(-100,150,-100,150)
+    field.addMine(0,0,20)
+    field.addMine(-30,0,20)
+    field.addMine(30,25,20)
+    field.placeStartNode(0,-10)
+    field.placeEndNodes(-100,100,250,4)
+    field.plotField()
+
+For now, there is a more complex example at the bottom for testing. Will be removed or moved eventually.
 """
 #Simple class which is used in the nodegraph and holds informatation about distance path and type (straight/arc-ed)
 #Moved some useful connection functions here as well.
@@ -323,7 +346,7 @@ class Field:
         # for node in Node.nodes:
         #     node.connectedNodes.extend([n for n in Node.nodes if n not in [node,node.connectedNode]]`
         
-    def plotField(self):
+    def plotField(self,labeled:bool=False):
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
@@ -337,11 +360,15 @@ class Field:
         # Plot the mines
         for circle in circles:
             ax.add_patch(circle)
+        for mine in Mine.mines:
+            if labeled:
+                plt.text(mine.x,mine.y,str(mine),horizontalalignment='center',verticalalignment='center',bbox=dict(facecolor=(0.5,0.5,0.5),alpha=0.3,linewidth=0))
 
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         for node in Node.nodeGraph.keys():
-            plt.text(node.x, node.y, str(node))
+            if labeled:
+                plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
             if not node.plotted and not node.terminated:
                 for connectedNode in Node.nodeGraph[node].keys():
@@ -364,7 +391,7 @@ class Mine:
         if len(name) > 0:
             self.name = name
         else:
-            self.name = f'Mine ID: ' + str(self.numMines)
+            self.name = f'MID: ' + str(self.numMines)
         
         if len(color) > 0:
             self.color = color
@@ -418,7 +445,6 @@ class Mine:
 
                     
         
-    def getNumReferences(self):
         return getrefcount(self)
 
     def __str__(self):
@@ -434,7 +460,7 @@ class Node:
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
-            self.name = "ID: "+str(Node.nodeNum)
+            self.name = "NID: "+str(Node.nodeNum)
         else:
             self.name = name 
         
@@ -471,6 +497,8 @@ class Node:
 
     def getTargetMine(self) -> Mine:
         return self.__targetMine
+    def getParentMine(self) -> Mine:
+        return self.parentMine
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -484,7 +512,7 @@ class MineNode(Node):
     def __init__(self,parentMine:"Mine"=None,targetMine:"Mine"=None,internal:bool=True,primary:bool=True,name:str=''):
         Node.nodeNum += 1
         if len(name) < 1:
-            self.name = "Node ID: "+ str(Node.nodeNum)
+            self.name = "NID: "+ str(Node.nodeNum)
             if(Node.nodeNum==168):
                 print("WTFFF")
         else:
@@ -572,24 +600,9 @@ class MineNode(Node):
         super().__init__(self.x,self.y,False,self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
-            self.name = "ID:"+str(parentMine.number)+"."+str(Node.nodeNum)
+            self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
             self.name = name 
-
-
-    def status(self) -> list:
-        result = []
-        if self.terminated:
-            result.append("terminated")
-        else:
-            result.append("exists")
-        
-        if self.connected:
-            result.append("connected")
-        else:
-            result.append("disconnected")
-        result.append("referenced " + str(getrefcount(self)) + " times")
-        return result
 
     # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
     def getPathType(self,node:'Node') -> list:
@@ -773,7 +786,7 @@ if  debug:
     #print(list(Node.nodeGraph.keys())[10])
     #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
 
-field.plotField()
+field.plotField(True)
 """
 TODO:
 X=Done
