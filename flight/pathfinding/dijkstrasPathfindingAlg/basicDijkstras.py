@@ -1,6 +1,6 @@
 import heapq
 
-print('digAlgo.py')
+
 # will have to figure out how to calculate distance between nodes (weights)
 
 #for each (safe) node in graph
@@ -21,19 +21,6 @@ print(previous)
 '''
 
 
-# dictionary set up
-# 
-graph = {
-  "A": {"B": 3, "C": 3},
-  "B": {"A": 3, "D": 3.5, "E": 2.8},
-  "C": {"A": 3, "E": 2.8, "F": 3.5}, 
-  "D": {"B": 3.5, "E": 3.1, "G": 10},
-  "E": {"B": 2.8, "C": 2.8, "D": 3.1, "G": 7},
-  "F": {"C": 3.5, "G": 2.5},
-  "G": {"D": 10, "E": 7, "F": 2.5},
-}
-# each key of the dictionary is a node and each value is a dict 
-# containing the neighbors of the key and distance to it
 
 
 
@@ -122,7 +109,21 @@ class Graph:
 
         return path
     
-
-# testing implementation
-G = Graph(graph)
+if __name__=="__main__":
+    
+    # dictionary set up
+    # 
+    graph = {
+    "A": {"B": 3, "C": 3},
+    "B": {"A": 3, "D": 3.5, "E": 2.8},
+    "C": {"A": 3, "E": 2.8, "F": 3.5}, 
+    "D": {"B": 3.5, "E": 3.1, "G": 10},
+    "E": {"B": 2.8, "C": 2.8, "D": 3.1, "G": 7},
+    "F": {"C": 3.5, "G": 2.5},
+    "G": {"D": 10, "E": 7, "F": 2.5},
+    }
+    # each key of the dictionary is a node and each value is a dict 
+    # containing the neighbors of the key and distance to it
+    # testing implementation
+    G = Graph(graph)
 

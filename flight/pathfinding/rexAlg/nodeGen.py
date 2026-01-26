@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-# from ..dijkstrasPathfindingAlg import basicDijkstras # import error here
+from ..dijkstrasPathfindingAlg import basicDijkstras # import error here
 
 from enum import Enum
 
@@ -637,156 +637,156 @@ class MineNode(Node):
         return self.__str__()
 
 
+if __name__=="__main__":
+    numMines = 1
+    radius = 16
+    debug = True
+    xMin = -numMines*radius*0.45
+    xMax = numMines*radius*0.45
+    yMin = -numMines*radius*0.45
+    yMax = numMines*radius*0.45
+    if not debug:
+        field = Field(xMin,xMax,yMin,yMax)
+    else:
+        field = Field(-200,200,-300,300)
+    genXMin = -200#-radius*(numMines//5)
+    genXMax =200# radius*(numMines//5)
+    genYMin =-300# -radius*(numMines//5)
+    genYMax = 300#radius*(numMines//5)
+    position = [0,0] 
+    mineGenTolerance = 0*radius
 
-numMines = 1
-radius = 16
-debug = True
-xMin = -numMines*radius*0.45
-xMax = numMines*radius*0.45
-yMin = -numMines*radius*0.45
-yMax = numMines*radius*0.45
-if not debug:
-    field = Field(xMin,xMax,yMin,yMax)
-else:
-    field = Field(-200,200,-300,300)
-genXMin = -200#-radius*(numMines//5)
-genXMax =200# radius*(numMines//5)
-genYMin =-300# -radius*(numMines//5)
-genYMax = 300#radius*(numMines//5)
-position = [0,0] 
-mineGenTolerance = 0*radius
-
-# Mine generation, do not add floating nodes before this point
-"""
-if not debug:
-    for num in range(numMines):
-        while True: # To make sure generated mines arent clipping off the edges of the field
-            position[0], position[1] = random.randint(genXMin,genXMax+1),random.randint(genYMin,genYMax+1)
-            invalidPosition = False
-            for mine in Mine.mines:
-                if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
-                    invalidPosition = True
-                    break
-            if invalidPosition:
-                continue
-            if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
-                continue
-            break
-        field.addMine(position[0],position[1],radius)
-        
-        print("added a mine")
-    print("done adding mines, connecting nodes on mine")
-
-
-    #print(Node.nodeGraph)
-        
-    for mine in field.mines:
-        mine.connectMineNodes()
-"""
-    ## Add floating nodes after this point##
-
-
-    
-
-    ## Example Concept for a single start point end point(s)
-    # Start
-    # field.addMine(-150,-300,radius,'green')
-    # End Points
-    # field.addMine(-300,300,radius,'black')
-    # field.addMine(-250,300,radius,'black')
-    # field.addMine(-200,300,radius,'black')
-    # field.addMine(-150,300,radius,'black')
-    # field.addMine(-50,300,radius,'black')
-    # field.addMine(-100,300,radius,'black')
-    # field.addMine(0,2500,radius,'black')#######
-    # field.addMine(50,300,radius,'black')
-    # field.addMine(100,300,radius,'black')
-    # field.addMine(150,300,radius,'black')
-    # field.addMine(200,300,radius,'black')
-    # field.addMine(250,300,radius,'black')
-    # field.addMine(300,300,radius,'black')
-# for pair in combinations(Node.nodes,2):
-#     connections = pair[0].getPathType(pair[1])
-#     print(connections)
-if  debug:
-
-    # Test aligned mines
-    field.addMine(0,0,radius)
-    
-    field.addMine(-150,0,radius)
-
-    
-    
-    field.addMine(150,0,radius)
+    # Mine generation, do not add floating nodes before this point
     """
-    field.addMine(0,-150,radius)
-    
-    field.addMine(0,150,radius)
-    field.addMine(50,50,radius)
-    field.addMine(-50,50,radius)
-    field.addMine(-50,-50,radius)
-    field.addMine(50,-50,radius)
+    if not debug:
+        for num in range(numMines):
+            while True: # To make sure generated mines arent clipping off the edges of the field
+                position[0], position[1] = random.randint(genXMin,genXMax+1),random.randint(genYMin,genYMax+1)
+                invalidPosition = False
+                for mine in Mine.mines:
+                    if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
+                        invalidPosition = True
+                        break
+                if invalidPosition:
+                    continue
+                if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
+                    continue
+                break
+            field.addMine(position[0],position[1],radius)
+            
+            print("added a mine")
+        print("done adding mines, connecting nodes on mine")
 
-    # Hypothetical starting nodes as a mine
-    field.addMine(0,-250,radius)
 
-    # Test overlapping aligned mines
-    field.addMine(-150,250,radius) # Middle
-    field.addMine(-125,250,radius)
-    field.addMine(-100,250,radius)
-    field.addMine(-75,250,radius)
-    field.addMine(-50,250,radius)
-    field.addMine(-25,250,radius)
-    field.addMine(0,250,radius)
-    field.addMine(25,250,radius)
-    field.addMine(50,250,radius)
-    field.addMine(75,250,radius)
-    field.addMine(100,250,radius)
-    field.addMine(125,250,radius)
-    field.addMine(150,250,radius)
-
-    field.addMine(-125,275,radius) # Top
-    field.addMine(-100,275,radius)
-    field.addMine(-75,275,radius)
-    field.addMine(-50,275,radius)
-    field.addMine(-25,275,radius)
-    field.addMine(0,275,radius)
-    field.addMine(25,275,radius)
-    field.addMine(50,275,radius)
-    field.addMine(75,275,radius)
-    field.addMine(100,275,radius)
-    field.addMine(125,275,radius)
-    
-    field.addMine(-125,225,radius) # Bottom
-    field.addMine(-100,225,radius)
-    field.addMine(-75,225,radius)
-    field.addMine(-50,225,radius)
-    field.addMine(-25,225,radius)
-    field.addMine(0,225,radius)
-    field.addMine(25,225,radius)
-    field.addMine(50,225,radius)
-    field.addMine(75,225,radius)
-    field.addMine(100,225,radius)
-    field.addMine(125,225,radius)
+        #print(Node.nodeGraph)
+            
+        for mine in field.mines:
+            mine.connectMineNodes()
     """
+        ## Add floating nodes after this point##
 
-    for mine in field.mines:
-        print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
 
-        mine.connectMineNodes()
-    startNode=field.placeStartNode(0,(genYMin-radius)-20)
-    endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
-    solverGraph=basicDijkstras.Graph(Node.nodeGraph)
-    shortestPath=solverGraph.shortest_path(startNode,endNodes)
-    print("Shortest Path:")
-    print(shortestPath)
-    #newgraph=basicDijkstras.Graph(Node.nodeGraph)
-    #print("AHHHHHHHHHHH")
-    #print(list(Node.nodeGraph.keys())[0])
-    #print(list(Node.nodeGraph.keys())[10])
-    #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+        
 
-field.plotField(True)
+        ## Example Concept for a single start point end point(s)
+        # Start
+        # field.addMine(-150,-300,radius,'green')
+        # End Points
+        # field.addMine(-300,300,radius,'black')
+        # field.addMine(-250,300,radius,'black')
+        # field.addMine(-200,300,radius,'black')
+        # field.addMine(-150,300,radius,'black')
+        # field.addMine(-50,300,radius,'black')
+        # field.addMine(-100,300,radius,'black')
+        # field.addMine(0,2500,radius,'black')#######
+        # field.addMine(50,300,radius,'black')
+        # field.addMine(100,300,radius,'black')
+        # field.addMine(150,300,radius,'black')
+        # field.addMine(200,300,radius,'black')
+        # field.addMine(250,300,radius,'black')
+        # field.addMine(300,300,radius,'black')
+    # for pair in combinations(Node.nodes,2):
+    #     connections = pair[0].getPathType(pair[1])
+    #     print(connections)
+    if  debug:
+
+        # Test aligned mines
+        field.addMine(0,0,radius)
+        
+        field.addMine(-150,0,radius)
+
+        
+        
+        field.addMine(150,0,radius)
+        """
+        field.addMine(0,-150,radius)
+        
+        field.addMine(0,150,radius)
+        field.addMine(50,50,radius)
+        field.addMine(-50,50,radius)
+        field.addMine(-50,-50,radius)
+        field.addMine(50,-50,radius)
+
+        # Hypothetical starting nodes as a mine
+        field.addMine(0,-250,radius)
+
+        # Test overlapping aligned mines
+        field.addMine(-150,250,radius) # Middle
+        field.addMine(-125,250,radius)
+        field.addMine(-100,250,radius)
+        field.addMine(-75,250,radius)
+        field.addMine(-50,250,radius)
+        field.addMine(-25,250,radius)
+        field.addMine(0,250,radius)
+        field.addMine(25,250,radius)
+        field.addMine(50,250,radius)
+        field.addMine(75,250,radius)
+        field.addMine(100,250,radius)
+        field.addMine(125,250,radius)
+        field.addMine(150,250,radius)
+
+        field.addMine(-125,275,radius) # Top
+        field.addMine(-100,275,radius)
+        field.addMine(-75,275,radius)
+        field.addMine(-50,275,radius)
+        field.addMine(-25,275,radius)
+        field.addMine(0,275,radius)
+        field.addMine(25,275,radius)
+        field.addMine(50,275,radius)
+        field.addMine(75,275,radius)
+        field.addMine(100,275,radius)
+        field.addMine(125,275,radius)
+        
+        field.addMine(-125,225,radius) # Bottom
+        field.addMine(-100,225,radius)
+        field.addMine(-75,225,radius)
+        field.addMine(-50,225,radius)
+        field.addMine(-25,225,radius)
+        field.addMine(0,225,radius)
+        field.addMine(25,225,radius)
+        field.addMine(50,225,radius)
+        field.addMine(75,225,radius)
+        field.addMine(100,225,radius)
+        field.addMine(125,225,radius)
+        """
+
+        for mine in field.mines:
+            print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
+
+            mine.connectMineNodes()
+        startNode=field.placeStartNode(0,(genYMin-radius)-20)
+        endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
+        solverGraph=basicDijkstras.Graph(Node.nodeGraph)
+        shortestPath=solverGraph.shortest_path(startNode,endNodes)
+        print("Shortest Path:")
+        print(shortestPath)
+        #newgraph=basicDijkstras.Graph(Node.nodeGraph)
+        #print("AHHHHHHHHHHH")
+        #print(list(Node.nodeGraph.keys())[0])
+        #print(list(Node.nodeGraph.keys())[10])
+        #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+
+    field.plotField(True)
 """
 TODO:
 X=Done
