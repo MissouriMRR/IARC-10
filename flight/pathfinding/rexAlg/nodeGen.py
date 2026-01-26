@@ -102,7 +102,7 @@ class Connection:
 
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
-
+            distance=float(distance)
             print(distance)
         return distance
     
@@ -152,7 +152,8 @@ class Connection:
         '''
     #Checks if a newly created path is valid, checks all mines for collisions
     def validPath(self):
-
+        if(self.node1==self.node2):
+            return False
         if self.connectionType==seg.LINE:
             x1 = float(self.node1.x)
             y1 = float(self.node1.y)
@@ -231,28 +232,30 @@ class Field:
         Connection.connectionField=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
-    def addFloatingNode(self,x:int,y:int):
+    def addFloatingNode(self,x:int,y:int) ->'Node':
         fNode = Node(x,y,True) # Floating Node
         for node in Node.nodeGraph.keys():
             connect = Connection(fNode,node)
-            connect.addGraph()
-            if not connect.validPath():
+            if connect.validPath():
+                connect.addGraph()
+            else:
                 connect.deleteConnection()
+        return fNode
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
-    def placeStartNode(self,xVal:int ,yVal:int ):
-        self.addFloatingNode(xVal,yVal)
+    def placeStartNode(self,xVal:int ,yVal:int ) -> 'Node':
+        return self.addFloatingNode(xVal,yVal)
         
-    def placeEndNodes(self, xMin,xMax,yVal: int, density: int):
-        for x in range(xMin,xMax,xMax//density):
-            self.addFloatingNode(x,yVal)
+
+        
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
     def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
+        returnList=[]
         xVals = [x for x in range(xMin,xMax,xMax//(density//2))]
         for x in xVals:
-            self.addFloatingNode(x,yVal)
-
+            returnList.append(self.addFloatingNode(x,yVal))
+        return returnList
 
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
@@ -350,6 +353,7 @@ class Field:
 
 """MATH STUFF"""
 
+
 # Mine class keeps track of mine position and radii      
 class Mine:
     numMines = 0
@@ -388,9 +392,7 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-        print(sortedNodes)
-        for nodes in sortedNodes:
-            print(nodes.angle)
+
         
         #delete connections
         for node in self.nodes:
@@ -473,8 +475,8 @@ class Node:
         return self.name
     def __repr__(self):
         return self.__str__()
-    def __gt__(self, node1):
-        return True
+    def __gt__(self, node1:'Node'):
+        return self.y>node1.y
 
 
 class MineNode(Node):
@@ -623,9 +625,9 @@ class MineNode(Node):
 
 
 
-numMines = 10
+numMines = 1
 radius = 16
-debug = False
+debug = True
 xMin = -numMines*radius*0.45
 xMax = numMines*radius*0.45
 yMin = -numMines*radius*0.45
@@ -634,14 +636,15 @@ if not debug:
     field = Field(xMin,xMax,yMin,yMax)
 else:
     field = Field(-200,200,-300,300)
-genXMin = -radius*(numMines//5)
-genXMax = radius*(numMines//5)
-genYMin = -radius*(numMines//5)
-genYMax = radius*(numMines//5)
+genXMin = -200#-radius*(numMines//5)
+genXMax =200# radius*(numMines//5)
+genYMin =-300# -radius*(numMines//5)
+genYMax = 300#radius*(numMines//5)
 position = [0,0] 
 mineGenTolerance = 0*radius
 
 # Mine generation, do not add floating nodes before this point
+"""
 if not debug:
     for num in range(numMines):
         while True: # To make sure generated mines arent clipping off the edges of the field
@@ -666,12 +669,10 @@ if not debug:
         
     for mine in field.mines:
         mine.connectMineNodes()
-    
+"""
     ## Add floating nodes after this point##
-    field.placeStartNode(0,(genYMin-radius)-20)
-    field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
-    print(Node.nodeGraph)
-    
+
+
     
 
     ## Example Concept for a single start point end point(s)
@@ -694,7 +695,7 @@ if not debug:
 # for pair in combinations(Node.nodes,2):
 #     connections = pair[0].getPathType(pair[1])
 #     print(connections)
-if debug:
+if  debug:
 
     # Test aligned mines
     field.addMine(0,0,radius)
@@ -760,6 +761,12 @@ if debug:
         print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
 
         mine.connectMineNodes()
+    startNode=field.placeStartNode(0,(genYMin-radius)-20)
+    endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
+    solverGraph=basicDijkstras.Graph(Node.nodeGraph)
+    shortestPath=solverGraph.shortest_path(startNode,endNodes)
+    print("Shortest Path:")
+    print(shortestPath)
     #newgraph=basicDijkstras.Graph(Node.nodeGraph)
     #print("AHHHHHHHHHHH")
     #print(list(Node.nodeGraph.keys())[0])
