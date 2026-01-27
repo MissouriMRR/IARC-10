@@ -13,7 +13,7 @@ from state_machine.states.state import State
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.app_share import AppShare
 
-import flight.pathfinding.safetyNodeGen.subdividingNodeGen as gotoDiv
+import flight.pathfinding.subdividingNodeGen as gotoDiv
 
 
 async def run(self: CalcScanPath) -> State:

@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-from ..dijkstrasPathfindingAlg import basicDijkstras # import error here
+from ..pathfinding import basicDijkstras # import error here
 
 from enum import Enum
 
