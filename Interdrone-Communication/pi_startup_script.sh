@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # B.A.T.M.A.N. Mesh Network Setup Script
 # Finds USB WiFi adapter and configures it for ad-hoc mesh networking
 
@@ -12,6 +11,32 @@ log_message() {
 
 log_message "Starting B.A.T.M.A.N. mesh setup..."
 
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    log_message "ERROR: uv command not found! Please install uv first."
+    exit 1
+fi
+
+# Open/activate uv environment
+log_message "Activating uv environment..."
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    log_message "uv virtual environment activated"
+elif [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    log_message "uv virtual environment activated"
+else
+    log_message "WARNING: No virtual environment found. Running uv sync..."
+    uv sync
+    if [ $? -eq 0 ] && [ -f ".venv/bin/activate" ]; then
+        source .venv/bin/activate
+        log_message "uv environment created and activated"
+    else
+        log_message "ERROR: Failed to create uv environment"
+        exit 1
+    fi
+fi
+
 # Wait for system to fully initialize
 sleep 10
 
@@ -19,16 +44,25 @@ sleep 10
 # This looks for wireless interfaces that are NOT the built-in WiFi (usually wlan0)
 UAIN=""
 
-for iface in $(ls /sys/class/net/ | grep -E '^wlan[0-9]+$'); do
-    # Check if it's a USB device by examining the device path
-    if [[ -L "/sys/class/net/$iface/device" ]]; then
-        device_path=$(readlink -f "/sys/class/net/$iface/device")
-        if [[ $device_path == *"usb"* ]]; then
-            UAIN=$iface
-            break
-        fi
-    fi
+# First, try to find interfaces matching wlx* pattern (USB adapters with MAC-based names)
+for iface in $(ls /sys/class/net/ | grep -E '^wlx'); do
+    UAIN=$iface
+    break
 done
+
+# If not found, look for wlan1, wlan2, etc (excluding wlan0)
+if [ -z "$UAIN" ]; then
+    for iface in $(ls /sys/class/net/ | grep -E '^wlan[0-9]+$'); do
+        # Check if it's a USB device by examining the device path
+        if [[ -L "/sys/class/net/$iface/device" ]]; then
+            device_path=$(readlink -f "/sys/class/net/$iface/device")
+            if [[ $device_path == *"usb"* ]]; then
+                UAIN=$iface
+                break
+            fi
+        fi
+    done
+fi
 
 # Alternative method: find any wireless interface except wlan0
 if [ -z "$UAIN" ]; then
@@ -78,8 +112,19 @@ batctl if add "$UAIN"
 log_message "Bringing bat0 interface up..."
 ip link set bat0 up
 
-# Set IP address - REPLACE X with your node number (1-254)
-NODE_IP="169.254.97.X"
+# Extract Pi number from hostname (mrrdt-#)
+HOSTNAME=$(hostname)
+PI_NUMBER=$(echo "$HOSTNAME" | grep -oP 'mrrdt-\K\d+')
+
+if [ -z "$PI_NUMBER" ]; then
+    log_message "WARNING: Could not extract Pi number from hostname '$HOSTNAME'"
+    log_message "Expected format: mrrdt-# (e.g., mrrdt-1, mrrdt-42)"
+    log_message "Defaulting to IP 169.254.97.99"
+    PI_NUMBER=99
+fi
+
+# Set IP address based on Pi number
+NODE_IP="169.254.97.$PI_NUMBER"
 log_message "Setting IP address $NODE_IP on bat0..."
 ip addr add "$NODE_IP/24" dev bat0
 
