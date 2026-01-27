@@ -1,13 +1,15 @@
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
-from itertools import combinations
 import time
 from sys import getrefcount
 import gc
 from . import genPathFromNodes # import error here
 
 from enum import Enum
+
+######## This file, given the center coordinates of mines and a to-be-determined radius, generates nodes
+######## that connect to each other in a way that allows for traversal without any sharp turns.
 
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
@@ -502,7 +504,7 @@ class MineNode(Node):
     def __init__(self,parentMine:"Mine"=None,targetMine:"Mine"=None,internal:bool=True,primary:bool=True,name:str=''):
         Node.nodeNum += 1
         if len(name) < 1:
-            self.name = "NID: "+ str(Node.nodeNum)
+            self.name = "FNID: "+ str(Node.nodeNum)
             if(Node.nodeNum==168):
                 print("WTFFF")
         else:
