@@ -5,7 +5,7 @@ from itertools import combinations
 import time
 from sys import getrefcount
 import gc
-from ..pathfinding import basicDijkstras # import error here
+from . import genPathFromNodes # import error here
 
 from enum import Enum
 
@@ -776,7 +776,7 @@ if __name__=="__main__":
             mine.connectMineNodes()
         startNode=field.placeStartNode(0,(genYMin-radius)-20)
         endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
-        solverGraph=basicDijkstras.Graph(Node.nodeGraph)
+        solverGraph=genPathFromNodes.Graph(Node.nodeGraph)
         shortestPath=solverGraph.shortest_path(startNode,endNodes)
         print("Shortest Path:")
         print(shortestPath)
