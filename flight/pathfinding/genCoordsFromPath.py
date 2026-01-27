@@ -2,7 +2,7 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from flight.pathfinding.rexAlg.nodeGen import Node, Mine, Field
+from flight.pathfinding.genNodesFromMines import Node, Mine, Field
 
 #todo
 #function takes in nodeCorlist and then creates goto points between each pair in list. 

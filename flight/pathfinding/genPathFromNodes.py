@@ -1,6 +1,6 @@
 import heapq
 
-print('digAlgo.py')
+
 # will have to figure out how to calculate distance between nodes (weights)
 
 #for each (safe) node in graph
@@ -21,19 +21,6 @@ print(previous)
 '''
 
 
-# dictionary set up
-# 
-graph = {
-  "A": {"B": 3, "C": 3},
-  "B": {"A": 3, "D": 3.5, "E": 2.8},
-  "C": {"A": 3, "E": 2.8, "F": 3.5}, 
-  "D": {"B": 3.5, "E": 3.1, "G": 10},
-  "E": {"B": 2.8, "C": 2.8, "D": 3.1, "G": 7},
-  "F": {"C": 3.5, "G": 2.5},
-  "G": {"D": 10, "E": 7, "F": 2.5},
-}
-# each key of the dictionary is a node and each value is a dict 
-# containing the neighbors of the key and distance to it
 
 
 
@@ -41,10 +28,12 @@ graph = {
 class Graph:
     def __init__(self, graph: dict ={}):
         self.graph = graph #a dictionary for the adjacency list
+        
 
     def add_edge(self, node1, node2, weight):
         if node1 not in self.graph: #check if the node is already
             self.graph[node1] = {} # if not, create the node
+            
         self.graph[node1][node2] = weight #else, add a connection to its neighbor
     
     def shortest_distances(self, source: str):
@@ -55,7 +44,7 @@ class Graph:
         # Initialize a priporty queue
         pq = [(0, source)]
         heapq.heapify(pq)
-
+        
         # Create a set to hold 
         visited = set()
 
@@ -68,6 +57,7 @@ class Graph:
             current_distance, current_node = heapq.heappop(
                 pq
             ) # get the node with the min distance
+
 
             if current_node in visited:
                 continue #skip already visited nodes
@@ -90,30 +80,50 @@ class Graph:
                         predecessors[neighbor] = node
 
         return distances, predecessors
-    
-    def shortest_path(self, src: str, target: str):
-
+    #ALLOWS FOR MULTIPLE TARGETS, IS PASSED A LIST OF POSSIBLE TARGETS, returns shortest among the list
+    def shortest_path(self, src: str, target_list: list[str]):
+        
         #generating preds dictionary
         _, predecessors = self.shortest_distances(src)
-
+        
         path = []
+        
+        #Given the list of distances, returns te lowest one
+        target=target_list[0]
+        for i in target_list:
+            if _[i] <= _[target]:
+                target=i
+        
+        
         current_node = target
 
         #back tracking from target usings preds
         while current_node:
             path.append(current_node)
             current_node = predecessors[current_node]
+            
+           
 
         # reversing path and returning it
         path.reverse()
 
         return path
     
+if __name__=="__main__":
+    
+    # dictionary set up
+    # 
+    graph = {
+    "A": {"B": 3, "C": 3},
+    "B": {"A": 3, "D": 3.5, "E": 2.8},
+    "C": {"A": 3, "E": 2.8, "F": 3.5}, 
+    "D": {"B": 3.5, "E": 3.1, "G": 10},
+    "E": {"B": 2.8, "C": 2.8, "D": 3.1, "G": 7},
+    "F": {"C": 3.5, "G": 2.5},
+    "G": {"D": 10, "E": 7, "F": 2.5},
+    }
+    # each key of the dictionary is a node and each value is a dict 
+    # containing the neighbors of the key and distance to it
+    # testing implementation
+    G = Graph(graph)
 
-# testing implementation
-G = Graph(graph)
-#distances, predecessors = G.shortest_distances("B")
-#print(predecessors)
-
-print(G.shortest_path("B", "F"))
-print(G.shortest_path("F", "B"))

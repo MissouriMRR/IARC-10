@@ -1,7 +1,7 @@
-import flight.pathfinding.rexAlg.nodeGen as nodeg
-import flight.pathfinding.sightWeights.seenByDrone as seebd
-import flight.pathfinding.dijkstrasPathfindingAlg.basicDijkstras as dijk
-import flight.pathfinding.safetyNodeGen.subdividingNodeGen as gotoDiv
+import flight.pathfinding.genNodesFromMines as nodeg
+import seenByDrone as seebd
+import flight.pathfinding.genPathFromNodes as dijk
+import flight.pathfinding.genCoordsFromPath as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
