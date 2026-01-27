@@ -5,6 +5,7 @@ Wants=network.target
 
 [Service]
 Type=oneshot
+# Replace the mrrdt-3 with the correct drone name
 Environment="PATH=/root/.local/bin:/home/mrrdt-3/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/local/bin/batman-mesh-setup.sh
 RemainAfterExit=yes
@@ -12,6 +13,7 @@ StandardOutput=journal
 StandardError=journal
 
 # Set working directory if your script needs to find the uv project
+# Replace mrrdt-3 with the correct drone name
 WorkingDirectory=/home/mrrdt-3/IARC-10/Interdrone-Communication/
 
 # Run as root (required for network configuration)
