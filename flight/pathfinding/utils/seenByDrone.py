@@ -1,6 +1,17 @@
 import numpy as np
+import numpy as np
+from PIL import Image, ImageDraw
 import time as t
 import random
+
+# Begining of the sight tracking class, the goal of this is to track what all the drone has seen so far
+class sightTracker:
+    pass
+
+
+# Old after this point, unlikely to be used but I will keep this around till 
+# I finish with new usage
+
 
 timeLimit = 120 # Time limit in seconds
 fieldSizeX = 3600 # The max size of the field in inches
