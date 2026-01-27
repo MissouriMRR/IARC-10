@@ -1,13 +1,14 @@
-import nodeGen as nodeg
+import flight.pathfinding.genNodesFromMines as nodeg
 import seenByDrone as seebd
-import basicDijkstras as dijk
-import subdividingNodeGen as gotoDiv
+import flight.pathfinding.genPathFromNodes as dijk
+import flight.pathfinding.genCoordsFromPath as gotoDiv
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw
 
-# Function for generating polygon masks based on node to node connections
+# Function for generating polygon masks based on node to node connections on differing mines
 # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
+# Array size is the dimensions of the sight array (which should be the same size as the minefield simulation array)
 def polygonMask(node1:nodeg.Node, node2:nodeg.Node, array_size:tuple[int, int]):
     x1 = node1.parentMine.x
     y1 = node1.parentMine.y
@@ -30,16 +31,17 @@ class Drone:
         self.tasks = []
         self.id = id
 
-    # Updates the corners tracking what the drone is seeing
+    # Updates the corners tracking what the drone is seeing UNEMPLAMENTED
     def updateVision(self, corners:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = ((1,1), (1,1), (1,1), (1,1))):
         self.visionRange = corners
 
+    # Adds coords to the Task cache
     def updateTasks(self, gotoCoords:tuple[tuple[int, int]]):
         self.tasks = []
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
     
-    # Checks to see if the area needs to be checked
+    # Checks to see if the area needs to be checked UNEMPLAMENTED
     def checkSeen(self, centerCoords:tuple[int, int]):
         self.x = centerCoords[0]
 
@@ -49,6 +51,7 @@ class Drone:
         self.x = coords[0]
         self.y = coords[1]
 
+    # Sets the drone to go through the task list
     def completeTasks(self):
         for i in range(len(self.tasks)):
             self.goto(self.tasks[i])
@@ -63,14 +66,14 @@ class Drone:
             '''
         # Clears task cache
     
-    #Smart landing sequence, Should be usable in final product!!
+    # Smart landing sequence, Should be usable in final product!!
     def recall(self):
         if (fieldSizeX - self.x < fieldSizeY - self.y):
             landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
         else:
             landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
     
-    # This is a hard coded mess and will need to be done
+    # This is a hard coded mess and will need to be redone
     def selfLoop(self, path:Path):
         for i in range(10):
             gotoCoords = gotoDiv.gotoPath(currentPath)

@@ -2,7 +2,7 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from nodeGen import Node, Mine, Field
+from flight.pathfinding.genNodesFromMines import Node, Mine, Field
 
 #todo
 #function takes in nodeCorlist and then creates goto points between each pair in list. 
@@ -53,7 +53,7 @@ def generateGotoPoints(nodeList:Node, step: int = 10, arc_step: float= 0.349): #
         n1 = nodeList[i] #first node
         n2 = nodeList[i + 1] #second node in each iteration
 
-        # linear gotos
+        # linear gotos or floating points
         if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             x_vals = np.linspace(n1.x, n2.x, step)
             y_vals = np.linspace(n1.y, n2.y, step)
@@ -88,8 +88,7 @@ def generateGotoPoints(nodeList:Node, step: int = 10, arc_step: float= 0.349): #
             for a in angles:
                 x = cx + r * m.cos(a)
                 y = cy + r * m.sin(a)
-                finalGotoList.append((float(x), float(y)))
-        
+                finalGotoList.append((float(x), float(y)))        
     return finalGotoList
 
 path = generateGotoPoints(nodeList)
