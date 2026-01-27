@@ -89,8 +89,6 @@ class Connection:
         self.node1=node1
         self.node2=node2
         
-
-        
         if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
             
             self.connectionType=seg.LINE
@@ -109,7 +107,6 @@ class Connection:
         self.distance=self.updateDistance()
 
         #checking for a valid path and updating the graph must be done manually
-        
         
         # DISTANCE
     def updateDistance(self):
@@ -436,15 +433,8 @@ class Mine:
         if(arcConnection.validPath()):
             arcConnection.addGraph()
        
-
-
-
-            
-
         #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
 
-                    
-        
         return getrefcount(self)
 
     def __str__(self):
@@ -798,6 +788,6 @@ X=Done
  X Combine all node lists into one
  - Generate Hugging Nodes
  X Generate Floating Nodes
- - Termination Way?:
+ - Termination Way that can help optimize generation?:
     + check if a pair of nodes can exist before actually creating them.
 """
