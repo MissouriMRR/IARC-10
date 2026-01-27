@@ -6,8 +6,9 @@ import numpy as np
 import time as t
 from PIL import Image, ImageDraw
 
-# Function for generating polygon masks based on node to node connections
+# Function for generating polygon masks based on node to node connections on differing mines
 # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
+# Array size is the dimensions of the sight array (which should be the same size as the minefield simulation array)
 def polygonMask(node1:nodeg.Node, node2:nodeg.Node, array_size:tuple[int, int]):
     x1 = node1.parentMine.x
     y1 = node1.parentMine.y
