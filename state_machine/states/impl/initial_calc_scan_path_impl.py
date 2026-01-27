@@ -13,7 +13,7 @@ from state_machine.states.state import State
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 from state_machine.states.scan import Scan
 
-import flight.pathfinding.safetyNodeGen.subdividingNodeGen as gotoDiv
+import flight.pathfinding.genCoordsFromPath as gotoDiv
 
 
 async def run(self: InitialCalcScanPath) -> State:
