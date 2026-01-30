@@ -20,10 +20,6 @@ previous.append(removedVal)
 print(previous)
 '''
 
-
-
-
-
 # creating a graph class
 class Graph:
     def __init__(self, graph: dict ={}):

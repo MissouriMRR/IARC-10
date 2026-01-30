@@ -4,18 +4,8 @@ import random as rand
 import matplotlib.pyplot as plt
 from flight.pathfinding.genNodesFromMines import Node, Mine, Field
 
-#todo
-#function takes in nodeCorlist and then creates goto points between each pair in list. 
-#between every node point, print/append goto points to final goto points path list that is returned at the end. 
-#constantly check for path type, and implement arc gotos. 
-#steps:
-#1. visual output should show all the nodes and goto points between them on screen. 
-#2. work on appending to final goto-list after going through nodecorlist and return final goto-list.
-#3. check node path type everytime, and if arc, create arc gotos, if line, use linspace.
-
-#arc length: angle * radius of circle  (16 , subject to change)
-
-#have a list of mine coordinates and then put a check if 
+#purpose: takes in list of nodes outputted from dijkstras algorthm, and creates goto points between each node (arc/line) 
+#with hardcoded lengths (arclength/step) between each point, outputting a final path of points for drone to follow.
 
 '''
 #make-shift mines for testing. radius = 3 feet
