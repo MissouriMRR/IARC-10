@@ -26,8 +26,7 @@ nodeCorList = [n1, n2, n3, n4]
 field = Field(0, 200, 0, 200)
 field.addMine(100, 150, 10)
 field.addMine(60, 90, 10) 
-field.addMine(120, 100, 10) 
-#
+field.addMine(120, 100, 10)
 for mine in field.mines:
     print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
     mine.connectMineNodes()
