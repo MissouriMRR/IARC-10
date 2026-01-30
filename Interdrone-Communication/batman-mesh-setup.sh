@@ -131,4 +131,11 @@ ip addr add "$NODE_IP/24" dev bat0
 log_message "B.A.T.M.A.N. mesh setup complete!"
 log_message "Interface: $UAIN, IP: $NODE_IP"
 
+# Change to the Interdrone directory
+cd IARC-10/Interdrone-Communication
+
+log_message "Changed to directory"
+
+python3 main.py -i $PI_NUMBER
+
 exit 0
