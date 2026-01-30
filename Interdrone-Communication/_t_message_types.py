@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Final
+from typing import Any, Final, override
 from enum import Enum
 from typing import TypeAlias
 from dataclasses import dataclass, field
@@ -25,13 +25,13 @@ SchemaFieldType: TypeAlias = (
     type[int]
     | type[float]
     | type[str]
-    | type[tuple[Any, ...]]
-    | type[dict[str, Any]]
+    | type[tuple[Any, ...]]  
+    | type[dict[str, Any]] 
     | MessageType
 )
 
 
-EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, SchemaFieldType]]] = {
+EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
         "drones": tuple[int, ...],
@@ -81,12 +81,6 @@ class Message:
     data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.id is None:
-            raise ValueError("ID is required, cannot be None")
-        if self.drones is None:
-            raise ValueError("Drones is required, cannot be None")
-        if self.data is None:
-            raise ValueError("Data is required, cannot be None")
         if self.id not in EXPECTED_SCHEMA:
             raise ValueError(f"Invalid message type: {self.id}")
 
@@ -100,7 +94,7 @@ class Message:
         missing = expected_keys - actual_keys
         extra = actual_keys - expected_keys
 
-        errors = []
+        errors: list[str] = []
         if missing:
             errors.append(f"missing keys: {sorted(missing)}")
         if extra:
@@ -115,45 +109,51 @@ class Message:
                 value = self.data[key]
                 if not isinstance(value, allowed_types):
                     raise TypeError(
-                        f"Field '{key}' in '{self.id}' must be one of {allowed_types}, "
-                        f"got {type(value).__name__}"
+                        f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}"
                     )
         object.__setattr__(self, "data", FrozenKeysDict(self.data.copy()))
 
     @classmethod
-    def create(cls, id: str, drones: List[str], data: Dict[str, Any]) -> "Message":
+    def create(cls, id: MessageType, drones: tuple[int], data: dict[str, Any]) -> "Message":
         return cls(id=id, drones=tuple(drones), data=data.copy())
 
 
-class FrozenKeysDict(dict):
+class FrozenKeysDict(dict[str, Any]):
     """Normal dict, but you can't add or remove keys after creation"""
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict[str, Any]):
         super().__init__(data)
         self._frozen_keys = frozenset(data.keys())
 
+    @override
     def __setitem__(self, key, value):
         if key not in self._frozen_keys:
             raise KeyError(f"Cannot add new key '{key}' – message structure is frozen")
         super().__setitem__(key, value)
 
+    @override
     def __delitem__(self, key):
         raise KeyError("Cannot delete keys from Message.data")
 
+    @override
     def clear(self):
         raise AttributeError("Cannot clear Message.data")
 
+    @override
     def pop(self, *args):
         raise AttributeError("Cannot pop from Message.data")
 
+    @override
     def popitem(self):
         raise AttributeError("Cannot popitem from Message.data")
 
+    @override
     def setdefault(self, key, default=None):
         if key not in self._frozen_keys:
             raise KeyError(f"Cannot add new key '{key}' via setdefault()")
         return super().setdefault(key, default)
 
+    @override
     def update(self, other=None, **kwargs):
         if other is not None:
             for k in other:
@@ -162,7 +162,7 @@ class FrozenKeysDict(dict):
         for k in kwargs:
             if k not in self._frozen_keys:
                 raise KeyError(f"Cannot add new key '{k}' via update()")
-        super().update(other, **kwargs)
+        super().update(other if other is not None else {}, **kwargs)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__)
