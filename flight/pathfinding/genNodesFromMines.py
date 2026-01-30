@@ -5,11 +5,14 @@ import time
 from sys import getrefcount
 import gc
 from . import genPathFromNodes # import error here
-
 from enum import Enum
 
-######## This file, given the center coordinates of mines and a to-be-determined radius, generates nodes
-######## that connect to each other in a way that allows for traversal without any sharp turns.
+######## Programmer(s): Jack Dabrowski, Harper Reinhardt                                                 ########
+######## Date: mm/dd/yy                                                                                  ########
+######## File: genNodesFromMines.py                                                                      ########
+######## Purpose:                                                                                        ########
+######## This file, given the center coordinates of mines and a to-be-determined radius, generates nodes ########
+######## that connect to each other in a way that allows for traversal with minimal sharp turns.          ########
 
 """
 When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
@@ -114,7 +117,6 @@ class Connection:
     def updateDistance(self):
         distance = 0.0
         
-        
         if self.connectionType==seg.ARC: # Nodes are on the same mine
             angleTheta=abs(self.node1.angle-self.node2.angle)
             
@@ -155,14 +157,11 @@ class Connection:
             Node.nodeGraph[self.node2].update({self.node1:self.distance})
         
     def deleteConnection(self):
-
-        
         if Node.nodeGraph[self.node1]!=None and self.node2 in Node.nodeGraph[self.node1]:
             del Node.nodeGraph[self.node1][self.node2]
 
         if Node.nodeGraph[self.node2]!=None and self.node1 in Node.nodeGraph[self.node2]:
             del Node.nodeGraph[self.node2][self.node1]
-        
 
         '''
         
@@ -182,7 +181,7 @@ class Connection:
             x2 = float(self.node2.x)
             y2 = float(self.node2.y)
 
-            for mine in field.mines:
+            for mine in Connection.field.mines:
                 x3 = mine.x
                 y3 = mine.y
                 
@@ -202,10 +201,9 @@ class Connection:
                     tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
                     
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-                    if distanceFromMine < radius:
+                    if distanceFromMine < mine.radius:
                         return False
             
-
         #This is kinda complicated, but we have to check the hugging edge. 
         if self.connectionType==seg.ARC:
             print("We haven't implemented this yet")
@@ -237,21 +235,21 @@ class Connection:
             tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
             
             distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-            if distanceFromMine < radius:
+            if distanceFromMine < mine.radius:
                 return True
         return False
 
 
-# Field generates nodes off of mines, temporarily generates mines too
+# Field generates nodes off of mines, generates mines too
 class Field:
+    mines = []
     def __init__(self,xMin,xMax,yMin,yMax):
         self.nodeGraph={}
         self.xMin = xMin
         self.yMin = yMin
         self.xMax = xMax
         self.yMax = yMax
-        self.mines = []
-        Connection.connectionField=self
+        Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
@@ -267,9 +265,6 @@ class Field:
     #Due to the current node stucture, right now this only modifies the nodeGraph
     def placeStartNode(self,xVal:int ,yVal:int ) -> 'Node':
         return self.addFloatingNode(xVal,yVal)
-        
-
-        
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
     def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
@@ -287,9 +282,12 @@ class Field:
             mine = pair[0]
             target = pair[1]
             
+            # Best not to mess with how nodes are placed on the mine, 
+            # the combinations of the booleans might be confusing
+
             # Mine internal nodes
             mineInternPrimary = MineNode(mine,target,True,True)
-            mineInternSecond = MineNode(mine,target,True,False)      
+            mineInternSecond = MineNode(mine,target,True,False)
             mine.addNode(mineInternPrimary)
             mine.addNode(mineInternSecond)
 
@@ -298,10 +296,7 @@ class Field:
             mineExternSecond = MineNode(mine,target,False,False)
             mine.addNode(mineExternPrimary)
             mine.addNode(mineExternSecond)
-
             
-            
-
             # target internal nodes
             targetInternPrimary = MineNode(target,mine,True,False)
             targetInternSecond = MineNode(target,mine,True,True)
@@ -328,22 +323,13 @@ class Field:
         for node in newMine.nodes:
             #print(node.connections[-1].validPath())
             if(node.connections[0].validPath()):
-               
                 node.connections[0].addGraph()
             
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in Node.nodeGraph.keys() if n not in newMine.nodes]:
             for connection in node.connections:
                 if(connection.mineCollision(newMine)):
-                    
                     connection.deleteConnection()
-        
-        
-
-        # Brute force; each node has a list of every node created, excluding itself. 
-        # Significantly slows down this algorithm though
-        # for node in Node.nodes:
-        #     node.connectedNodes.extend([n for n in Node.nodes if n not in [node,node.connectedNode]]`
         
     def plotField(self,labeled:bool=False):
         plt = pyplot
@@ -622,7 +608,7 @@ class MineNode(Node):
         return (round(float(self.x),3),round(float(self.y),3))
 
     def getTargetMine(self) -> Mine:
-        return self.__targetMine
+        return self.targetMine
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -630,26 +616,25 @@ class MineNode(Node):
 
 
 if __name__=="__main__":
-    numMines = 1
+    numMines = 10
     radius = 16
-    debug = True
-    xMin = -numMines*radius*0.45
-    xMax = numMines*radius*0.45
-    yMin = -numMines*radius*0.45
-    yMax = numMines*radius*0.45
+    debug = False
+    xMin = -numMines*radius
+    xMax = numMines*radius
+    yMin = -numMines*radius
+    yMax = numMines*radius
     if not debug:
         field = Field(xMin,xMax,yMin,yMax)
     else:
         field = Field(-200,200,-300,300)
-    genXMin = -200#-radius*(numMines//5)
-    genXMax =200# radius*(numMines//5)
-    genYMin =-300# -radius*(numMines//5)
-    genYMax = 300#radius*(numMines//5)
+    genXMin = -radius*(numMines//2)
+    genXMax = radius*(numMines//2)
+    genYMin =-radius*(numMines//2)
+    genYMax = radius*(numMines//2)
     position = [0,0] 
     mineGenTolerance = 0*radius
 
     # Mine generation, do not add floating nodes before this point
-    """
     if not debug:
         for num in range(numMines):
             while True: # To make sure generated mines arent clipping off the edges of the field
@@ -674,7 +659,7 @@ if __name__=="__main__":
             
         for mine in field.mines:
             mine.connectMineNodes()
-    """
+    
         ## Add floating nodes after this point##
 
 
@@ -700,7 +685,7 @@ if __name__=="__main__":
     # for pair in combinations(Node.nodes,2):
     #     connections = pair[0].getPathType(pair[1])
     #     print(connections)
-    if  debug:
+    if debug:
 
         # Test aligned mines
         field.addMine(0,0,radius)
@@ -778,7 +763,7 @@ if __name__=="__main__":
         #print(list(Node.nodeGraph.keys())[10])
         #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
 
-    field.plotField(True)
+    field.plotField(False)
 """
 TODO:
 X=Done
