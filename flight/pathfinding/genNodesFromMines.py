@@ -4,7 +4,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes # import error here
+import genPathFromNodes # import error here
 
 from enum import Enum
 
@@ -182,7 +182,7 @@ class Connection:
             x2 = float(self.node2.x)
             y2 = float(self.node2.y)
 
-            for mine in field.mines:
+            for mine in Connection.field.mines:
                 x3 = mine.x
                 y3 = mine.y
                 
@@ -202,7 +202,7 @@ class Connection:
                     tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
                     
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-                    if distanceFromMine < radius:
+                    if distanceFromMine < mine.radius:
                         return False
             
 
@@ -237,7 +237,7 @@ class Connection:
             tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
             
             distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-            if distanceFromMine < radius:
+            if distanceFromMine < mine.radius:
                 return True
         return False
 
@@ -251,7 +251,7 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         self.mines = []
-        Connection.connectionField=self
+        Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
