@@ -142,15 +142,8 @@ class Client:
             return serverResponseBytes.decode()
 
         except asyncio.TimeoutError:
-            # If timeout and message is a JSON startup message (messageId = 501), resend message
-            # print(f"Timeout connecting to {serverIP}:{serverPort}")
-            try:
-                clientMessageJson: MessageData = json.loads(clientMessageDump)
-                if clientMessageJson["messageId"] == 501:
-                    clientMessageJson["data"]["payload"] = "Timeout"
-                    await self.clientOutData.put(clientMessageJson)
-            except Exception as e:
-                print(f"Error processing timeout message: {e}")
+            # NOTE: In the future if you need the client to resend a message after a timeout view commit history,
+            # 671f673486ea4c57ad2320c1506bafef70aa5e15 to see how we did it for the deprecated startup message
             raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
         except ConnectionRefusedError:
             raise Exception(f"Connection refused by {serverIP}:{serverPort}")

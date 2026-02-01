@@ -19,7 +19,7 @@ class json_config_reader:
     def get_app_ip(self) -> str:
         return str(self.config["app"]["ip"])
 
-    def set_app_ip(self, newIP: int):
+    def set_app_ip(self, newIP: str):
         # TODO test this with app (is int correct for IP?)
         self.config["app"]["ip"] = newIP
 
@@ -41,15 +41,6 @@ class json_config_reader:
     # Get speed test data size for network test
     def get_speed_test_data_size(self) -> int:
         return int(self.config["localInfo"]["speedTestKbDataSize"])
-
-    # TODO make this good after sprint
-    # Gets current config file and edits selfId to be used for startup script
-    def get_json_text_data_for_startup(self, droneId: int):
-        ogId = self.get_self_id()
-        self.config["localInfo"]["selfId"] = droneId
-        jsonExport = json.dumps(self.config)
-        self.config["localInfo"]["selfId"] = ogId
-        return jsonExport
 
     # Gets number of drones
     def get_number_of_drones(self):
