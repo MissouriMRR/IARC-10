@@ -14,6 +14,7 @@ class MessageType(Enum):
 
     # App
     APP_TEST = 400
+    APP_CONFIG = 401
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -25,8 +26,8 @@ SchemaFieldType: TypeAlias = (
     type[int]
     | type[float]
     | type[str]
-    | type[tuple[Any, ...]]  
-    | type[dict[str, Any]] 
+    | type[tuple[Any, ...]]
+    | type[dict[str, Any]]
     | MessageType
 )
 
@@ -34,24 +35,30 @@ SchemaFieldType: TypeAlias = (
 EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
-        "drones": tuple[int, ...],
-        "data": dict[str, object],
+        "dronesToSendData": tuple[int, ...],  # ... allows tuple to be any length
+        "data": dict[str, object],  # TODO REMOVE DATA HERE
     },
     MessageType.APP_TEST: {
         "id": MessageType.APP_TEST,
-        "drones": tuple[int, ...],
-        "data": dict[str, object],
+        "dronesToSendData": tuple[int, ...],
+        "data": dict[str, object],  # TODO REMOVE DATA HERE
+    },
+    MessageType.APP_CONFIG: {
+        "id": MessageType.APP_CONFIG,
+        "dronesToSendData": tuple[int, ...],
+        "IP": int,
+        "Port": int,
     },
     MessageType.HEARTBEAT: {
         "id": MessageType.HEARTBEAT,
-        "drones": tuple[int, ...],
+        "dronesToSendData": tuple[int, ...],
         "timestamp": float,
         "senderId": int,
         "payload": str,
     },
     MessageType.SPEED_TEST_REQUEST: {
         "id": MessageType.SPEED_TEST_REQUEST,
-        "drones": tuple[int, ...],
+        "dronesToSendData": tuple[int, ...],
         "initialUploadTime": float,
         "finalUploadTime": float,
         "initialDownloadTime": float,
@@ -62,7 +69,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     },
     MessageType.SPEED_TEST_RESPONSE: {
         "id": MessageType.SPEED_TEST_RESPONSE,
-        "drones": tuple[int, ...],
+        "dronesToSendData": tuple[int, ...],
         "target": str,
         "uploadRttMs": float,
         "uploadThroughputKbps": float,
@@ -76,19 +83,23 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
 class Message:
     """Message class for interdrone communication. Provides a way to create, validate, and serialize messages."""
 
+    # ID and dronesToSendData are required values for each message
     id: MessageType
-    drones: tuple[int, ...]
-    data: dict[str, Any] = field(default_factory=dict)
+    dronesToSendData: tuple[int, ...]
+    # The data variable contains all keys and values in a schema that aren't id and dronesToSendData.
+    data: dict[str, Any] = field(default_factory=dict)  # TODO long term remove any
 
+    # When new Message object is created in code this runs to prevent errors and init
     def __post_init__(self) -> None:
         if self.id not in EXPECTED_SCHEMA:
             raise ValueError(f"Invalid message type: {self.id}")
 
+        # Check to make sure all expected key in schema are present in new message. If not, raise an error
         expected = EXPECTED_SCHEMA[self.id]
         actual_keys = set(self.data.keys())
         expected_keys = set(expected.keys())
 
-        expected_keys -= {"id", "drones"}
+        expected_keys -= {"id", "dronesToSendData"}
 
         # Check missing/extra keys
         missing = expected_keys - actual_keys
@@ -104,8 +115,9 @@ class Message:
                 f"Invalid data for message '{self.id}': {', '.join(errors)}"
             )
 
+        # Iterate through schema and add keys to data and check for errors
         for key, allowed_types in expected.items():
-            if key not in {"id", "drones"}:
+            if key not in {"id", "dronesToSendData"}:
                 value = self.data[key]
                 if not isinstance(value, allowed_types):
                     raise TypeError(
@@ -114,10 +126,13 @@ class Message:
         object.__setattr__(self, "data", FrozenKeysDict(self.data.copy()))
 
     @classmethod
-    def create(cls, id: MessageType, drones: tuple[int], data: dict[str, Any]) -> "Message":
-        return cls(id=id, drones=tuple(drones), data=data.copy())
+    def create(
+        cls, id: MessageType, dronesToSendData: tuple[int], data: dict[str, Any]
+    ) -> "Message":
+        return cls(id=id, dronesToSendData=tuple(dronesToSendData), data=data.copy())
 
 
+# Ensures you can't change values of keys once a message is created, only their values (prevents potential issues with networking)
 class FrozenKeysDict(dict[str, Any]):
     """Normal dict, but you can't add or remove keys after creation"""
 
