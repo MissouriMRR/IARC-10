@@ -16,7 +16,6 @@ def main() -> None:
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--id", help="Self ID", type=int)
-    # parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
     args = parser.parse_args()
 
     # Load config
