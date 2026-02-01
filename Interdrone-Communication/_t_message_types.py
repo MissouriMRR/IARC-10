@@ -31,7 +31,7 @@ SchemaFieldType: TypeAlias = (
     | MessageType
 )
 
-
+# TODO inside of here document what these different fields do
 EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
@@ -127,9 +127,9 @@ class Message:
 
     @classmethod
     def create(
-        cls, id: MessageType, dronesToSendData: tuple[int], data: dict[str, Any]
+        cls, id: MessageType, dronesToSendData: tuple[int, ...], data: dict[str, Any]
     ) -> "Message":
-        return cls(id=id, dronesToSendData=tuple(dronesToSendData), data=data.copy())
+        return cls(id=id, dronesToSendData=dronesToSendData, data=data.copy())
 
 
 # Ensures you can't change values of keys once a message is created, only their values (prevents potential issues with networking)
