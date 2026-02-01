@@ -20,7 +20,7 @@ class json_config_reader:
         return str(self.config["app"]["ip"])
 
     def set_app_ip(self, newIP: int):
-        # TODO test this with app
+        # TODO test this with app (is int correct for IP?)
         self.config["app"]["ip"] = newIP
 
     def get_app_port(self) -> int:
