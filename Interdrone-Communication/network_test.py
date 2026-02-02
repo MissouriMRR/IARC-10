@@ -1,4 +1,4 @@
-from typed_dicts_classes import MessageData
+from _t_message_types import Message, MessageType
 from json_config_reader import json_config_reader
 
 import asyncio
@@ -22,9 +22,9 @@ def run_networking_thread(
     loop: AbstractEventLoop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    clientIn: AsyncQueue[MessageData] = asyncio.Queue()
-    clientOut: AsyncQueue[MessageData] = asyncio.Queue()
-    serverOut: AsyncQueue[MessageData] = asyncio.Queue()
+    clientIn: AsyncQueue[Message] = asyncio.Queue()
+    clientOut: AsyncQueue[Message] = asyncio.Queue()
+    serverOut: AsyncQueue[Message] = asyncio.Queue()
 
     # Provide interface to main thread
     resourcesReady.put(
@@ -48,9 +48,9 @@ def run_networking_thread(
 
 # Async networking entry point - runs server and client
 async def start_networking(
-    clientInData: AsyncQueue[MessageData],
-    clientOutData: AsyncQueue[MessageData],
-    serverOutData: AsyncQueue[MessageData],
+    clientInData: AsyncQueue[Message],
+    clientOutData: AsyncQueue[Message],
+    serverOutData: AsyncQueue[Message],
     jsonConfigData: json_config_reader,
 ) -> None:
     # Instantiate Server and Client
@@ -108,10 +108,10 @@ async def main():
     networking: NetworkingInterface = resourcesReady.get()
     print("Networking interface ready")
 
-    speedTestMessage: MessageData = {
-        "messageId": 513,
-        "dronesToSendData": [],
-        "data": {
+    speedTestMessage: Message = Message.create(
+        id=MessageType.SPEED_TEST_REQUEST,
+        dronesToSendData=(),
+        data={
             "initialUploadTime": 0.0,  # Set when queued to send
             "finalUploadTime": 0.0,
             "initialDownloadTime": 0.0,
@@ -123,7 +123,7 @@ async def main():
                 jsonConfigData.get_speed_test_data_size() * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
-    }
+    )
 
     # Run both tasks concurrently
     try:
@@ -131,7 +131,7 @@ async def main():
 
         numberOfQueries = 100
         i = 0
-        speedResults: list[MessageData] = []
+        speedResults: list[Message] = []
         # Add network test message to clientQueue to send
         networking.queue_client_message(message=speedTestMessage)
         # Send messages until numberOfQueries is hit
@@ -160,13 +160,13 @@ async def main():
 
         if speedResults:
             uploadThroughputs = [
-                float(r["data"]["uploadThroughputKbps"]) for r in speedResults
+                float(r.data["uploadThroughputKbps"]) for r in speedResults
             ]
-            uploadRttms = [float(r["data"]["uploadRttMs"]) for r in speedResults]
+            uploadRttms = [float(r.data["uploadRttMs"]) for r in speedResults]
             downloadThroughputs = [
-                float(r["data"]["downloadThroughputKbps"]) for r in speedResults
+                float(r.data["downloadThroughputKbps"]) for r in speedResults
             ]
-            downloadRttMs = [float(r["data"]["downloadRttMs"]) for r in speedResults]
+            downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
             # TODO investigate issue with 250ms+ times in first couple sends
             for i in range(len(downloadRttMs)):
                 if downloadRttMs[i] > 1:
@@ -192,7 +192,7 @@ async def main():
             maxDownloadRtt = max(downloadRttMs)
 
             print(f"\nTotal Tests: {len(speedResults)}")
-            print(f"Target: {speedResults[0]['data']['target']}")
+            print(f"Target: {speedResults[0].data['target']}")
 
             print("\n--- UPLOAD STATISTICS ---")
             print("Throughput:")

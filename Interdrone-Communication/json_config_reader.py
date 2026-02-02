@@ -2,7 +2,7 @@ import json
 from typed_dicts_classes import JsonConfigData
 
 
-class json_config_reader:
+class json_config_reader:  # TODO update this the name of this to follow correct class syntax
     def __init__(self) -> None:
         self.config: JsonConfigData
         with open("config.json", "r") as file:
