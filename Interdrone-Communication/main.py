@@ -7,7 +7,6 @@ import threading
 from _t_message_types import Message, MessageType
 from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
-import networking_thread
 import argparse
 import time
 
@@ -29,9 +28,7 @@ def main() -> None:
         droneId = int(jsonConfigData.get_self_id())
     # parallel
     # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
-    networkingThreadClassInstance: NetworkingThread = (
-        networking_thread.NetworkingThread()
-    )
+    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     # Start networking thread
     networkingThread = threading.Thread(
