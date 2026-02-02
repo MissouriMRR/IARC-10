@@ -4,7 +4,7 @@ import queue
 import asyncio
 
 from _t_message_types import Message
-from json_config_reader import json_config_reader
+from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
 import server
 import client
@@ -16,7 +16,7 @@ class NetworkingThread:
     def run_networking_thread(
         self,
         resourcesReady: queue.Queue[NetworkingInterface],
-        jsonConfigData: json_config_reader,
+        jsonConfigData: JsonConfigReader,
     ) -> None:
         loop: AbstractEventLoop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -50,7 +50,7 @@ class NetworkingThread:
         clientInData: AsyncQueue[Message],
         clientOutData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
-        jsonConfigData: json_config_reader,
+        jsonConfigData: JsonConfigReader,
     ) -> None:
         # Instantiate Server and Client
         serverInstance = server.Server(

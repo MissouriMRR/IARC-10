@@ -1,8 +1,15 @@
 import json
-from typed_dicts_classes import JsonConfigData
+from typing import TypedDict
 
 
-class json_config_reader:  # TODO update this the name of this to follow correct class syntax
+# Typed dict used for JsonConfigReader config variable
+class JsonConfigData(TypedDict):
+    drones: dict[str, dict[str, str]]
+    app: dict[str, str | int]
+    localInfo: dict[str, int]
+
+
+class JsonConfigReader:  # TODO update this the name of this to follow correct class syntax
     def __init__(self) -> None:
         self.config: JsonConfigData
         with open("config.json", "r") as file:
