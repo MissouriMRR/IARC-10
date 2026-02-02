@@ -3,8 +3,8 @@ from json_config_reader import json_config_reader
 
 import time
 import asyncio
-import json
-from typed_dicts_classes import MessageData
+from _t_message_types import Message, MessageType
+from json_message_utilities import JsonMessageUtilities
 
 
 class Client:
@@ -12,12 +12,12 @@ class Client:
     def __init__(
         self,
         jsonConfigData: json_config_reader,
-        clientInData: Queue[MessageData],
-        clientOutData: Queue[MessageData],
+        clientInData: Queue[Message],
+        clientOutData: Queue[Message],
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
-        self.clientInData: Queue[MessageData] = clientInData
-        self.clientOutData: Queue[MessageData] = clientOutData
+        self.clientInData: Queue[Message] = clientInData
+        self.clientOutData: Queue[Message] = clientOutData
 
         # Check for droneId from flag in main.py
         self.droneId: int = jsonConfigData.get_self_id()
@@ -25,8 +25,12 @@ class Client:
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
         self.otherDronesPorts: list[int] = []
-        self.otherDronesIds: list[int] = []
+        self.otherDronesIds: tuple[
+            int, ...
+        ] = ()  # Needs to be a tuple to align with dronesToSendData in Message class
 
+        # Create a temporary list to update tuple with otherDronesIds
+        tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
         # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
         for i in range(1, self.jsonConfigData.get_number_of_drones() + 1):
             # If drone is self (drone running this script) don't add them otherDrones list
@@ -36,7 +40,9 @@ class Client:
                 self.otherDronesPorts.append(
                     self.jsonConfigData.get_drone_port(droneId=i)
                 )
-                self.otherDronesIds.append(i)
+                tempOtherDronesIds.append(i)
+        # Update otherDronesIds tuple with tempOtherDronesIds values
+        self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -50,7 +56,7 @@ class Client:
             # Check for new message from clientInData
             if not self.clientInData.empty():
                 # Get new message from clientInData
-                message: MessageData = await self.clientInData.get()
+                message: Message = await self.clientInData.get()
                 # Create a background task to handle this message (allows for asynchronous messaging)
                 clientMessageTask = asyncio.create_task(self.handle_message(message))
                 clientMessageTasks.add(clientMessageTask)
@@ -62,26 +68,27 @@ class Client:
             await asyncio.sleep(0.05)
 
     # Create messageTasks to send data to all other drones
-    async def handle_message(self, message: MessageData):
+    async def handle_message(self, message: Message):
         # Determine which drones to send message to
-        dronesToSendData: list[int] = []
+        dronesToSendData: tuple[int, ...] = ()  # NOTE COULD BE SPOT OF ERROR
 
         # If dronesToSendData list has id values, only send message to those drones
         sendToApp: bool = False
-        if message["dronesToSendData"] != []:
+        if message.dronesToSendData != ():
             # If you to send data to the app, use ID 0
-            if message["dronesToSendData"] == [0]:
+            if message.dronesToSendData == (0,):
                 sendToApp = True
             else:
-                dronesToSendData = message["dronesToSendData"]
+                dronesToSendData = message.dronesToSendData
         # Else dronesToSendData list is empty, attempt to send data to all other drones
         else:
             dronesToSendData = self.otherDronesIds
 
         # Message Preprocessing
-        if message["messageId"] == 513:
-            message["data"]["initialUploadTime"] = time.perf_counter()
-        clientMessageDump = json.dumps(message)
+        # Update time value for Network Speed Test message
+        if message.id == MessageType.SPEED_TEST_REQUEST:
+            message.data["initialUploadTime"] = time.perf_counter()
+        clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
 
         # Create messageTasks list to store tasks for all drone connections
         messageTasks: list[asyncio.Task[str]] = []
@@ -158,30 +165,29 @@ class Client:
         serverIP: str,
         serverPort: int,
     ) -> None:
-        clientMessage: MessageData = json.loads(s=clientMessageDump)
-        serverResponse: MessageData = json.loads(s=serverResponseDump)
+        clientMessage: Message = JsonMessageUtilities.message_from_json(
+            payload=clientMessageDump
+        )
+        serverResponse: Message = JsonMessageUtilities.message_from_json(
+            payload=serverResponseDump
+        )
 
-        match int(
-            serverResponse["messageId"]
-        ):  # TODO may want to change this to serverResponse. Need to standardize this and talk to team. Server should send client MessageData instead of just a string and we should base processing on that
-            # Default Server Response Message
-            case 505:
+        match serverResponse.id:
+            case MessageType.SERVER_DEFAULT_RESPONSE:
                 # await self.clientOutData.put(item=serverResponseDump)  # Keep commented out for performance unless you want to see default server message
                 pass
-            # Network Speedtest Message (Needs a client response)\
-            case 513:
+            # Network Speedtest Message (Needs a client response)
+            case MessageType.SPEED_TEST_REQUEST:
                 # Client receives response - set final download time
                 receiveTime = time.perf_counter()
 
                 # Calculate Server Processing Time (Delta on Server Clock)
-                serverProcessingTime = float(
-                    serverResponse["data"]["initialDownloadTime"]
-                ) - float(serverResponse["data"]["finalUploadTime"])
+                serverProcessingTime: float = float(
+                    serverResponse.data["initialDownloadTime"]
+                ) - float(serverResponse.data["finalUploadTime"])
 
                 # Calculate Total Round Trip Time (Delta on Client Clock)
-                totalRtt = receiveTime - float(
-                    clientMessage["data"]["initialUploadTime"]
-                )
+                totalRtt = receiveTime - clientMessage.data["initialUploadTime"]
 
                 # Calculate Network RTT (Total - Processing)
                 networkRtt = totalRtt - serverProcessingTime
@@ -211,17 +217,17 @@ class Client:
                 # the immutability of the fields in 513. This is an ugly hack,
                 # but it works for now before I refactor messages and make them
                 # their own class in order to enforce immutability.
-                result: MessageData = {
-                    "messageId": 514,
-                    "dronesToSendData": [],
-                    "data": {
+                result: Message = Message.create(
+                    id=MessageType.SPEED_TEST_RESPONSE,
+                    dronesToSendData=(),
+                    data={
                         "target": f"{serverIP}:{serverPort}",
                         "uploadRttMs": round(uploadTime * 1000, 2),
                         "uploadThroughputKbps": round(uploadThroughputKbps, 2),
                         "downloadRttMs": round(downloadTime * 1000, 2),
                         "downloadThroughputKbps": round(downloadThroughputKbps, 2),
                     },
-                }
+                )
                 await self.clientOutData.put(item=result)
             case _:
                 # If no message ID, return server response data

@@ -18,6 +18,7 @@ class MessageType(Enum):
 
     # Interdrone Communication
     HEARTBEAT = 504
+    SERVER_DEFAULT_RESPONSE = 505
     SPEED_TEST_REQUEST = 513
     SPEED_TEST_RESPONSE = 514
 
@@ -53,8 +54,12 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.HEARTBEAT: {
         "id": MessageType.HEARTBEAT,
         "dronesToSendData": tuple[int, ...],
-        "timestamp": float,
         "senderId": int,
+        "payload": str,
+    },
+    MessageType.SERVER_DEFAULT_RESPONSE: {
+        "id": MessageType.SERVER_DEFAULT_RESPONSE,
+        "dronesToSendData": tuple[int, ...],
         "payload": str,
     },
     # Message: SPEED_TEST_REQUEST

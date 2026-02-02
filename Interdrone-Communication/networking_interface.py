@@ -5,7 +5,7 @@ import asyncio
 import concurrent.futures
 from typing import Any
 
-from typed_dicts_classes import MessageData
+from _t_message_types import Message
 
 
 # Thread safe interface to communicate with the async networking layer
@@ -13,20 +13,20 @@ class NetworkingInterface:
     def __init__(
         self,
         loop: asyncio.AbstractEventLoop,
-        clientIn: AsyncQueue[MessageData],
-        clientOut: AsyncQueue[MessageData],
-        serverOut: AsyncQueue[MessageData],
+        clientIn: AsyncQueue[Message],
+        clientOut: AsyncQueue[Message],
+        serverOut: AsyncQueue[Message],
     ) -> None:
         self.loop: AbstractEventLoop = loop
-        self.clientIn: Queue[MessageData] = clientIn
-        self.clientOut: Queue[MessageData] = clientOut
-        self.serverOut: Queue[MessageData] = serverOut
-        self._clientOutFuture: concurrent.futures.Future[MessageData] | None = None
-        self._serverOutFuture: concurrent.futures.Future[MessageData] | None = None
+        self.clientIn: Queue[Message] = clientIn
+        self.clientOut: Queue[Message] = clientOut
+        self.serverOut: Queue[Message] = serverOut
+        self._clientOutFuture: concurrent.futures.Future[Message] | None = None
+        self._serverOutFuture: concurrent.futures.Future[Message] | None = None
 
     # Send a message to the client
     def queue_client_message(
-        self, message: MessageData, timeout: float | None = None
+        self, message: Message, timeout: float | None = None
     ) -> None:
         future = asyncio.run_coroutine_threadsafe(self.clientIn.put(message), self.loop)
         future.result(timeout=timeout)
@@ -45,7 +45,7 @@ class NetworkingInterface:
         return q.empty()
 
     # Try to get a response from client
-    def try_get_client_response(self, timeout: float = 0.0) -> MessageData | None:
+    def try_get_client_response(self, timeout: float = 0.0) -> Message | None:
         if self._clientOutFuture is None:
             self._clientOutFuture = asyncio.run_coroutine_threadsafe(
                 self.clientOut.get(), self.loop
@@ -58,7 +58,7 @@ class NetworkingInterface:
             return None
 
     # Try to get a message from server
-    def try_get_server_message(self, timeout: float = 0.0) -> MessageData | None:
+    def try_get_server_message(self, timeout: float = 0.0) -> Message | None:
         if self._serverOutFuture is None:
             self._serverOutFuture = asyncio.run_coroutine_threadsafe(
                 self.serverOut.get(), self.loop

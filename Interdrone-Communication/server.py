@@ -2,11 +2,11 @@ from asyncio.queues import Queue
 from json_config_reader import json_config_reader
 import asyncio
 from asyncio import StreamReader, StreamWriter
-import json
 import time
 
 
-from typed_dicts_classes import MessageData
+from _t_message_types import Message, MessageType
+from json_message_utilities import JsonMessageUtilities
 
 
 class Server:
@@ -14,17 +14,17 @@ class Server:
     def __init__(
         self,
         jsonConfigData: json_config_reader,
-        serverOutData: Queue[MessageData],
+        serverOutData: Queue[Message],
     ):
         self.jsonConfigData: json_config_reader = jsonConfigData
-        self.serverOutData: Queue[MessageData] = serverOutData
-        self.serverDefaultResponseMessage: MessageData = {
-            "messageId": 505,
-            "dronesToSendData": [],
-            "data": {
+        self.serverOutData: Queue[Message] = serverOutData
+        self.serverDefaultResponseMessage: Message = Message.create(
+            id=MessageType.SERVER_DEFAULT_RESPONSE,
+            dronesToSendData=(),
+            data={
                 "payload": "Server received your message!",
             },
-        }
+        )
 
         # Check for droneId from flag in main.py
         self.droneId: int = jsonConfigData.get_self_id()
@@ -50,40 +50,49 @@ class Server:
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             # Read all data from client until end of data char (\n)
-            messageData = await reader.readuntil(b"\n")
-            if messageData:
-                strMessage: str = messageData.decode()
-                jsonMessage: MessageData = json.loads(strMessage)
+            byteMessage = await reader.readuntil(b"\n")
+            # Convert Message to json
+            message: Message = JsonMessageUtilities.message_from_json(
+                byteMessage.decode()
+            )
 
-                # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MESSAGE 513 FOR AN EXAMPLE
-                responseMessage: MessageData = self.serverDefaultResponseMessage
+            # If message was read in, begin processing
+            if message:
+                # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MessageType.SPEED_TEST_REQUEST FOR AN EXAMPLE
+                responseMessage: Message = self.serverDefaultResponseMessage
                 # Check for messageId and perform required operations
-                match jsonMessage["messageId"]:
+                match message.id:
                     # App test message
-                    case 400:
-                        print(jsonMessage)
-                        await self.serverOutData.put(item=jsonMessage)
+                    case MessageType.APP_TEST:
+                        print(message)
+                        await self.serverOutData.put(item=message)
                     # App config message
-                    case 401:
+                    case MessageType.APP_CONFIG:
                         # Set json config app fields based on received data here
-                        self.jsonConfigData.set_app_ip(jsonMessage["data"]["IP"])
-                        self.jsonConfigData.set_app_port(jsonMessage["data"]["Port"])
-                    case 504:
-                        await self.serverOutData.put(item=jsonMessage)
-                    case 513:
+                        self.jsonConfigData.set_app_ip(newIP=str(message.data["IP"]))
+                        self.jsonConfigData.set_app_port(
+                            newPort=int(message.data["Port"])
+                        )
+                    case MessageType.HEARTBEAT:
+                        await self.serverOutData.put(item=message)
+                    case MessageType.SPEED_TEST_REQUEST:
                         # Set final upload time when server receives
                         # Note: We use perf_counter for high precision. While this value is local to the server, the client will use (initialDownloadTime - finalUploadTime) to calculate server processing time.
-                        jsonMessage["data"]["finalUploadTime"] = time.perf_counter()
+                        message.data["finalUploadTime"] = time.perf_counter()
 
                         # Set initial download time when server sends response
-                        jsonMessage["data"]["initialDownloadTime"] = time.perf_counter()
+                        message.data["initialDownloadTime"] = time.perf_counter()
 
                         # Echo back the message with timing data
-                        responseMessage = jsonMessage
+                        responseMessage = message
                     case _:
                         pass
                 # Convert responseMessage to string and send over
-                writer.write((json.dumps(responseMessage) + "\n").encode())
+                writer.write(
+                    (
+                        JsonMessageUtilities.message_to_json(responseMessage) + "\n"
+                    ).encode()
+                )
                 await writer.drain()
         except asyncio.TimeoutError:
             print("Client timeout - no data received")
