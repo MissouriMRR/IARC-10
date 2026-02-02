@@ -38,6 +38,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],  # ... allows tuple to be any length
         "data": dict[str, object],  # TODO REMOVE DATA HERE
     },
+    # For app messages, use (0) for dronesToSendData too if you wish to send data to the app
     MessageType.APP_TEST: {
         "id": MessageType.APP_TEST,
         "dronesToSendData": tuple[int, ...],
@@ -46,7 +47,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.APP_CONFIG: {
         "id": MessageType.APP_CONFIG,
         "dronesToSendData": tuple[int, ...],
-        "IP": int,
+        "IP": str,
         "Port": int,
     },
     MessageType.HEARTBEAT: {
@@ -56,6 +57,9 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "senderId": int,
         "payload": str,
     },
+    # Message: SPEED_TEST_REQUEST
+    # Usage: Used in network_test. Sent to other drones, their server updates the data, and it's then sent back to the client for processing. Client outputs SPEED_TEST_RESPONSE
+    # Description of Data: TODO Talk to team and see if we want to include this for message documentation
     MessageType.SPEED_TEST_REQUEST: {
         "id": MessageType.SPEED_TEST_REQUEST,
         "dronesToSendData": tuple[int, ...],

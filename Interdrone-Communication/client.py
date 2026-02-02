@@ -69,7 +69,8 @@ class Client:
         # If dronesToSendData list has id values, only send message to those drones
         sendToApp: bool = False
         if message["dronesToSendData"] != []:
-            if message["dronesToSendData"] == ["app"]:
+            # If you to send data to the app, use ID 0
+            if message["dronesToSendData"] == [0]:
                 sendToApp = True
             else:
                 dronesToSendData = message["dronesToSendData"]
