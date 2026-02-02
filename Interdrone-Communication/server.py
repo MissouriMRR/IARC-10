@@ -1,5 +1,5 @@
 from asyncio.queues import Queue
-from json_config_reader import json_config_reader
+from json_config_reader import JsonConfigReader
 import asyncio
 from asyncio import StreamReader, StreamWriter
 import time
@@ -13,10 +13,10 @@ class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        jsonConfigData: json_config_reader,
+        jsonConfigData: JsonConfigReader,
         serverOutData: Queue[Message],
     ):
-        self.jsonConfigData: json_config_reader = jsonConfigData
+        self.jsonConfigData: JsonConfigReader = jsonConfigData
         self.serverOutData: Queue[Message] = serverOutData
         self.serverDefaultResponseMessage: Message = Message.create(
             id=MessageType.SERVER_DEFAULT_RESPONSE,

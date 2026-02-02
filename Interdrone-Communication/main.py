@@ -5,7 +5,7 @@ import queue
 import threading
 
 from _t_message_types import Message, MessageType
-from json_config_reader import json_config_reader
+from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
 import networking_thread
 import argparse
@@ -19,7 +19,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Load config
-    jsonConfigData = json_config_reader()
+    jsonConfigData = JsonConfigReader()
 
     # Get drone ID
     if args.id is not None:

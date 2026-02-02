@@ -1,5 +1,5 @@
 from asyncio.queues import Queue
-from json_config_reader import json_config_reader
+from json_config_reader import JsonConfigReader
 
 import time
 import asyncio
@@ -11,11 +11,11 @@ class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        jsonConfigData: json_config_reader,
+        jsonConfigData: JsonConfigReader,
         clientInData: Queue[Message],
         clientOutData: Queue[Message],
     ):
-        self.jsonConfigData: json_config_reader = jsonConfigData
+        self.jsonConfigData: JsonConfigReader = jsonConfigData
         self.clientInData: Queue[Message] = clientInData
         self.clientOutData: Queue[Message] = clientOutData
 

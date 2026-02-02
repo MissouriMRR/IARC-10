@@ -1,5 +1,5 @@
 from _t_message_types import Message, MessageType
-from json_config_reader import json_config_reader
+from json_config_reader import JsonConfigReader
 
 import asyncio
 import server
@@ -17,7 +17,7 @@ from networking_interface import NetworkingInterface
 # Run the async networking stack on its own thread
 def run_networking_thread(
     resourcesReady: queue.Queue[NetworkingInterface],
-    jsonConfigData: json_config_reader,
+    jsonConfigData: JsonConfigReader,
 ) -> None:
     loop: AbstractEventLoop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -51,7 +51,7 @@ async def start_networking(
     clientInData: AsyncQueue[Message],
     clientOutData: AsyncQueue[Message],
     serverOutData: AsyncQueue[Message],
-    jsonConfigData: json_config_reader,
+    jsonConfigData: JsonConfigReader,
 ) -> None:
     # Instantiate Server and Client
     serverInstance = server.Server(
@@ -86,7 +86,7 @@ async def main():
     args = parser.parse_args()
 
     # Load config
-    jsonConfigData = json_config_reader()
+    jsonConfigData = JsonConfigReader()
 
     # Get drone ID
     if args.id is not None:
