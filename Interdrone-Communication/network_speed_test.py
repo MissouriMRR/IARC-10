@@ -1,4 +1,4 @@
-from _t_message_types import Message, MessageType
+from message_types import Message, MessageType
 from json_config_reader import JsonConfigReader
 from networking_thread import NetworkingThread
 

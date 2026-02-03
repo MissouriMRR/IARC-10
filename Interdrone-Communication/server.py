@@ -5,7 +5,7 @@ from asyncio import StreamReader, StreamWriter
 import time
 
 
-from _t_message_types import Message, MessageType
+from message_types import Message, MessageType
 from json_message_utilities import JsonMessageUtilities
 
 

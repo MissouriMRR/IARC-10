@@ -3,7 +3,7 @@ from asyncio.queues import Queue as AsyncQueue
 import queue
 import asyncio
 
-from _t_message_types import Message
+from message_types import Message
 from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
 import server
