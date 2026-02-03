@@ -4,7 +4,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes # import error here
+from . import genPathFromNodes
 from enum import Enum
 
 ######## Programmer(s): Jack Dabrowski, Harper Reinhardt                                                 ########
@@ -127,7 +127,7 @@ class Connection:
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
             distance=float(distance)
-            print(distance)
+            # print(distance)
         return distance
     
 
@@ -250,7 +250,16 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         Connection.field=self
-
+    
+    # Deletes Nodes that have a connection to nothing if: 
+    # {node : {none:none}}
+    def cleanNodeGraph(self):
+        newNodeGraph = {}
+        for node in Node.nodeGraph.keys():
+            if Node.nodeGraph[node] != None:
+                newNodeGraph[node] = Node.nodeGraph[node]
+        Node.nodeGraph = newNodeGraph
+        return Node.nodeGraph
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
         fNode = Node(x,y,True) # Floating Node
@@ -308,8 +317,6 @@ class Field:
             target.addNode(targetExternPrimary)
             target.addNode(targetExternSecond)
             
-            
-
             # Connect Nodes
             mineInternPrimary.connectNode(targetInternSecond)
             mineInternSecond.connectNode(targetInternPrimary)
@@ -351,21 +358,22 @@ class Field:
 
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
+        print("Start plotting, will not affect node generation")
         for node in Node.nodeGraph.keys():
             if labeled:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
             if not node.plotted and not node.terminated:
-                for connectedNode in Node.nodeGraph[node].keys():
-                    try:
-                        plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
-                    except AttributeError:
-                        plt.plot([node.x],[node.y],nodeSymbol)
+                if Node.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
+                    for connectedNode in Node.nodeGraph[node].keys():
+                        try:
+                            plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
+                        except AttributeError:
+                            plt.plot([node.x],[node.y],nodeSymbol)
+        print("Done plotting")
         plt.show()
 
 """MATH STUFF"""
-
-
 # Mine class keeps track of mine position and radii      
 class Mine:
     numMines = 0
@@ -404,8 +412,6 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-
-        
         #delete connections
         for node in self.nodes:
             for connection in node.connections:
@@ -496,9 +502,6 @@ class MineNode(Node):
         else:
             self.name = name 
         self.parentMine = parentMine
-        
-        
-        
         self.x = 0.0
         self.y = 0.0
         self.angle=0.0
