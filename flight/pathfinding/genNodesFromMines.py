@@ -1,10 +1,13 @@
+import sys, os
+sys.path.append(os.path.abspath(".."))
+
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes # import error here
+import genPathFromNodes # import error here
 from enum import Enum
 
 ######## Programmer(s): Jack Dabrowski, Harper Reinhardt                                                 ########
