@@ -5,10 +5,6 @@ from dataclasses import dataclass, field
 import json
 
 
-# This file is a work in progress. You may test it out, but do not use it for
-# production code. It is not yet fully functional and may not work as expected.
-
-
 class MessageType(Enum):
     UNKNOWN = 0
 
