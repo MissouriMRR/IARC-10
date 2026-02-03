@@ -3,7 +3,7 @@ from json_config_reader import JsonConfigReader
 
 import time
 import asyncio
-from _t_message_types import Message, MessageType
+from message_types import Message, MessageType
 from json_message_utilities import JsonMessageUtilities
 
 

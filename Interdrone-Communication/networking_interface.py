@@ -5,7 +5,7 @@ import asyncio
 import concurrent.futures
 from typing import Any
 
-from _t_message_types import Message
+from message_types import Message
 
 
 # Thread safe interface to communicate with the async networking layer
