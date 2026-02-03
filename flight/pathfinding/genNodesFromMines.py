@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.abspath(".."))
+
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
@@ -250,16 +253,7 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         Connection.field=self
-    
-    # Deletes Nodes that have a connection to nothing if: 
-    # {node : {none:none}}
-    def cleanNodeGraph(self):
-        newNodeGraph = {}
-        for node in Node.nodeGraph.keys():
-            if Node.nodeGraph[node] != None:
-                newNodeGraph[node] = Node.nodeGraph[node]
-        Node.nodeGraph = newNodeGraph
-        return Node.nodeGraph
+
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
         fNode = Node(x,y,True) # Floating Node
