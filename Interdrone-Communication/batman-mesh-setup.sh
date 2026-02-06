@@ -131,8 +131,10 @@ ip addr add "$NODE_IP/24" dev bat0
 log_message "B.A.T.M.A.N. mesh setup complete!"
 log_message "Interface: $UAIN, IP: $NODE_IP"
 
+sleep 10
+
 # Change to the Interdrone directory
-cd IARC-10/Interdrone-Communication
+cd /home/mrrdt-$PI_NUMBER/IARC-10/Interdrone-Communication
 
 log_message "Changed to directory"
 
