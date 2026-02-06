@@ -253,7 +253,7 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         self.mines = []
-        Connection.connectionField=self
+        Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
@@ -271,9 +271,9 @@ class Field:
         return self.addFloatingNode(xVal,yVal)
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
-    def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
+    def placeEndNodes(self, yVal: int, density: int):
         returnList=[]
-        xVals = [x for x in range(xMin,xMax,xMax//(density//2))]
+        xVals = [x for x in range(self.xMin,self.xMax,self.xMax//(density//2))]
         for x in xVals:
             returnList.append(self.addFloatingNode(x,yVal))
         return returnList
@@ -750,7 +750,7 @@ if __name__=="__main__":
 
             mine.connectMineNodes()
         startNode=field.placeStartNode(0,(genYMin-radius)-20)
-        endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
+        endNodes=field.placeEndNodes((genYMax+radius)+20,10)
         solverGraph=genPathFromNodes.Graph(Node.nodeGraph)
         shortestPath=solverGraph.shortest_path(startNode,endNodes)
         print("Shortest Path:")

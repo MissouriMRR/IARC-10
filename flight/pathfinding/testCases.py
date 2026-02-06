@@ -29,9 +29,11 @@ for num in range(10):
 print("done adding mines, connecting nodes on min")
 
 start = field.placeStartNode(0,-460)
-endPoints = field.placeEndNodes(-460,460,460,10)
+endPoints = field.placeEndNodes(460,10)
 # field.cleanNodeGraph()
 field.plotField(True)
-pathSolve = Graph(field.nodeGraph)
+
+pathSolve = Graph(Node.nodeGraph)
+
 path = pathSolve.shortest_path(start,endPoints)
 print(path)
