@@ -149,11 +149,11 @@ class Client:
 
             return serverResponseBytes.decode()
 
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             # NOTE: In the future if you need the client to resend a message after a timeout view commit history,
             # 671f673486ea4c57ad2320c1506bafef70aa5e15 to see how we did it for the deprecated startup message
-            print(f"Timeout error! {e}")
-            return str(e)  # NOTE could be bad
+            # print(f"Timeout error! {e}")
+            return "timeout"  # NOTE could be bad
             # raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
         except ConnectionRefusedError as e:
             print(f"ConnectionRefusedError: {e}")
