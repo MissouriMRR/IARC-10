@@ -75,9 +75,7 @@ def main() -> None:
                 pass
             # Send heartbeat if queue is empty
             if networking.is_client_in_empty():
-                heartbeatMessage.data["payload"] = str(
-                    msgNum  # NOTE could be spot for error. Not sure if value can be edited. Also verify that copy of message is being uploaded
-                )
+                heartbeatMessage.data["payload"] = str(msgNum)
                 networking.queue_client_message(heartbeatMessage)
 
             time.sleep(0.1)
