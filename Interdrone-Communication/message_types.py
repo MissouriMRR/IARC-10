@@ -3,6 +3,7 @@ from enum import Enum
 from typing import TypeAlias
 from dataclasses import dataclass, field
 import json
+import warnings
 
 
 class MessageType(Enum):
@@ -28,12 +29,13 @@ SchemaFieldType: TypeAlias = (
     | MessageType
 )
 
-# TODO inside of here document what these different fields do
+# If you need documentation for message types, see this document:
+# https://mailmissouri-my.sharepoint.com/:w:/g/personal/mwhmp_umsystem_edu/EfdTOupRQj5Gp0HQwgEW91gBd5BsWHrW52WVym3LdiCsEQ?e=lBb2jx
 EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
         "dronesToSendData": tuple[int, ...],  # ... allows tuple to be any length
-        "data": dict[str, object],  # TODO REMOVE DATA HERE
+        "data": dict[str, object], 
     },
     # For app messages, use (0) for dronesToSendData too if you wish to send data to the app
     MessageType.APP_TEST: {
@@ -94,12 +96,16 @@ class Message:
     # The data variable contains all keys and values in a schema that aren't id and dronesToSendData.
     data: dict[str, Any] = field(default_factory=dict)  # TODO long term remove any
 
-    # When new Message object is created in code this runs to prevent errors and init
+    # When new Message object is created in code, this runs to prevent errors and init
     def __post_init__(self) -> None:
         if self.id not in EXPECTED_SCHEMA:
-            raise ValueError(f"Invalid message type: {self.id}")
-
-        # Check to make sure all expected key in schema are present in new message. If not, raise an error
+            # Set to UNKNOWN to prevent errors
+            warnings.warn(f"Message type not in schema: {self.id}, setting to UNKNOWN")
+            object.__setattr__(self, "id", MessageType.UNKNOWN)
+            object.__setattr__(self, "dronesToSendData", ())
+            object.__setattr__(self, "data", {})
+            return
+        # Check to make sure all expected keys in schema are present in new message.
         expected = EXPECTED_SCHEMA[self.id]
         actual_keys = set(self.data.keys())
         expected_keys = set(expected.keys())
@@ -116,18 +122,20 @@ class Message:
         if extra:
             errors.append(f"extra keys: {sorted(extra)}")
         if errors:
-            raise ValueError(
-                f"Invalid data for message '{self.id}': {', '.join(errors)}"
-            )
+            warnings.warn(f"Invalid data for message '{self.id}': {', '.join(errors)}")
+            warnings.warn(f"Setting data to empty dict and skipping validation")
+            object.__setattr__(self, "data", {})
+            return
 
         # Iterate through schema and add keys to data and check for errors
         for key, allowed_types in expected.items():
             if key not in {"id", "dronesToSendData"}:
                 value = self.data[key]
                 if not isinstance(value, allowed_types):
-                    raise TypeError(
-                        f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}"
-                    )
+                    warnings.warn(f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}")
+                    warnings.warn(f"Setting data to empty dict and skipping validation")
+                    object.__setattr__(self, "data", {})
+                    return
         object.__setattr__(self, "data", FrozenKeysDict(self.data.copy()))
 
     @classmethod
@@ -148,29 +156,35 @@ class FrozenKeysDict(dict[str, Any]):
     @override
     def __setitem__(self, key, value):
         if key not in self._frozen_keys:
-            raise KeyError(f"Cannot add new key '{key}' – message structure is frozen")
+            warnings.warn(f"Cannot add new key '{key}' – message structure is frozen")
+            return
         super().__setitem__(key, value)
 
     @override
     def __delitem__(self, key):
-        raise KeyError("Cannot delete keys from Message.data")
+        warnings.warn("Cannot delete keys from Message.data")
+        return
 
     @override
     def clear(self):
-        raise AttributeError("Cannot clear Message.data")
+        warnings.warn("Cannot clear Message.data")
+        return
 
     @override
     def pop(self, *args):
-        raise AttributeError("Cannot pop from Message.data")
+        warnings.warn("Cannot pop from Message.data")
+        return
 
     @override
     def popitem(self):
-        raise AttributeError("Cannot popitem from Message.data")
+        warnings.warn("Cannot popitem from Message.data")
+        return tuple[str, None]() # Prevent return type error
 
     @override
     def setdefault(self, key, default=None):
         if key not in self._frozen_keys:
-            raise KeyError(f"Cannot add new key '{key}' via setdefault()")
+            warnings.warn(f"Cannot add new key '{key}' via setdefault()")
+            return
         return super().setdefault(key, default)
 
     @override
@@ -178,10 +192,12 @@ class FrozenKeysDict(dict[str, Any]):
         if other is not None:
             for k in other:
                 if k not in self._frozen_keys:
-                    raise KeyError(f"Cannot add new key '{k}' via update()")
+                    warnings.warn(f"Cannot add new key '{k}' via update()")
+                    return
         for k in kwargs:
             if k not in self._frozen_keys:
-                raise KeyError(f"Cannot add new key '{k}' via update()")
+                warnings.warn(f"Cannot add new key '{k}' via update()")
+                return
         super().update(other if other is not None else {}, **kwargs)
 
     def to_json(self) -> str:
