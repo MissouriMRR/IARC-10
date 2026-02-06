@@ -250,7 +250,7 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         self.mines = []
-        Connection.connectionField=self
+        Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
