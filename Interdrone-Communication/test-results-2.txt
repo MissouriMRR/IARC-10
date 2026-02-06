@@ -1,0 +1,129 @@
+
+======================================================================
+NETWORK SPEED TEST RESULTS
+======================================================================
+Download rttms was 7.6 ms at index 0
+Download rttms was 6.19 ms at index 1
+Download rttms was 6.09 ms at index 2
+Download rttms was 8.08 ms at index 3
+Download rttms was 6.41 ms at index 4
+Download rttms was 2.74 ms at index 5
+Download rttms was 7.46 ms at index 6
+Download rttms was 8.76 ms at index 7
+Download rttms was 4.46 ms at index 8
+Download rttms was 8.19 ms at index 9
+Download rttms was 5.79 ms at index 10
+Download rttms was 3.05 ms at index 11
+Download rttms was 5.14 ms at index 12
+Download rttms was 2.65 ms at index 13
+Download rttms was 2.21 ms at index 14
+Download rttms was 2.53 ms at index 15
+Download rttms was 1.78 ms at index 16
+Download rttms was 1.87 ms at index 17
+Download rttms was 3.98 ms at index 18
+Download rttms was 2.94 ms at index 19
+Download rttms was 6.55 ms at index 20
+Download rttms was 2.2 ms at index 21
+Download rttms was 6.32 ms at index 22
+Download rttms was 7.52 ms at index 23
+Download rttms was 6.59 ms at index 24
+Download rttms was 5.04 ms at index 25
+Download rttms was 3.07 ms at index 26
+Download rttms was 7.99 ms at index 27
+Download rttms was 2.55 ms at index 28
+Download rttms was 2.61 ms at index 29
+Download rttms was 2.08 ms at index 30
+Download rttms was 2.65 ms at index 31
+Download rttms was 5.52 ms at index 32
+Download rttms was 3.53 ms at index 33
+Download rttms was 5.04 ms at index 34
+Download rttms was 5.12 ms at index 35
+Download rttms was 3.02 ms at index 36
+Download rttms was 3.01 ms at index 37
+Download rttms was 2.49 ms at index 38
+Download rttms was 1.92 ms at index 39
+Download rttms was 3.69 ms at index 40
+Download rttms was 6.37 ms at index 41
+Download rttms was 6.07 ms at index 42
+Download rttms was 6.66 ms at index 43
+Download rttms was 10.71 ms at index 44
+Download rttms was 9.88 ms at index 45
+Download rttms was 8.43 ms at index 46
+Download rttms was 8.69 ms at index 47
+Download rttms was 4.25 ms at index 48
+Download rttms was 4.85 ms at index 49
+Download rttms was 6.12 ms at index 50
+Download rttms was 3.69 ms at index 51
+Download rttms was 5.56 ms at index 52
+Download rttms was 5.12 ms at index 53
+Download rttms was 2.41 ms at index 54
+Download rttms was 4.9 ms at index 55
+Download rttms was 4.1 ms at index 56
+Download rttms was 5.28 ms at index 57
+Download rttms was 5.41 ms at index 58
+Download rttms was 3.89 ms at index 59
+Download rttms was 3.26 ms at index 60
+Download rttms was 8.26 ms at index 61
+Download rttms was 4.36 ms at index 62
+Download rttms was 5.09 ms at index 63
+Download rttms was 5.93 ms at index 64
+Download rttms was 6.76 ms at index 65
+Download rttms was 12.61 ms at index 66
+Download rttms was 10.06 ms at index 67
+Download rttms was 7.72 ms at index 68
+Download rttms was 6.9 ms at index 69
+Download rttms was 12.22 ms at index 70
+Download rttms was 9.49 ms at index 71
+Download rttms was 10.75 ms at index 72
+Download rttms was 11.36 ms at index 73
+Download rttms was 10.3 ms at index 74
+Download rttms was 10.66 ms at index 75
+Download rttms was 6.49 ms at index 76
+Download rttms was 6.95 ms at index 77
+Download rttms was 5.96 ms at index 78
+Download rttms was 2.68 ms at index 79
+Download rttms was 4.7 ms at index 80
+Download rttms was 8.99 ms at index 81
+Download rttms was 3.75 ms at index 82
+Download rttms was 3.53 ms at index 83
+Download rttms was 2.19 ms at index 84
+Download rttms was 1.82 ms at index 85
+Download rttms was 5.41 ms at index 86
+Download rttms was 5.75 ms at index 87
+Download rttms was 6.58 ms at index 88
+Download rttms was 3.82 ms at index 89
+Download rttms was 4.65 ms at index 90
+Download rttms was 5.27 ms at index 91
+Download rttms was 5.18 ms at index 92
+Download rttms was 6.56 ms at index 93
+Download rttms was 6.46 ms at index 94
+Download rttms was 5.88 ms at index 95
+Download rttms was 2.62 ms at index 96
+Download rttms was 6.3 ms at index 97
+Download rttms was 7.02 ms at index 98
+Download rttms was 6.68 ms at index 99
+
+Total Tests: 100
+Target: 127.0.0.2:5002
+
+--- UPLOAD STATISTICS ---
+Throughput:
+  Average: 29.99 Mbps (29992.70 Kbps)
+  Minimum: 10.53 Mbps
+  Maximum: 74.66 Mbps
+Round-Trip Time:
+  Average: 5.60 ms
+  Minimum: 1.78 ms
+  Maximum: 12.61 ms
+
+--- DOWNLOAD STATISTICS ---
+Throughput:
+  Average: 30.03 Mbps (30034.05 Kbps)
+  Minimum: 10.55 Mbps
+  Maximum: 74.76 Mbps
+Round-Trip Time:
+  Average: 5.60 ms
+  Minimum: 1.78 ms
+  Maximum: 12.61 ms
+======================================================================
+

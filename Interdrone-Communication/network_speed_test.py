@@ -115,9 +115,10 @@ async def main():
                     # TODO investigate issue with 250ms+ times in first couple sends
                     for i in range(len(downloadRttMs)):
                         if downloadRttMs[i] > 1:
-                            log_print(
-                                f"Download rttms was {downloadRttMs[i]} ms at index {i}"
-                            )
+                            pass
+                            # log_print(
+                            #     f"Download rttms was {downloadRttMs[i]} ms at index {i}"
+                            # )
                     # Calculate upload statistics
                     avgUploadThroughputKbps = sum(uploadThroughputs) / len(
                         uploadThroughputs
