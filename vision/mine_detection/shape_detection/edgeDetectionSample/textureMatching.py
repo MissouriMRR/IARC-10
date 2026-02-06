@@ -4,23 +4,27 @@ import numpy.typing as npt
 from skimage.feature import local_binary_pattern
 from scipy.spatial.distance import euclidean
 import os
+from pathlib import Path
 
 def main():
     # load in the test pictures we have
-    files: list[str] = ['../all_pictures/Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PXL_20251006_231255410.jpg',
+    '''files: list[str] = ['../all_pictures/Test_Mine_Pictures/original_d5f4aee4-ca6a-44cc-9636-234089c94a52_PXL_20251006_231255410.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231439727.MP.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231443070.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231446447.MP.jpg',
             '../all_pictures/Test_Mine_Pictures/PXL_20251006_231458855.jpg',
-            ]
-    ref_pic_path: str = '../all_pictures/cropped_reference_mine.jpg'
+            ]'''
+    pathToPics = Path('../../../../pictures/2-4-26photos/')
+    new_pictures: list[str] = []
+    new_pictures.extend(pathToPics.glob("*.jpeg"))
+    ref_pic_path: str = '../all_pictures/reference_mine.jpg'
     #get our reference picture and histogram ready
     ref_pic: npt.NDArray[np.uint8] = cv2.imread(ref_pic_path) # picture
     ref_pic = cv2.cvtColor(ref_pic,cv2.COLOR_BGR2GRAY) # needs to be greyscale
     ref_pic_hist: npt.NDArray[np.float64] = get_lbp_hist(ref_pic) # this is what we'll actually use in our comparisons
     #try all the different pictures we have
     file: str
-    for file in files:
+    for file in new_pictures:
         # get our image
         img: npt.NDArray[np.uint8] = cv2.imread(file)
         # make some copies that we can draw on
@@ -68,8 +72,8 @@ def main():
                     cropped_hist: npt.NDArray[np.float64] = get_lbp_hist(cropped)
                     #get the box's similarity to our sample image
                     comparison: float = compare_textures(cropped_hist,ref_pic_hist,method='euclidean')#bhattacharyya is current best
-                    print(f'Box {num} Confidence Interval: {comparison}')
-                    print()
+                    #print(f'Box {num} Confidence Interval: {comparison}')
+                    #print()
         # resize copy images so they aren't huge on the screen
         newSize: tuple[int] = (int((img.shape[1])*0.3),int((img.shape[0])*0.3))
         copy = cv2.resize(copy, newSize, interpolation=cv2.INTER_LINEAR)
