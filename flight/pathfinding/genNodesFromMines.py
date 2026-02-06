@@ -162,12 +162,9 @@ class Connection:
     def deleteConnection(self):
         if Node.nodeGraph[self.node1]!=None and self.node2 in Node.nodeGraph[self.node1]:
             del Node.nodeGraph[self.node1][self.node2]
-
         if Node.nodeGraph[self.node2]!=None and self.node1 in Node.nodeGraph[self.node2]:
             del Node.nodeGraph[self.node2][self.node1]
-
         '''
-        
         node.connected = True
         connectedNode.connected = True
         if connectedNode.parentMine not in node.parentMine.connectedMines and node.parentMine not in connectedNode.parentMine.connectedMines:
@@ -436,6 +433,18 @@ class Node:
     nodeNum = 0
     connectionList = []
     nodeGraph={}
+
+    # Run this to remove nodes that have no associated connection, ie, {node: None}
+    @staticmethod
+    def cleanNodeGraph():
+        if Node.nodeGraph != None:
+            for node in Node.nodeGraph.copy():
+                if Node.nodeGraph[node] == None:
+                    del Node.nodeGraph[node]
+            return Node.nodeGraph
+        else:
+            print("Node graph is empty")
+
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:

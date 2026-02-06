@@ -3,14 +3,19 @@ from flight.pathfinding.genPathFromNodes import Graph
 from random import randint, seed
 """
 Use this file for getting the node graph.
-This will generate 10 mines that are manually placed. 
+This will generate 50 mines that are manually placed. 
 The output will be at the bottom.
 """
 field = Field(-500,500,-500,500)
 radius = 50
 position = [0,0]
-seed(10)
-for num in range(10):
+
+
+numMines = 50 # Only adjust this for now.
+# seed(10) # Comment out or dont for randomness.
+
+
+for num in range(numMines):
     while True: # To make sure generated mines arent clipping off the edges of the field
         position[0], position[1] = randint(-450,450+1),randint(-400,400+1)
         invalidPosition = False
@@ -29,11 +34,18 @@ for num in range(10):
 print("done adding mines, connecting nodes on min")
 
 start = field.placeStartNode(0,-460)
+<<<<<<< HEAD
 endPoints = field.placeEndNodes(460,10)
 # field.cleanNodeGraph()
 field.plotField(True)
 
 pathSolve = Graph(Node.nodeGraph)
 
+=======
+endPoints = field.placeEndNodes(-460,460,460,10)
+Node.cleanNodeGraph()
+pathSolve = Graph(Node.nodeGraph)
+>>>>>>> 7d81825662d200572d5708e44f0874e69fcf4844
 path = pathSolve.shortest_path(start,endPoints)
-print(path)
+print("optimal path:",path)
+field.plotField()
