@@ -134,7 +134,7 @@ log_message "Interface: $UAIN, IP: $NODE_IP"
 sleep 10
 
 # Change to the Interdrone directory
-cd IARC-10/Interdrone-Communication
+cd /home/mrrdt-$PI_NUMBER/IARC-10/Interdrone-Communication
 
 log_message "Changed to directory"
 
