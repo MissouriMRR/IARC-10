@@ -64,7 +64,6 @@ class Server:
                 match message.id:
                     # App test message
                     case MessageType.APP_TEST:
-                        print(message)
                         await self.serverOutData.put(item=message)
                     # App config message
                     case MessageType.APP_CONFIG:
