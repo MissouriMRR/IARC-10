@@ -4,10 +4,9 @@ from networking_thread import NetworkingThread
 import queue
 import threading
 
-from typed_dicts_classes import MessageData
-from json_config_reader import json_config_reader
+from message_types import Message, MessageType
+from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
-import networking_thread
 import argparse
 import time
 
@@ -16,11 +15,10 @@ def main() -> None:
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--id", help="Self ID", type=int)
-    # parser.add_argument("-s", "--skip", help="Startup override (1=true)", type=int)
     args = parser.parse_args()
 
     # Load config
-    jsonConfigData = json_config_reader()
+    jsonConfigData = JsonConfigReader()
 
     # Get drone ID
     if args.id is not None:
@@ -30,9 +28,7 @@ def main() -> None:
         droneId = int(jsonConfigData.get_self_id())
     # parallel
     # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
-    networkingThreadClassInstance: NetworkingThread = (
-        networking_thread.NetworkingThread()
-    )
+    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     # Start networking thread
     networkingThread = threading.Thread(
@@ -49,15 +45,14 @@ def main() -> None:
     print("Networking interface ready")
 
     # Message templates
-    heartbeatMessage: MessageData = {
-        "messageId": 504,
-        "dronesToSendData": [],
-        "data": {
-            "timestamp": 0.0,
+    heartbeatMessage: Message = Message.create(
+        id=MessageType.HEARTBEAT,
+        dronesToSendData=(),
+        data={
             "senderId": droneId,
             "payload": "Hello server!",
         },
-    }
+    )
 
     networking.queue_client_message(heartbeatMessage)
 
@@ -80,7 +75,9 @@ def main() -> None:
                 pass
             # Send heartbeat if queue is empty
             if networking.is_client_in_empty():
-                heartbeatMessage["data"]["payload"] = msgNum
+                heartbeatMessage.data["payload"] = str(
+                    msgNum  # NOTE could be spot for error. Not sure if value can be edited. Also verify that copy of message is being uploaded
+                )
                 networking.queue_client_message(heartbeatMessage)
 
             time.sleep(0.1)
