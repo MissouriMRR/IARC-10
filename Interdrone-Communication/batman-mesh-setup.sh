@@ -138,6 +138,26 @@ cd /home/mrrdt-$PI_NUMBER/IARC-10/Interdrone-Communication
 
 log_message "Changed to directory"
 
+# Create/Update config.json with correct IPs and selfId
+log_message "Updating config.json..."
+uv run python -c "
+import json, sys
+try:
+    with open('config.json','r') as f: d=json.load(f)
+    for k in d.get('drones',{}): d['drones'][k]['ip'] = f'169.254.97.{k}'
+    if 'localInfo' not in d: d['localInfo']={}
+    d['localInfo']['selfId'] = '$PI_NUMBER'
+    with open('config.json','w') as f: json.dump(d,f,indent=2)
+    print('Successfully updated config.json')
+except Exception as e: print(f'Error: {e}'); sys.exit(1)
+"
+
+if [ $? -eq 0 ]; then
+    log_message "Config updated successfully"
+else
+    log_message "ERROR: Failed to update config.json"
+fi
+
 uv run main.py -i $PI_NUMBER
 
 exit 0
