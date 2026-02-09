@@ -1,10 +1,13 @@
+import sys, os
+sys.path.append(os.path.abspath(".."))
+
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes # import error here
+from . import genPathFromNodes
 from enum import Enum
 
 ######## Programmer(s): Jack Dabrowski, Harper Reinhardt                                                 ########
@@ -127,7 +130,7 @@ class Connection:
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
             distance=float(distance)
-            print(distance)
+            # print(distance)
         return distance
     
 
@@ -159,12 +162,9 @@ class Connection:
     def deleteConnection(self):
         if Node.nodeGraph[self.node1]!=None and self.node2 in Node.nodeGraph[self.node1]:
             del Node.nodeGraph[self.node1][self.node2]
-
         if Node.nodeGraph[self.node2]!=None and self.node1 in Node.nodeGraph[self.node2]:
             del Node.nodeGraph[self.node2][self.node1]
-
         '''
-        
         node.connected = True
         connectedNode.connected = True
         if connectedNode.parentMine not in node.parentMine.connectedMines and node.parentMine not in connectedNode.parentMine.connectedMines:
@@ -250,7 +250,7 @@ class Field:
         self.xMax = xMax
         self.yMax = yMax
         self.mines = []
-        Connection.connectionField=self
+        Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
@@ -268,9 +268,9 @@ class Field:
         return self.addFloatingNode(xVal,yVal)
     
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
-    def placeEndNodes(self,xMin:int,xMax:int, yVal: int, density: int):
+    def placeEndNodes(self, yVal: int, density: int):
         returnList=[]
-        xVals = [x for x in range(xMin,xMax,xMax//(density//2))]
+        xVals = [x for x in range(self.xMin,self.xMax,self.xMax//(density//2))]
         for x in xVals:
             returnList.append(self.addFloatingNode(x,yVal))
         return returnList
@@ -309,8 +309,6 @@ class Field:
             target.addNode(targetExternPrimary)
             target.addNode(targetExternSecond)
             
-            
-
             # Connect Nodes
             mineInternPrimary.connectNode(targetInternSecond)
             mineInternSecond.connectNode(targetInternPrimary)
@@ -352,21 +350,22 @@ class Field:
 
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
+        print("Start plotting, will not affect node generation")
         for node in Node.nodeGraph.keys():
             if labeled:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
             if not node.plotted and not node.terminated:
-                for connectedNode in Node.nodeGraph[node].keys():
-                    try:
-                        plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
-                    except AttributeError:
-                        plt.plot([node.x],[node.y],nodeSymbol)
+                if Node.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
+                    for connectedNode in Node.nodeGraph[node].keys():
+                        try:
+                            plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
+                        except AttributeError:
+                            plt.plot([node.x],[node.y],nodeSymbol)
+        print("Done plotting")
         plt.show()
 
 """MATH STUFF"""
-
-
 # Mine class keeps track of mine position and radii      
 class Mine:
     numMines = 0
@@ -405,8 +404,6 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-
-        
         #delete connections
         for node in self.nodes:
             for connection in node.connections:
@@ -436,6 +433,18 @@ class Node:
     nodeNum = 0
     connectionList = []
     nodeGraph={}
+
+    # Run this to remove nodes that have no associated connection, ie, {node: None}
+    @staticmethod
+    def cleanNodeGraph():
+        if Node.nodeGraph != None:
+            for node in Node.nodeGraph.copy():
+                if Node.nodeGraph[node] == None:
+                    del Node.nodeGraph[node]
+            return Node.nodeGraph
+        else:
+            print("Node graph is empty")
+
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
@@ -497,9 +506,6 @@ class MineNode(Node):
         else:
             self.name = name 
         self.parentMine = parentMine
-        
-        
-        
         self.x = 0.0
         self.y = 0.0
         self.angle=0.0
@@ -753,7 +759,7 @@ if __name__=="__main__":
 
             mine.connectMineNodes()
         startNode=field.placeStartNode(0,(genYMin-radius)-20)
-        endNodes=field.placeEndNodes(genXMin,genXMax,(genYMax+radius)+20,10)
+        endNodes=field.placeEndNodes((genYMax+radius)+20,10)
         solverGraph=genPathFromNodes.Graph(Node.nodeGraph)
         shortestPath=solverGraph.shortest_path(startNode,endNodes)
         print("Shortest Path:")
