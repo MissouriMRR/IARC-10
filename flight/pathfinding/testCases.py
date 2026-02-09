@@ -34,18 +34,9 @@ for num in range(numMines):
 print("done adding mines, connecting nodes on min")
 
 start = field.placeStartNode(0,-460)
-<<<<<<< HEAD
-endPoints = field.placeEndNodes(460,10)
-# field.cleanNodeGraph()
-field.plotField(True)
-
-pathSolve = Graph(Node.nodeGraph)
-
-=======
 endPoints = field.placeEndNodes(-460,460,460,10)
-Node.cleanNodeGraph()
-pathSolve = Graph(Node.nodeGraph)
->>>>>>> 7d81825662d200572d5708e44f0874e69fcf4844
+field.cleanNodeGraph()
+pathSolve = Graph(field.nodeGraph)
 path = pathSolve.shortest_path(start,endPoints)
 print("optimal path:",path)
 field.plotField()

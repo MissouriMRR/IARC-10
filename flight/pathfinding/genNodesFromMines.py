@@ -25,7 +25,6 @@ KEY MINE ATTRIBUTES/METHODS:
  - Mine.connectMineNodes() -> establishes node connections from the nodes on the current mine to the rest of the nodes.
 
 KEY NODE ATTRIBUTES/METHODS:
- = Class Variable: nodeGraph -> a dictionary containing Connection objects
  - Node(xPosition:float,yPosition:float,floating:bool,name:str) -> Constructor for general nodes, floating or not.
  - Node.connectNode(node:Node) -> returns Connection: Establishes connection between current and target Node
  - Node.getPos() -> gets position of node
@@ -43,7 +42,7 @@ KEY NODE ATTRIBUTES/METHODS:
 
 KEY CONNECTION ATTRIBUTES/METHODS:
  - Connection(node1:Node,node2:Node) -> Constructor for pairing nodes to make a connection
- - Connection.addGraph() -> adds connection to Node.nodeGraph
+ - Connection.addGraph() -> adds connection to field.nodeGraph
     (Connection objects are two-way and shared)
     {
     Node1: {Node2:ConnectionObj 1<->2, Node3:ConnectionObj 1<->3},
@@ -55,6 +54,7 @@ KEY CONNECTION ATTRIBUTES/METHODS:
  - Connection.mineCollision(self,mine) -> Determines if the connection collides with a specific mine.
 
 KEY FIELD ATTRIBUTES/METHODS:
+ = Class Variable: nodeGraph -> a dictionary containing Connection objects
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
  - Field.plotField(labeled:bool) -> Using matplotlib, plots the field. If labeled=True, labels the nodes.
                                     plot key: NID = Node ID; MID = Mine ID ; CID = [Parent Mine ID].[Node ID]
@@ -144,26 +144,29 @@ class Connection:
     }
     """
     def addGraph(self):
-
-
-        if(self.node1.nodeGraph[self.node1]==None): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
-            Node.nodeGraph[self.node1]={self.node2:self.distance} #Must use = to get rid of the none value
-        elif self.node2 not in Node.nodeGraph[self.node1]:
-            Node.nodeGraph[self.node1].update({self.node2:self.distance})
+        if(self.node1 not in self.field.nodeGraph):
+            self.field.nodeGraph.update({self.node1:{self.node2:self.distance}})
+        elif self.node2 not in self.field.nodeGraph[self.node1]:
+            self.field.nodeGraph[self.node1].update({self.node2:self.distance})
+        else:
+            print("Something Broke")
 
                
         
-        if(Node.nodeGraph[self.node2]==None): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
-            Node.nodeGraph[self.node2]={self.node1:self.distance} #Must use = to get rid of the none value
+        if(self.node2 not in self.field.nodeGraph): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
+            self.field.nodeGraph.update({self.node2:{self.node1:self.distance}}) #Must use = to get rid of the none value
         
-        elif self.node1 not in Node.nodeGraph[self.node2]:
-            Node.nodeGraph[self.node2].update({self.node1:self.distance})
-        
+        elif self.node1 not in self.field.nodeGraph[self.node2]:
+            self.field.nodeGraph[self.node2].update({self.node1:self.distance})
+        else:
+            print("Something Broke")
+
     def deleteConnection(self):
-        if Node.nodeGraph[self.node1]!=None and self.node2 in Node.nodeGraph[self.node1]:
-            del Node.nodeGraph[self.node1][self.node2]
-        if Node.nodeGraph[self.node2]!=None and self.node1 in Node.nodeGraph[self.node2]:
-            del Node.nodeGraph[self.node2][self.node1]
+
+        if self.node1 in self.field.nodeGraph and self.node2 in self.field.nodeGraph[self.node1]:
+            del self.field.nodeGraph[self.node1][self.node2]
+        if self.node2 in self.field.nodeGraph and self.node1 in self.field.nodeGraph[self.node2]:
+            del self.field.nodeGraph[self.node2][self.node1]
         '''
         node.connected = True
         connectedNode.connected = True
@@ -255,12 +258,15 @@ class Field:
     # This type of node will not have a parent mine, primarily used for start/end points
     def addFloatingNode(self,x:int,y:int) ->'Node':
         fNode = Node(x,y,True) # Floating Node
-        for node in Node.nodeGraph.keys():
+        self.nodeGraph.update({fNode:{}}) #For loop will error if fNode is added mid loop
+        for node in self.nodeGraph.keys():
             connect = Connection(fNode,node)
             if connect.validPath():
                 connect.addGraph()
-            else:
-                connect.deleteConnection()
+
+        
+        if len(self.nodeGraph[fNode])==0:
+            del self.nodeGraph[fNode]
         return fNode
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
@@ -308,6 +314,8 @@ class Field:
             targetExternSecond = MineNode(target,mine,False,True)
             target.addNode(targetExternPrimary)
             target.addNode(targetExternSecond)
+
+
             
             # Connect Nodes
             mineInternPrimary.connectNode(targetInternSecond)
@@ -320,12 +328,12 @@ class Field:
         """Terminate pair of Nodes in certain conditions"""
         # Check newMine Nodes intersecting other mines
         for node in newMine.nodes:
-            #print(node.connections[-1].validPath())
+            
             if(node.connections[0].validPath()):
                 node.connections[0].addGraph()
-            
+        
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
-        for node in [n for n in Node.nodeGraph.keys() if n not in newMine.nodes]:
+        for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
             for connection in node.connections:
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
@@ -351,19 +359,29 @@ class Field:
         # Plot the nodes
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         print("Start plotting, will not affect node generation")
-        for node in Node.nodeGraph.keys():
+        for node in self.nodeGraph.keys():
             if labeled:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
             if not node.plotted and not node.terminated:
-                if Node.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
-                    for connectedNode in Node.nodeGraph[node].keys():
+                if self.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
+                    for connectedNode in self.nodeGraph[node].keys():
                         try:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
         print("Done plotting")
         plt.show()
+
+    # Run this to remove nodes that have no associated connection, ie, {node: None}
+    def cleanNodeGraph(self):
+        if self.nodeGraph != None:
+            for node in self.nodeGraph.copy():
+                if self.nodeGraph[node] == None:
+                    del self.nodeGraph[node]
+            return self.nodeGraph
+        else:
+            print("Node graph is empty")
 
 """MATH STUFF"""
 # Mine class keeps track of mine position and radii      
@@ -398,6 +416,7 @@ class Mine:
 
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
+
         self.nodes.append(node)
         #self.nodes.append(node) 
         return node
@@ -409,9 +428,9 @@ class Mine:
             for connection in node.connections:
                 if connection.connectionType==seg.ARC:
                     connection.deleteConnection()
-        #print(f"length : {len(sortedNodes)}")
+       
         for i in range(len(sortedNodes)-1):
-            #print(f"i:{i},i2:{i+1}")
+           
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
             if(arcConnection.validPath()):
                 arcConnection.addGraph()
@@ -432,18 +451,9 @@ class Mine:
 class Node:
     nodeNum = 0
     connectionList = []
-    nodeGraph={}
+    
 
-    # Run this to remove nodes that have no associated connection, ie, {node: None}
-    @staticmethod
-    def cleanNodeGraph():
-        if Node.nodeGraph != None:
-            for node in Node.nodeGraph.copy():
-                if Node.nodeGraph[node] == None:
-                    del Node.nodeGraph[node]
-            return Node.nodeGraph
-        else:
-            print("Node graph is empty")
+
 
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
@@ -457,7 +467,7 @@ class Node:
         self.y = yPosition
         self.plotted = False # To prevent hopefully duplicate plotting
         self.terminated = False
-        self.nodeGraph.update({self:None})
+        #self.nodeGraph.update({self:None})
         self.parentMine=None
         self.floating=floating
 
@@ -501,8 +511,7 @@ class MineNode(Node):
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "FNID: "+ str(Node.nodeNum)
-            if(Node.nodeNum==168):
-                print("WTFFF")
+
         else:
             self.name = name 
         self.parentMine = parentMine
@@ -760,15 +769,11 @@ if __name__=="__main__":
             mine.connectMineNodes()
         startNode=field.placeStartNode(0,(genYMin-radius)-20)
         endNodes=field.placeEndNodes((genYMax+radius)+20,10)
-        solverGraph=genPathFromNodes.Graph(Node.nodeGraph)
+        solverGraph=genPathFromNodes.Graph(field.nodeGraph)
         shortestPath=solverGraph.shortest_path(startNode,endNodes)
         print("Shortest Path:")
         print(shortestPath)
-        #newgraph=basicDijkstras.Graph(Node.nodeGraph)
-        #print("AHHHHHHHHHHH")
-        #print(list(Node.nodeGraph.keys())[0])
-        #print(list(Node.nodeGraph.keys())[10])
-        #print(newgraph.shortest_path(list(Node.nodeGraph.keys())[0],list(Node.nodeGraph.keys())[10]))
+
 
     field.plotField(False)
 """

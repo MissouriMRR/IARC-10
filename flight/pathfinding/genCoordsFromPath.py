@@ -41,9 +41,9 @@ for mine in field.mines:
 nodeList = []
 start=field.placeStartNode(180,0)
 end=field.placeEndNodes(190,2)
-print(field.nodeGraph)
 
-newGraph=Graph(Node.nodeGraph)
+
+newGraph=Graph(field.nodeGraph)
 nodeList=newGraph.shortest_path(start,end)
 field.plotField()
 """
