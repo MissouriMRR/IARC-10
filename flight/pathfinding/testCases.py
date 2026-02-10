@@ -11,6 +11,7 @@ The output will be at the bottom.
 # seed(10) make random or not
 numMines = 20
 radius = 16
+pathFindingType = "dijkstra"  # dijkstra OR A*
 xMin = -numMines*radius
 xMax = numMines*radius
 yMin = -numMines*radius
@@ -20,7 +21,7 @@ genXMin = -radius*(numMines//2)
 genXMax = radius*(numMines//2)
 genYMin =-radius*(numMines//2)
 genYMax = radius*(numMines//2)
-position = [0,0] 
+position = [0,0]
 mineGenTolerance = 0*radius
 
 # Mine generation, do not add floating nodes before this point
@@ -41,33 +42,36 @@ for num in range(numMines):
     
     print("added a mine")
 print("done adding mines\n")
-
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
-pathSolve = Graph(field.nodeGraph)
-temp = time.time()
-path = pathSolve.shortest_path(start,endPoints)
-dijkstraTime = time.time()-temp
-print("optimal path:",path)
-#field.plotField()
+# if pathFindingType == "dijkstra":
+#     pathSolve = Graph(field.nodeGraph)
+#     temp = time.time()
+#     path = pathSolve.shortest_path(start,endPoints)
+#     dijkstraTime = time.time()-temp
+#     print("optimal path:",path)
 
-def yMax(node):
-    return (460-node.y)
+#    # dijkstraPathLength = 0
+#       for i in range(len(path)-1):
+#        dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
 
-aStarPathSolve = Graph(field.nodeGraph)
-temp = time.time()
-aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
-aStarTime = time.time()-temp
-print("A* path:",path)
+field.plotField()
 
-dijkstraPathLength = 0
-for i in range(len(path)-1):
-    dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+if pathFindingType == "A*":
+    def yMax(node):
+        return (460-node.y)
 
-aStarPathLength = 0
-for i in range(len(aStarPath)-1):
-    aStarPathLength += math.hypot((aStarPath[i].x-aStarPath[i+1].x),(aStarPath[i].y-aStarPath[i+1].y))
-print(f" Best Path Length: {dijkstraPathLength} \n A* Path Length: {aStarPathLength} \n difference: {(aStarPathLength-dijkstraPathLength)}")
-print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
-print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
-print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
+    aStarPathSolve = Graph(field.nodeGraph)
+    temp = time.time()
+    aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
+    aStarTime = time.time()-temp
+    print("A* path:",path)
+
+
+    aStarPathLength = 0
+    for i in range(len(aStarPath)-1):
+        aStarPathLength += math.hypot((aStarPath[i].x-aStarPath[i+1].x),(aStarPath[i].y-aStarPath[i+1].y))
+    print(f" Best Path Length: {dijkstraPathLength} \n A* Path Length: {aStarPathLength} \n difference: {(aStarPathLength-dijkstraPathLength)}")
+    print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
+    print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
+    print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
