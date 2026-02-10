@@ -9,6 +9,7 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
+import flight.pathfinding.utils.seenByDrone as seebd
 from state_machine.flight_settings import SimMode
 
 
@@ -78,8 +79,10 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
+        self.fieldSize: tuple[int, int] = [3600, 960]
         self.mineRadius = mineRadius
-        self.tasks = []
+        self.tasks:tuple = []
+        self.seenTracker = seebd.SightTracker(self.fieldSize)
         self.id = id
         # TODO: add reference to mine and path data classes
 
