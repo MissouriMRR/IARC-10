@@ -29,12 +29,14 @@ for num in range(numMines):
             continue
         break
     field.addMine(position[0],position[1],radius)
+    
     print("added a mine")
 
-print("done adding mines, connecting nodes on min")
+for mine in field.mines:
+    mine.connectMineNodes()
 
 start = field.placeStartNode(0,-460)
-endPoints = field.placeEndNodes(-460,460,460,10)
+endPoints = field.placeEndNodes(460,5)
 field.cleanNodeGraph()
 pathSolve = Graph(field.nodeGraph)
 path = pathSolve.shortest_path(start,endPoints)

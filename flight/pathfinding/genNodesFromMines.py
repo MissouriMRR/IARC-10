@@ -162,7 +162,10 @@ class Connection:
             print("Something Broke")
 
     def deleteConnection(self):
-
+        self.node1.deconnectNode(self.node2)
+        self.node2.deconnectNode(self.node1)
+       
+       
         if self.node1 in self.field.nodeGraph and self.node2 in self.field.nodeGraph[self.node1]:
             del self.field.nodeGraph[self.node1][self.node2]
         if self.node2 in self.field.nodeGraph and self.node1 in self.field.nodeGraph[self.node2]:
@@ -174,6 +177,9 @@ class Connection:
             node.parentMine.connectedMines.append(connectedNode.parentMine)
             connectedNode.parentMine.connectedMines.append(node.parentMine)
         '''
+
+    
+
     #Checks if a newly created path is valid, checks all mines for collisions
     def validPath(self):
         if(self.node1==self.node2):
@@ -187,6 +193,8 @@ class Connection:
             for mine in Connection.field.mines:
                 x3 = mine.x
                 y3 = mine.y
+                
+                
                 
                 # Fraction of segment between nodes that the mine lands perpendicular to segment
                 uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
@@ -206,10 +214,11 @@ class Connection:
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
                     if distanceFromMine < mine.radius:
                         return False
+                
             
         #This is kinda complicated, but we have to check the hugging edge. 
-        if self.connectionType==seg.ARC:
-            print("We haven't implemented this yet")
+        #if self.connectionType==seg.ARC:
+            #print("We haven't implemented this yet")
             #raise NotImplemented()
         return True
 
@@ -241,7 +250,10 @@ class Connection:
             if distanceFromMine < mine.radius:
                 return True
         return False
-
+    def __str__(self):
+        return f"{self.node1} <-> {self.node2}"
+    def __repr__(self):
+        return self.__str__()
 
 # Field generates nodes off of mines, generates mines too
 class Field:
@@ -282,6 +294,7 @@ class Field:
         return returnList
 
     def addMine(self,centerX,centerY,radius,color:str=''):
+
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
@@ -328,15 +341,22 @@ class Field:
         """Terminate pair of Nodes in certain conditions"""
         # Check newMine Nodes intersecting other mines
         for node in newMine.nodes:
-            
+ 
             if(node.connections[0].validPath()):
                 node.connections[0].addGraph()
+            else:
+                node.connections[0].deleteConnection()
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
+            
             for connection in node.connections:
+
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
+
+       
+                
         
     def plotField(self,labeled:bool=False):
         plt = pyplot
@@ -375,10 +395,13 @@ class Field:
 
     # Run this to remove nodes that have no associated connection, ie, {node: None}
     def cleanNodeGraph(self):
+
         if self.nodeGraph != None:
-            for node in self.nodeGraph.copy():
-                if self.nodeGraph[node] == None:
+            nodeList=list(self.nodeGraph.keys())
+            for node in nodeList:
+                if self.nodeGraph[node] == None or len(self.nodeGraph[node])==0:
                     del self.nodeGraph[node]
+                    node.parentMine.removeNode(node) #I hate how ugly this line is
             return self.nodeGraph
         else:
             print("Node graph is empty")
@@ -413,7 +436,8 @@ class Mine:
         return self.radius
     def getNodes(self):
         return self.nodes    
-
+    def removeNode(self,node):
+        self.nodes.remove(node)
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
 
@@ -423,14 +447,15 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-        #delete connections
-        for node in self.nodes:
-            for connection in node.connections:
-                if connection.connectionType==seg.ARC:
-                    connection.deleteConnection()
+        for i in range(len(sortedNodes)-1):
+            print(sortedNodes[i].connections)
+            print(Connection.field.nodeGraph[sortedNodes[i]])
+            input()
+
+        
        
         for i in range(len(sortedNodes)-1):
-           
+
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
             if(arcConnection.validPath()):
                 arcConnection.addGraph()
@@ -450,7 +475,7 @@ class Mine:
 # Node class keeps track of node positions
 class Node:
     nodeNum = 0
-    connectionList = []
+    
     
 
 
@@ -489,7 +514,9 @@ class Node:
 
         """
         return nodeConnection
-
+    def deconnectNode(self,node:"Node"):
+        if(node in self.connections):
+            self.connections.remove(node)
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
@@ -671,7 +698,6 @@ if __name__=="__main__":
         print("done adding mines, connecting nodes on mine")
 
 
-        #print(Node.nodeGraph)
             
         for mine in field.mines:
             mine.connectMineNodes()
