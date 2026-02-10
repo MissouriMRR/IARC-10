@@ -1,5 +1,5 @@
 import flight.pathfinding.nodeGeneration as nodeg
-import flight.pathfinding.utils.seenByDrone as seebd
+import flight.pathfinding.utils.seenByDrone as seenByDrone
 import flight.pathfinding.pathCalculation as dijk
 import flight.pathfinding.pathSubdivision as gotoDiv
 import flight.pathfinding.utils.maskGen as maskGen

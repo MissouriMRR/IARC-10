@@ -9,7 +9,8 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
-import flight.pathfinding.utils.seenByDrone as seebd
+import flight.pathfinding.utils.seenByDrone as seenByDrone
+import flight.pathfinding.nodeGeneration as nodeGen
 from state_machine.flight_settings import SimMode
 
 
@@ -82,7 +83,8 @@ class Drone:
         self.fieldSize: tuple[int, int] = [3600, 960]
         self.mineRadius = mineRadius
         self.tasks:tuple = []
-        self.seenTracker = seebd.SightTracker(self.fieldSize)
+        self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
+        self.field: 'nodeGen.Field' = None
         self.id = id
         # TODO: add reference to mine and path data classes
 
@@ -153,6 +155,8 @@ class Drone:
         if vehicle is None:
             raise RuntimeError("we haven't connected to the drone yet")
         return vehicle
+    
+
 
     async def connect_drone(self) -> None:
         """Connect to a drone. This operation is idempotent.
@@ -325,6 +329,9 @@ class Drone:
 
     def goto(self, coords: tuple[int, int]):
         pass
+
+    def setFieldSize(self, xMin, xMax, yMin, yMax):
+        self.field = nodeGen.Field(xMin, xMax, yMin, yMax)
 
     def completeTasks(self):
         for i in range(len(self.tasks)):
