@@ -1,4 +1,4 @@
-import flight.pathfinding.genNodesFromMines as nodeg
+import flight.pathfinding.nodeGeneration as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
 

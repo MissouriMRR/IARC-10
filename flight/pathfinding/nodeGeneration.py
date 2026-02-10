@@ -7,7 +7,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes
+from . import pathCalculation
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
@@ -293,40 +293,48 @@ class Field:
             # Mine internal nodes
             mineInternPrimary = MineNode(mine,target,True,True)
             mineInternSecond = MineNode(mine,target,True,False)
-            mine.addNode(mineInternPrimary)
-            mine.addNode(mineInternSecond)
+            if mineInternPrimary != None and mineInternSecond != None:
+                mine.addNode(mineInternPrimary)
+                mine.addNode(mineInternSecond)
 
             # Mine External nodes
             mineExternPrimary = MineNode(mine,target,False,True)
             mineExternSecond = MineNode(mine,target,False,False)
-            mine.addNode(mineExternPrimary)
-            mine.addNode(mineExternSecond)
+            if mineExternPrimary != None and mineExternSecond != None:
+                mine.addNode(mineExternPrimary)
+                mine.addNode(mineExternSecond)
             
             # target internal nodes
             targetInternPrimary = MineNode(target,mine,True,False)
             targetInternSecond = MineNode(target,mine,True,True)
-            target.addNode(targetInternPrimary)
-            target.addNode(targetInternSecond)
+            if targetInternPrimary != None and targetInternSecond != None: 
+                target.addNode(targetInternPrimary)
+                target.addNode(targetInternSecond)
             # target external nodes
             targetExternPrimary = MineNode(target,mine,False,False)
             targetExternSecond = MineNode(target,mine,False,True)
-            target.addNode(targetExternPrimary)
-            target.addNode(targetExternSecond)
+            if targetInternPrimary != None and targetInternSecond != None:
+                target.addNode(targetExternPrimary)
+                target.addNode(targetExternSecond)
 
 
             
             # Connect Nodes
-            mineInternPrimary.connectNode(targetInternSecond)
-            mineInternSecond.connectNode(targetInternPrimary)
+            if (mineInternPrimary != None and mineInternSecond != None and
+                mineExternPrimary != None and mineExternSecond != None and
+                targetInternPrimary != None and targetInternSecond != None and 
+                targetInternPrimary != None and targetInternSecond != None):
+                print("work")
+                mineInternPrimary.connectNode(targetInternSecond)
+                mineInternSecond.connectNode(targetInternPrimary)
 
-            mineExternPrimary.connectNode(targetExternPrimary)
-            mineExternSecond.connectNode(targetExternSecond)
-           
+                mineExternPrimary.connectNode(targetExternPrimary)
+                mineExternSecond.connectNode(targetExternSecond)
+            
            
         """Terminate pair of Nodes in certain conditions"""
         # Check newMine Nodes intersecting other mines
         for node in newMine.nodes:
-            
             if(node.connections[0].validPath()):
                 node.connections[0].addGraph()
         
@@ -452,9 +460,6 @@ class Node:
     nodeNum = 0
     connectionList = []
     
-
-
-
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
@@ -554,16 +559,11 @@ class MineNode(Node):
         # Offset Angle is the same for internal and external bitangents
         if internal:
             # Create internal angle
-            internalCos = (parentMine.radius + targetMine.radius)/d
-            
-            internalAngle = np.arccos(np.clip(((parentMine.radius)+(targetMine.radius))/d,-1,1))
-            """
-            if internalCos < 1:
-            else:
-                self.terminated = True
+            internalArccosParameter = ((parentMine.radius)+(targetMine.radius))/d
+            if -1 < internalArccosParameter < 1:
                 return None
-            occasionally breaks code
-            """
+            internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
+            
             if primary:
                 self.angle=internalAngle+offsetAngle
                 self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
@@ -575,7 +575,10 @@ class MineNode(Node):
             
         else:
             # Create external angle
-            externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
+            externalArccosParameter = parentMine.radius-targetMine.radius/d
+            if -1 < externalArccosParameter < 1:
+                return None
+            externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
 
             if primary:
                 self.angle=externalAngle+offsetAngle

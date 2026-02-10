@@ -1,5 +1,5 @@
-from flight.pathfinding.genNodesFromMines import Field, Mine, Node
-from flight.pathfinding.genPathFromNodes import Graph
+from flight.pathfinding.nodeGeneration import Field, Mine, Node
+from flight.pathfinding.pathCalculation import Graph
 from random import randint, seed
 """
 Use this file for getting the node graph.
