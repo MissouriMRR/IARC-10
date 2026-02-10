@@ -28,14 +28,11 @@ n4 = Node(mine4, mine5)
 nodeCorList = [n1, n2, n3, n4]
 '''
 
-
-
-
 #use node connections
 field = Field(0, 200, 0, 200)
-field.addMine(90, 30, 20)
-field.addMine(60, 90, 20) 
-field.addMine(150, 30, 20) 
+field.addMine(80, 30, 20)
+field.addMine(70, 90, 20) 
+field.addMine(140, 30, 20) 
 #field.addMine(170, 100, 80)
 
 for mine in field.mines:
@@ -89,7 +86,7 @@ def generateGotoPoints(nodeList:Node, step: int = 10, arc_step: float= 0.349): #
                 delta_theta += 2*m.pi
             
         
-            numPoints = max(5, int(abs(delta_theta) / arc_step)) # 5 is the min num of points --> subject to change.
+            numPoints = max(3, int(abs(delta_theta) / arc_step)) # 5 is the min num of points --> subject to change.
             #numPoints = 5
             # Generate arc points
             angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
