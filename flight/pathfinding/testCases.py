@@ -5,39 +5,45 @@ import math
 import time
 """
 Use this file for getting the node graph.
-This will generate 50 mines that are manually placed. 
+This will generate 10 (or however many you want) mines that are placed. 
 The output will be at the bottom.
 """
-field = Field(-500,500,-500,500)
-radius = 50
-position = [0,0]
+# seed(10) make random or not
+numMines = 20
+radius = 16
+xMin = -numMines*radius
+xMax = numMines*radius
+yMin = -numMines*radius
+yMax = numMines*radius
+field = Field(xMin,xMax,yMin,yMax)
+genXMin = -radius*(numMines//2)
+genXMax = radius*(numMines//2)
+genYMin =-radius*(numMines//2)
+genYMax = radius*(numMines//2)
+position = [0,0] 
+mineGenTolerance = 0*radius
 
-
-numMines = 40 # Only adjust this for now.
-# seed(10) # Comment out or dont for randomness.
-
-
+# Mine generation, do not add floating nodes before this point
 for num in range(numMines):
     while True: # To make sure generated mines arent clipping off the edges of the field
-        position[0], position[1] = randint(-450,450+1),randint(-400,400+1)
+        position[0], position[1] = randint(genXMin,genXMax+1),randint(genYMin,genYMax+1)
         invalidPosition = False
         for mine in Mine.mines:
-            if (mine.getPos()[0] <= position[0] <= mine.getPos()[0]) and (mine.getPos()[1] <= position[1] <= mine.getPos()[1]):
+            if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
                 invalidPosition = True
                 break
         if invalidPosition:
             continue
-        if position[0] <= -500 + radius or position[0] >= 500 - radius or position[1] <= -500 + radius or position[1] >= 500 - radius:
+        if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
             continue
         break
     field.addMine(position[0],position[1],radius)
+    
     print("added a mine")
+print("done adding mines\n")
 
-print("done adding mines, connecting nodes on min")
-
-start = field.placeStartNode(0,-460)
-endPoints = field.placeEndNodes(460,10)
-field.cleanNodeGraph()
+start = field.placeStartNode(0,yMin + (radius*1.5))
+endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
 pathSolve = Graph(field.nodeGraph)
 temp = time.time()
 path = pathSolve.shortest_path(start,endPoints)
