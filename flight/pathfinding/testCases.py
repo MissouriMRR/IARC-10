@@ -41,9 +41,8 @@ for num in range(numMines):
 print("done adding mines\n")
 
 start = field.placeStartNode(0,yMin + (radius*1.5))
-endPoints = field.placeEndNodes(xMin,xMax,yMax - (radius*1.5),10)
-Node.cleanNodeGraph()
-pathSolve = Graph(Node.nodeGraph)
+endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
+pathSolve = Graph(field.nodeGraph)
 path = pathSolve.shortest_path(start,endPoints)
 print("optimal path:",path,"\n")
 
