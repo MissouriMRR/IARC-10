@@ -12,6 +12,7 @@ class MessageType(Enum):
     # App
     APP_TEST = 400
     APP_CONFIG = 401
+    APP_DEBUG = 402
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -35,13 +36,18 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
         "dronesToSendData": tuple[int, ...],  # ... allows tuple to be any length
-        "data": dict[str, object], 
+        "data": dict[str, object],
     },
     # For app messages, use (0) for dronesToSendData too if you wish to send data to the app
     MessageType.APP_TEST: {
         "id": MessageType.APP_TEST,
         "dronesToSendData": tuple[int, ...],
         "data": dict[str, object],  # TODO REMOVE DATA HERE
+    },
+    MessageType.APP_DEBUG: {
+        "id": MessageType.APP_TEST,
+        "dronesToSendData": tuple[int, ...],
+        "embeddedDebugMessage": dict[str, Any],
     },
     MessageType.APP_CONFIG: {
         "id": MessageType.APP_CONFIG,
@@ -123,7 +129,7 @@ class Message:
             errors.append(f"extra keys: {sorted(extra)}")
         if errors:
             warnings.warn(f"Invalid data for message '{self.id}': {', '.join(errors)}")
-            warnings.warn(f"Setting data to empty dict and skipping validation")
+            warnings.warn("Setting data to empty dict and skipping validation")
             object.__setattr__(self, "data", {})
             return
 
@@ -132,8 +138,10 @@ class Message:
             if key not in {"id", "dronesToSendData"}:
                 value = self.data[key]
                 if not isinstance(value, allowed_types):
-                    warnings.warn(f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}")
-                    warnings.warn(f"Setting data to empty dict and skipping validation")
+                    warnings.warn(
+                        f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}"
+                    )
+                    warnings.warn("Setting data to empty dict and skipping validation")
                     object.__setattr__(self, "data", {})
                     return
         object.__setattr__(self, "data", FrozenKeysDict(self.data.copy()))
@@ -178,7 +186,7 @@ class FrozenKeysDict(dict[str, Any]):
     @override
     def popitem(self):
         warnings.warn("Cannot popitem from Message.data")
-        return tuple[str, None]() # Prevent return type error
+        return tuple[str, None]()  # Prevent return type error
 
     @override
     def setdefault(self, key, default=None):

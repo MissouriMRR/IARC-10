@@ -72,6 +72,9 @@ class Server:
                         self.jsonConfigData.set_app_port(
                             newPort=int(message.data["Port"])
                         )
+                    case MessageType.APP_DEBUG:
+                        # TODO TEST THIS DON'T KNOW IF IT WILL EVEN WORK
+                        responseMessage: Message = message.data["embeddedDebugMessage"]
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:
