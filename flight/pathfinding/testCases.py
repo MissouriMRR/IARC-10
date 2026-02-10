@@ -1,6 +1,8 @@
 from flight.pathfinding.nodeGeneration import Field, Mine, Node
 from flight.pathfinding.pathCalculation import Graph
 from random import randint, seed
+import math
+import time
 """
 Use this file for getting the node graph.
 This will generate 10 (or however many you want) mines that are placed. 
@@ -43,7 +45,29 @@ print("done adding mines\n")
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
 pathSolve = Graph(field.nodeGraph)
+temp = time.time()
 path = pathSolve.shortest_path(start,endPoints)
-print("optimal path:",path,"\n")
+dijkstraTime = time.time()-temp
+print("optimal path:",path)
+#field.plotField()
 
-field.plotField()
+def yMax(node):
+    return (460-node.y)
+
+aStarPathSolve = Graph(field.nodeGraph)
+temp = time.time()
+aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
+aStarTime = time.time()-temp
+print("A* path:",path)
+
+dijkstraPathLength = 0
+for i in range(len(path)-1):
+    dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+
+aStarPathLength = 0
+for i in range(len(aStarPath)-1):
+    aStarPathLength += math.hypot((aStarPath[i].x-aStarPath[i+1].x),(aStarPath[i].y-aStarPath[i+1].y))
+print(f" Best Path Length: {dijkstraPathLength} \n A* Path Length: {aStarPathLength} \n difference: {(aStarPathLength-dijkstraPathLength)}")
+print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
+print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
+print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
