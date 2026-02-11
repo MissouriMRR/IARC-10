@@ -91,7 +91,7 @@ async def main():
                 await asyncio.sleep(0.1)  # Adjust sleep time as needed
 
             # Print results summary
-            with open(f"test-results-{testNumber}.txt", "w") as log_file:
+            with open(f"Logs/test-results-{testNumber}.txt", "w") as log_file:
 
                 def log_print(msg):
                     print(msg)
