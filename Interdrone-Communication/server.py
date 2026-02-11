@@ -73,8 +73,14 @@ class Server:
                             newPort=int(message.data["Port"])
                         )
                     case MessageType.APP_DEBUG:
-                        # TODO TEST THIS DON'T KNOW IF IT WILL EVEN WORK
-                        responseMessage: Message = message.data["embeddedDebugMessage"]
+                        responseMessage: Message = (
+                            JsonMessageUtilities.message_from_json(
+                                message.data["embeddedDebugMessage"]
+                            )
+                        )
+                        print(
+                            f"Created a debug message from sent message.\nOriginal Message: {message}\n\nDebug Message Created: {responseMessage}"
+                        )
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:

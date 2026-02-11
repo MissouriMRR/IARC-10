@@ -47,7 +47,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.APP_DEBUG: {
         "id": MessageType.APP_TEST,
         "dronesToSendData": tuple[int, ...],
-        "embeddedDebugMessage": dict[str, Any],
+        "embeddedDebugMessage": str,
     },
     MessageType.APP_CONFIG: {
         "id": MessageType.APP_CONFIG,
