@@ -105,7 +105,7 @@ class Graph:
 
         return path
     
-    def reconstruct_path(self, came_from: dict, current):
+    def reconstruct_path(self, came_from: dict, current: str) -> list[str]:
         total_path = [current]
         while current in came_from.keys():
             current = came_from[current]
@@ -113,7 +113,7 @@ class Graph:
         total_path.reverse()
         return total_path
 
-    def a_star(self, start: str, targets: list[str], h):
+    def a_star(self, start: str, targets: list[str], h) -> list[str]:
         open_set = [(0,start)]
         heapq.heapify(open_set)
         

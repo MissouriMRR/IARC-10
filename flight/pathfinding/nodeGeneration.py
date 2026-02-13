@@ -31,9 +31,6 @@ KEY NODE ATTRIBUTES/METHODS:
  - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,name:str)
     -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
 
- - MineNode.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
-                    |-For some reason, trying to completely delete all references to a Node breaks stuff-|
-
  - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
                               A list of strings describing the kind of connection each node has to another
  - MineNode.getPos() -> (x,y) position on field of the Node
@@ -76,7 +73,7 @@ Ex: A basic setup of 3 Mines with start and end nodes.
     field.addMine(0,0,20)
     field.addMine(-30,0,20)
     field.addMine(30,25,20)
-    field.placeStartNode(0,-10)
+    field.placeStartNode(0,-10) 
     field.placeEndNodes(-100,100,250,4)
     field.plotField()
 
@@ -238,6 +235,8 @@ class Connection:
             distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
             if distanceFromMine < mine.radius:
                 return True
+        
+        
         return False
 
 
@@ -293,50 +292,40 @@ class Field:
             # Mine internal nodes
             mineInternPrimary = MineNode(mine,target,True,True)
             mineInternSecond = MineNode(mine,target,True,False)
-            if mineInternPrimary != None and mineInternSecond != None:
-                mine.addNode(mineInternPrimary)
-                mine.addNode(mineInternSecond)
+            mine.addNode(mineInternPrimary)
+            mine.addNode(mineInternSecond)
 
             # Mine External nodes
             mineExternPrimary = MineNode(mine,target,False,True)
             mineExternSecond = MineNode(mine,target,False,False)
-            if mineExternPrimary != None and mineExternSecond != None:
-                mine.addNode(mineExternPrimary)
-                mine.addNode(mineExternSecond)
+            mine.addNode(mineExternPrimary)
+            mine.addNode(mineExternSecond)
             
             # target internal nodes
             targetInternPrimary = MineNode(target,mine,True,False)
             targetInternSecond = MineNode(target,mine,True,True)
-            if targetInternPrimary != None and targetInternSecond != None: 
-                target.addNode(targetInternPrimary)
-                target.addNode(targetInternSecond)
+            target.addNode(targetInternPrimary)
+            target.addNode(targetInternSecond)
             # target external nodes
             targetExternPrimary = MineNode(target,mine,False,False)
             targetExternSecond = MineNode(target,mine,False,True)
-            if targetInternPrimary != None and targetInternSecond != None:
-                target.addNode(targetExternPrimary)
-                target.addNode(targetExternSecond)
-
-
+            target.addNode(targetExternPrimary)
+            target.addNode(targetExternSecond)
             
             # Connect Nodes
-            if (mineInternPrimary != None and mineInternSecond != None and
-                mineExternPrimary != None and mineExternSecond != None and
-                targetInternPrimary != None and targetInternSecond != None and 
-                targetInternPrimary != None and targetInternSecond != None):
-                print("work")
-                mineInternPrimary.connectNode(targetInternSecond)
-                mineInternSecond.connectNode(targetInternPrimary)
+            mineInternPrimary.connectNode(targetInternSecond)
+            mineInternSecond.connectNode(targetInternPrimary)
 
-                mineExternPrimary.connectNode(targetExternPrimary)
-                mineExternSecond.connectNode(targetExternSecond)
+            mineExternPrimary.connectNode(targetExternPrimary)
+            mineExternSecond.connectNode(targetExternSecond)
             
            
         """Terminate pair of Nodes in certain conditions"""
         # Check newMine Nodes intersecting other mines
         for node in newMine.nodes:
-            if(node.connections[0].validPath()):
-                node.connections[0].addGraph()
+            if len(node.connections) > 0:
+                if(node.connections[0].validPath()):
+                    node.connections[0].addGraph()
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
@@ -370,7 +359,7 @@ class Field:
             if labeled:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
-            if not node.plotted and not node.terminated:
+            if not node.plotted:
                 if self.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
                     for connectedNode in self.nodeGraph[node].keys():
                         try:
@@ -471,7 +460,6 @@ class Node:
         self.x = xPosition
         self.y = yPosition
         self.plotted = False # To prevent hopefully duplicate plotting
-        self.terminated = False
         #self.nodeGraph.update({self:None})
         self.parentMine=None
         self.floating=floating
@@ -526,7 +514,7 @@ class MineNode(Node):
         self.connected = False
         self.plotted = False # To prevent hopefully duplicate plotting
         self.targetMine = targetMine
-        self.terminated = False
+        self.terminate = False # If node would be generated illegally, mark for termination/ignoring
         
         # categorize nodes
         if internal and primary:
@@ -560,8 +548,6 @@ class MineNode(Node):
         if internal:
             # Create internal angle
             internalArccosParameter = ((parentMine.radius)+(targetMine.radius))/d
-            if -1 < internalArccosParameter < 1:
-                return None
             internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
             
             if primary:
@@ -576,8 +562,6 @@ class MineNode(Node):
         else:
             # Create external angle
             externalArccosParameter = parentMine.radius-targetMine.radius/d
-            if -1 < externalArccosParameter < 1:
-                return None
             externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
 
             if primary:
