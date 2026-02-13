@@ -9,7 +9,7 @@ This will generate 10 (or however many you want) mines that are placed.
 The output will be at the bottom.
 """
 # seed(10) make random or not
-numMines = 20
+numMines = 40
 radius = 16
 pathFindingType = "dijkstra"  # dijkstra OR A*
 xMin = -numMines*radius
