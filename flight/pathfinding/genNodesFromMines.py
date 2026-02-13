@@ -335,21 +335,12 @@ class Field:
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
            
-           
-        """Terminate pair of Nodes in certain conditions"""
-        # Check newMine Nodes intersecting other mines
-        for node in newMine.nodes:
  
-            if(node.connections[0].validPath()):
-                node.connections[0].addGraph()
-            else:
-                node.connections[0].deleteConnection()
+            
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
-            
-            for connection in node.connections:
-
+            for connection in self.nodeGraph[node]:
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
 
@@ -445,7 +436,7 @@ class Mine:
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
         for i in range(len(sortedNodes)-1):
-            print(sortedNodes[i].connections)
+            
             print(Connection.field.nodeGraph[sortedNodes[i]])
             input()
 
@@ -484,7 +475,7 @@ class Node:
         else:
             self.name = name 
         
-        self.connections= [] #this list makes things much easier when checking all connections
+       
         self.x = xPosition
         self.y = yPosition
         self.plotted = False # To prevent hopefully duplicate plotting
@@ -499,9 +490,11 @@ class Node:
         if(self==node):
             raise TypeError("Same nodes")
         nodeConnection=Connection(self,node) #connection initialization 
-        
-        self.connections.append(nodeConnection)
-        node.connections.append(nodeConnection)
+        if(nodeConnection.validPath()):
+            nodeConnection[0].addGraph()
+            
+        else:
+            nodeConnection[0].deleteConnection()
         #self.connected = True
         #node.connected = True
         """
@@ -511,9 +504,7 @@ class Node:
 
         """
         return nodeConnection
-    def deconnectNode(self,node:"Node"):
-        if(node in self.connections):
-            self.connections.remove(node)
+
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
