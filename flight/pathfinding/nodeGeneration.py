@@ -7,7 +7,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import genPathFromNodes
+from . import pathCalculation
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
@@ -30,9 +30,6 @@ KEY NODE ATTRIBUTES/METHODS:
  - Node.getParentMine() -> returns Mine or None if floating; gets the parent mien
  - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,name:str)
     -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
-
- - MineNode.terminated -> True/False (Very IMPORTANT, this node should not be counted if terminated is True)
-                    |-For some reason, trying to completely delete all references to a Node breaks stuff-|
 
  - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
                               A list of strings describing the kind of connection each node has to another
@@ -76,7 +73,7 @@ Ex: A basic setup of 3 Mines with start and end nodes.
     field.addMine(0,0,20)
     field.addMine(-30,0,20)
     field.addMine(30,25,20)
-    field.placeStartNode(0,-10)
+    field.placeStartNode(0,-10) 
     field.placeEndNodes(-100,100,250,4)
     field.plotField()
 
@@ -255,6 +252,8 @@ class Connection:
             distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
             if distanceFromMine < mine.radius:
                 return True
+        
+        
         return False
     def __str__(self):
         return f"{self.node1} <-> {self.node2}"
@@ -333,8 +332,6 @@ class Field:
             targetExternSecond = MineNode(target,mine,False,True)
             target.addNode(targetExternPrimary)
             target.addNode(targetExternSecond)
-
-
             
             # Connect Nodes
             mineInternPrimary.connectNode(targetInternSecond)
@@ -380,7 +377,7 @@ class Field:
             if labeled:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
-            if not node.plotted and not node.terminated:
+            if not node.plotted:
                 if self.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
                     for connectedNode in self.nodeGraph[node].keys():
                         try:
@@ -488,7 +485,6 @@ class Node:
         self.x = xPosition
         self.y = yPosition
         self.plotted = False # To prevent hopefully duplicate plotting
-        self.terminated = False
         #self.nodeGraph.update({self:None})
         self.parentMine=None
         self.floating=floating
@@ -549,7 +545,7 @@ class MineNode(Node):
         self.connected = False
         self.plotted = False # To prevent hopefully duplicate plotting
         self.targetMine = targetMine
-        self.terminated = False
+        self.terminate = False # If node would be generated illegally, mark for termination/ignoring
         
         # categorize nodes
         if internal and primary:
@@ -582,16 +578,9 @@ class MineNode(Node):
         # Offset Angle is the same for internal and external bitangents
         if internal:
             # Create internal angle
-            internalCos = (parentMine.radius + targetMine.radius)/d
+            internalArccosParameter = ((parentMine.radius)+(targetMine.radius))/d
+            internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
             
-            internalAngle = np.arccos(np.clip(((parentMine.radius)+(targetMine.radius))/d,-1,1))
-            """
-            if internalCos < 1:
-            else:
-                self.terminated = True
-                return None
-            occasionally breaks code
-            """
             if primary:
                 self.angle=internalAngle+offsetAngle
                 self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
@@ -603,7 +592,8 @@ class MineNode(Node):
             
         else:
             # Create external angle
-            externalAngle = np.arccos(np.abs(parentMine.radius-targetMine.radius)/d)
+            externalArccosParameter = parentMine.radius-targetMine.radius/d
+            externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
 
             if primary:
                 self.angle=externalAngle+offsetAngle

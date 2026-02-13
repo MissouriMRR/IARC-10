@@ -1,5 +1,5 @@
 import heapq
-
+import math
 
 # will have to figure out how to calculate distance between nodes (weights)
 
@@ -104,6 +104,45 @@ class Graph:
         path.reverse()
 
         return path
+    
+    def reconstruct_path(self, came_from: dict, current: str) -> list[str]:
+        total_path = [current]
+        while current in came_from.keys():
+            current = came_from[current]
+            total_path.append(current)  
+        total_path.reverse()
+        return total_path
+
+    def a_star(self, start: str, targets: list[str], h) -> list[str]:
+        open_set = [(0,start)]
+        heapq.heapify(open_set)
+        
+
+        came_from = dict()
+
+        g_score = dict() # default values should be INF
+        g_score[start] = 0
+
+        f_score = dict() # default values should be INF
+        f_score[start] = h(start) 
+    
+        while open_set:
+            current = heapq.heappop(open_set)[1]
+            if current in targets:
+                return self.reconstruct_path(came_from, current)
+
+            for neighbor, weight in self.graph[current].items():
+                tenative_gScore = g_score[current] + weight
+                if neighbor not in g_score:
+                    g_score[neighbor]=math.inf
+                if tenative_gScore < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tenative_gScore
+                    f_score[neighbor] = tenative_gScore + h(neighbor)
+                    if neighbor not in open_set:
+                        heapq.heappush(open_set,(f_score[neighbor],neighbor))
+
+        return "No Path"
     
 if __name__=="__main__":
     
