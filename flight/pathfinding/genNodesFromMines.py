@@ -160,14 +160,22 @@ class Connection:
             print("Something Broke")
 
     def deleteConnection(self):
-        self.node1.deconnectNode(self.node2)
-        self.node2.deconnectNode(self.node1)
+
        
        
-        if self.node1 in self.field.nodeGraph and self.node2 in self.field.nodeGraph[self.node1]:
-            del self.field.nodeGraph[self.node1][self.node2]
-        if self.node2 in self.field.nodeGraph and self.node1 in self.field.nodeGraph[self.node2]:
-            del self.field.nodeGraph[self.node2][self.node1]
+        if self.node1 in self.field.nodeGraph: 
+            if self.node2 in self.field.nodeGraph[self.node1]:
+                del self.field.nodeGraph[self.node1][self.node2]
+            if len(self.field.nodeGraph[self.node1])==0:
+                self.node1.deleteNode()
+        if self.node2 in self.field.nodeGraph: 
+            if self.node1 in self.field.nodeGraph[self.node2]:
+                del self.field.nodeGraph[self.node2][self.node1]
+            if len(self.field.nodeGraph[self.node2])==0:
+                self.node1.deleteNode()
+            
+
+        
         '''
         node.connected = True
         connectedNode.connected = True
@@ -339,10 +347,12 @@ class Field:
             
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
-        for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
-            for connection in self.nodeGraph[node]:
-                if(connection.mineCollision(newMine)):
-                    connection.deleteConnection()
+        for node1 in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
+            for node2 in self.nodeGraph[node1]:
+                oldConnection=Connection(node1,node2)
+                if(oldConnection.mineCollision(newMine)):
+                    oldConnection.deleteConnection()
+
 
     # Purely for debugging  
     def plotField(self,labeled:bool=False):
@@ -443,7 +453,6 @@ class Mine:
         
        
         for i in range(len(sortedNodes)-1):
-
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
             if(arcConnection.validPath()):
                 arcConnection.addGraph()
@@ -491,10 +500,10 @@ class Node:
             raise TypeError("Same nodes")
         nodeConnection=Connection(self,node) #connection initialization 
         if(nodeConnection.validPath()):
-            nodeConnection[0].addGraph()
+            nodeConnection.addGraph()
             
         else:
-            nodeConnection[0].deleteConnection()
+            nodeConnection.deleteConnection()
         #self.connected = True
         #node.connected = True
         """
@@ -504,7 +513,11 @@ class Node:
 
         """
         return nodeConnection
-
+    def deleteNode(self):
+        if self.parentMine != None:
+            self.parentMine.nodes.remove(self)
+        if self in Connection.field.nodeGraph:
+            del Connection.field.nodeGraph[self]
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
