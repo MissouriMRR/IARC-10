@@ -34,7 +34,7 @@ field = Field(0, 200, 0, 200)
 field.addMine(80, 30, 20)
 field.addMine(70, 90, 20) 
 field.addMine(140, 30, 20) 
-#field.addMine(170, 100, 80)
+field.addMine(170, 100, 40)
 
 for mine in field.mines:
     print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
