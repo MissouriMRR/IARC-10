@@ -10,12 +10,12 @@ The output will be at the bottom.
 """
 # seed(10) make random or not
 numMines = 40
-radius = 16
+radius = 500
 pathFindingType = "dijkstra"  # dijkstra OR A*
-xMin = -numMines*radius
-xMax = numMines*radius
-yMin = -numMines*radius
-yMax = numMines*radius
+xMin = -numMines*radius//4
+xMax = numMines*radius//4
+yMin = -numMines*radius//4
+yMax = numMines*radius//4
 field = Field(xMin,xMax,yMin,yMax)
 genXMin = -radius*(numMines//2)
 genXMax = radius*(numMines//2)

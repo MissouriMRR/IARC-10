@@ -165,11 +165,15 @@ class Connection:
                 del self.field.nodeGraph[self.node1][self.node2]
             if len(self.field.nodeGraph[self.node1])==0:
                 self.node1.deleteNode()
+        else:
+            self.node1.deleteNode()
         if self.node2 in self.field.nodeGraph: 
             if self.node1 in self.field.nodeGraph[self.node2]:
                 del self.field.nodeGraph[self.node2][self.node1]
             if len(self.field.nodeGraph[self.node2])==0:
-                self.node1.deleteNode()
+                self.node2.deleteNode()
+        else:
+            self.node2.deleteNode()
             
 
         
@@ -284,6 +288,7 @@ class Field:
         
         if len(self.nodeGraph[fNode])==0:
             del self.nodeGraph[fNode]
+        
         return fNode
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
@@ -342,12 +347,14 @@ class Field:
            
  
             
-        
+        shallowCopy=self.nodeGraph.copy()
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
-        for node1 in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
-            for node2 in self.nodeGraph[node1]:
+        for node1 in [n for n in shallowCopy.keys() if n not in newMine.nodes]:
+           deepCopy=shallowCopy[node1].copy()
+           for node2 in deepCopy:
                 oldConnection=Connection(node1,node2)
                 if(oldConnection.mineCollision(newMine)):
+                    print(f"deleting {oldConnection}")
                     oldConnection.deleteConnection()
 
 
@@ -432,7 +439,9 @@ class Mine:
     def getNodes(self):
         return self.nodes    
     def removeNode(self,node):
+
         self.nodes.remove(node)
+
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
 
@@ -444,8 +453,9 @@ class Mine:
 
         for i in range(len(sortedNodes)-1):
             
-            print(Connection.field.nodeGraph[sortedNodes[i]])
-            input()
+            print(len(Connection.field.nodeGraph[sortedNodes[i]]))
+            
+        
 
         
        
@@ -511,7 +521,8 @@ class Node:
         return nodeConnection
     def deleteNode(self):
         if self.parentMine != None:
-            self.parentMine.nodes.remove(self)
+            
+            self.parentMine.removeNode(self)
         if self in Connection.field.nodeGraph:
             del Connection.field.nodeGraph[self]
     def getPos(self) -> float:
@@ -610,7 +621,9 @@ class MineNode(Node):
         self.x = round(self.x,3)
         self.y = round(self.y,3)
         super().__init__(self.x,self.y,False,self.name)
+        
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
+        print(super().getParentMine())
         if len(name) < 1:
             self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
