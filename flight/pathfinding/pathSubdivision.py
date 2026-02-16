@@ -111,13 +111,15 @@ def generateGotoPoints(nodeList:Node, step: int = 10): #distance between points 
                 y = cy + r * m.sin(a)
                 finalGotoList.append((float(x), float(y)))
       
-    print("segment List:", segmentList)                    
-    return finalGotoList
+    #print("segment List:", segmentList)                    
+    return finalGotoList, segmentList
 
-
-path = generateGotoPoints(nodeList)
+path, segmentedList  = generateGotoPoints(nodeList)
 print("This is all the points:")
 print(path)
+
+print("This is the segmented list with arc/line info:")
+print(segmentedList)
 
 print("goto x and goto y")
 # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
