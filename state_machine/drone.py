@@ -343,9 +343,10 @@ class Drone:
     
     #Smart landing sequence, Should be usable in final product!!
     def recall(self):
-        if (fieldSizeX - self.x < fieldSizeY - self.y):
-            landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
+        if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
+            self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])
+            # Land
         else:
-            landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
-    
+            self.goto(self, [self.x, self.fieldSize[1]*round(self.y / self.fieldSize[1])])
+            # Land
 
