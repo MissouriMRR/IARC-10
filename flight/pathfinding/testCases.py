@@ -9,13 +9,13 @@ This will generate 10 (or however many you want) mines that are placed.
 The output will be at the bottom.
 """
 # seed(10) make random or not
-numMines = 20
-radius = 16
+numMines = 40
+radius = 500
 pathFindingType = "dijkstra"  # dijkstra OR A*
-xMin = -numMines*radius
-xMax = numMines*radius
-yMin = -numMines*radius
-yMax = numMines*radius
+xMin = -numMines*radius//4
+xMax = numMines*radius//4
+yMin = -numMines*radius//4
+yMax = numMines*radius//4
 field = Field(xMin,xMax,yMin,yMax)
 genXMin = -radius*(numMines//2)
 genXMax = radius*(numMines//2)
@@ -40,8 +40,12 @@ for num in range(numMines):
         break
     field.addMine(position[0],position[1],radius)
     
+    
     print("added a mine")
-print("done adding mines\n")
+
+for mine in field.mines:
+    mine.connectMineNodes()
+
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
 # if pathFindingType == "dijkstra":
