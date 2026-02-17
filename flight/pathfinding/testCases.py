@@ -8,10 +8,10 @@ Use this file for getting the node graph.
 This will generate 10 (or however many you want) mines that are placed. 
 The output will be at the bottom.
 """
-# seed(10) make random or not
+# seed(2020) # make random or not
 numMines = 20
 radius = 16
-pathFindingType = "dijkstra"  # dijkstra OR A*
+pathFindingType = "none"  # dijkstra OR A* OR both OR none
 xMin = -numMines*radius
 xMax = numMines*radius
 yMin = -numMines*radius
@@ -44,20 +44,20 @@ for num in range(numMines):
 print("done adding mines\n")
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
-# if pathFindingType == "dijkstra":
-#     pathSolve = Graph(field.nodeGraph)
-#     temp = time.time()
-#     path = pathSolve.shortest_path(start,endPoints)
-#     dijkstraTime = time.time()-temp
-#     print("optimal path:",path)
+if pathFindingType == "dijkstra" or pathFindingType == "both":
+    pathSolve = Graph(field.nodeGraph)
+    temp = time.time()
+    path = pathSolve.shortest_path(start,endPoints)
+    dijkstraTime = time.time()-temp
+    print("optimal path:",path)
 
-#    # dijkstraPathLength = 0
-#       for i in range(len(path)-1):
-#        dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+    dijkstraPathLength = 0
+    for i in range(len(path)-1):
+       dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
 
 field.plotField()
 
-if pathFindingType == "A*":
+if pathFindingType == "A*" or pathFindingType == "both":
     def yMax(node):
         return (460-node.y)
 

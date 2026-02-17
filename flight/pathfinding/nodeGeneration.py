@@ -146,8 +146,6 @@ class Connection:
         else:
             print("Something Broke")
 
-               
-        
         if(self.node2 not in self.field.nodeGraph): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
             self.field.nodeGraph.update({self.node2:{self.node1:self.distance}}) #Must use = to get rid of the none value
         
@@ -182,7 +180,7 @@ class Connection:
             for mine in Connection.field.mines:
                 x3 = mine.x
                 y3 = mine.y
-                
+
                 # Fraction of segment between nodes that the mine lands perpendicular to segment
                 uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
                 uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
@@ -201,7 +199,19 @@ class Connection:
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
                     if distanceFromMine < mine.radius:
                         return False
-            
+
+                
+                # Check if node is in mine
+                n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+                n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+                if self.node1.parentMine != mine:
+                    if n1distance <= mine.radius:
+                        return False
+                if self.node2.parentMine != mine:
+                    if n2distance <= mine.radius:
+                        return False
+
         #This is kinda complicated, but we have to check the hugging edge. 
         if self.connectionType==seg.ARC:
             print("We haven't implemented this yet")
@@ -236,9 +246,18 @@ class Connection:
             if distanceFromMine < mine.radius:
                 return True
         
+        # Check if either node is in mine
+        n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+        n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+        if self.node1.parentMine != mine:
+            if n1distance <= mine.radius:
+                return True
+        if self.node2.parentMine != mine:
+            if n2distance <= mine.radius:
+                return True
         
         return False
-
 
 # Field generates nodes off of mines, generates mines too
 class Field:
@@ -326,6 +345,7 @@ class Field:
             if len(node.connections) > 0:
                 if(node.connections[0].validPath()):
                     node.connections[0].addGraph()
+                
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
         for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
