@@ -81,11 +81,10 @@ class Drone:
         self.address: str = address
         self.baud: int | None = baud
         self.fieldSize: tuple[int, int] = [3600, 960]
-        self.mineRadius: int = mineRadius
+        self.mineRadius = mineRadius
         self.tasks:tuple = []
         self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
-        self.taskList = []
         self.id = id
         # TODO: add reference to mine and path data classes
 

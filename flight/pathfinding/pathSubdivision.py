@@ -11,17 +11,10 @@ from flight.pathfinding.pathCalculation import Graph
 #with hardcoded lengths (arclength/step) between each point, outputting a final path of points for drone to follow.
 #hello
 
-#todo: return list with [(bool, [x,y],[x,y]), (bool, [x,y],[x,y])...] n1, n2 that peter can access 
-
-field = Field(0, 200, 0, 200)
-#make-shift mines for testing. radius = 3 feet
-field.addMine(rand.randrange(200), rand.randrange(200), 30)
-field.addMine(rand.randrange(200), rand.randrange(200), 30)
-field.addMine(rand.randrange(200), rand.randrange(200), 30)
-field.addMine(rand.randrange(200), rand.randrange(200), 30)
-field.addMine(rand.randrange(200), rand.randrange(200), 30)
-
+#todo: Order the nodes along an arc so that when connecting points it doesnt go around from 5* to 40* to 20*
+  
 '''
+#make-shift mines for testing. radius = 3 feet
 mine1 = Mine(rand.randrange(200), rand.randrange(200), 3)
 mine2 = Mine(rand.randrange(200), rand.randrange(200), 3)
 mine3 = Mine(rand.randrange(200), rand.randrange(200), 3)
@@ -34,14 +27,14 @@ n3 = Node(mine3, mine4)
 n4 = Node(mine4, mine5)
 
 nodeCorList = [n1, n2, n3, n4]
-
+'''
 
 #use node connections
 field = Field(0, 200, 0, 200)
 field.addMine(80, 30, 20)
 field.addMine(70, 90, 20) 
 field.addMine(140, 30, 20) 
-'''
+field.addMine(170, 100, 40)
 
 for mine in field.mines:
     print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
@@ -61,14 +54,13 @@ for mine in field.mines:
 #step for linear, arc_step for arc to determine number of goto pts.
 def generate_goto_points(nodeList:Node, step: int = 10): #distance between points is 3 feet, subject to change. NOTE: has to be int.
     finalGotoList = []   
-    segmentList = [] #why are they not float values?
+
     for i in range(len(nodeList) - 1):
         n1 = nodeList[i] #first node
         n2 = nodeList[i + 1] #second node in each iteration
-        isArc = False
+
         # linear gotos or floating points
         if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
-            segmentList.append((isArc, [n1.x, n1.y], [n2.x, n2.y]))
             dx = n2.x - n1.x
             dy = n2.y - n1.y
             distance = m.sqrt(dx**2 + dy**2)
@@ -80,10 +72,7 @@ def generate_goto_points(nodeList:Node, step: int = 10): #distance between point
                 finalGotoList.append((float(x), float(y)))
         
         #arc gotos
-        elif n1.parentMine==n2.parentMine:
-            isArc = True
-            segmentList.append((isArc, [n1.x, n1.y], [n2.x, n2.y]))
-            
+        elif n1.parentMine==n2.parentMine :
             #get center coords
             mine = n1.parentMine
             cx, cy = mine.getPos()
@@ -118,16 +107,13 @@ path, segmentedList  = generate_goto_points(nodeList)
 print("This is all the points:")
 print(path)
 
-print("This is the segmented list with arc/line info:")
-print(segmentedList)
-
 print("goto x and goto y")
 # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
 goto_x = [coord[0] for coord in path]
 goto_y = [coord[1] for coord in path]
-#print(goto_x)
-#print('\n'*5)
-#print(goto_y)
+print(goto_x)
+print('\n'*5)
+print(goto_y)
 
 
 fig, ax = plt.subplots()
