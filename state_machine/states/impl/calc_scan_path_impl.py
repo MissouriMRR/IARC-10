@@ -13,7 +13,9 @@ from state_machine.states.state import State
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.app_share import AppShare
 
-import flight.pathfinding.pathSubdivision as gotoDiv
+import flight.pathfinding.path_subdivision as gotoDiv
+from flight.pathfinding.node_generation import Node, Mine, Field, Connection
+from flight.pathfinding.path_calculation import Graph
 
 
 async def run(self: CalcScanPath) -> State:
@@ -43,8 +45,14 @@ async def run(self: CalcScanPath) -> State:
         update_drone(self.drone)
         update_flight_settings(self.flight_settings)
         logging.info("CalcScanPath state running")
+        update_nodes()
 
-        gotoCoords = gotoDiv.gotoPath(currentPath)
+        start, end = place_start_end_nodes()
+        newGraph=Graph(self.drone.field.nodeGraph)
+        nodeList=newGraph.shortest_path(start,end)
+
+        gotoCoords, seg_path = gotoDiv.generate_goto_points(nodeList)
+        remove_extra_coords()
         diviedGoto = []
         for y in range(len(gotoCoords)/4):
             diviedGoto.append(gotoCoords[id*6+y])

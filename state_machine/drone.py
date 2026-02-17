@@ -9,8 +9,8 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
-import flight.pathfinding.utils.seenByDrone as seenByDrone
-import flight.pathfinding.nodeGeneration as nodeGen
+import flight.pathfinding.utils.seen_by_drone as seen_by_drone
+import flight.pathfinding.node_generation as nodeGen
 from state_machine.flight_settings import SimMode
 
 
@@ -81,9 +81,9 @@ class Drone:
         self.address: str = address
         self.baud: int | None = baud
         self.fieldSize: tuple[int, int] = [3600, 960]
-        self.mineRadius: int = mineRadius
+        self.mineRadius = mineRadius
         self.tasks:tuple = []
-        self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
+        self.seenTracker = seen_by_drone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
         self.id = id
         # TODO: add reference to mine and path data classes
