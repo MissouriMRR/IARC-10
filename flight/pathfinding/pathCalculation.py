@@ -89,8 +89,7 @@ class Graph:
         for i in target_list:
             if _[i] <= _[target]:
                 target=i
-        
-        
+    
         current_node = target
 
         #back tracking from target usings preds
