@@ -48,6 +48,7 @@ for mine in field.mines:
 
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
+
 # if pathFindingType == "dijkstra":
 #     pathSolve = Graph(field.nodeGraph)
 #     temp = time.time()
@@ -59,6 +60,8 @@ endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
 #       for i in range(len(path)-1):
 #        dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
 
+field.plotField()
+field.increaseRadius(100)
 field.plotField()
 
 if pathFindingType == "A*":
