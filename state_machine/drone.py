@@ -85,6 +85,7 @@ class Drone:
         self.tasks:tuple = []
         self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
+        self.taskList = []
         self.id = id
         # TODO: add reference to mine and path data classes
 
