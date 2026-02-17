@@ -28,6 +28,7 @@ class SightTracker:
                     result = False
         return result
 
+# Removes coords that are redundant to check
 def remove_extra_coords(seen:SightTracker, goto_points:tuple[tuple[float,float]], data_sup:tuple[tuple[bool,pathSub.Node,pathSub.Node]]):
     updated_goto_points:tuple[tuple[float,float]]
     for i in range(len(goto_points)):

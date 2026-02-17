@@ -9,8 +9,8 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
-import flight.pathfinding.utils.seenByDrone as seenByDrone
-import flight.pathfinding.nodeGeneration as nodeGen
+import flight.pathfinding.utils.seen_by_drone as seen_by_drone
+import flight.pathfinding.node_generation as nodeGen
 from state_machine.flight_settings import SimMode
 
 
@@ -81,11 +81,10 @@ class Drone:
         self.address: str = address
         self.baud: int | None = baud
         self.fieldSize: tuple[int, int] = [3600, 960]
-        self.mineRadius: int = mineRadius
+        self.mineRadius = mineRadius
         self.tasks:tuple = []
-        self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
+        self.seenTracker = seen_by_drone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
-        self.taskList = []
         self.id = id
         # TODO: add reference to mine and path data classes
 
@@ -340,7 +339,7 @@ class Drone:
             photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
             self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
     
-    # Smart landing sequence, Should be usable in final product!! Needs landAt logic finished and way to access drone simcoords
+    #Smart landing sequence, Should be usable in final product!!
     def recall(self):
         if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
             self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])

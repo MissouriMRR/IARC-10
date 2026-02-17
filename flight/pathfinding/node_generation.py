@@ -1,5 +1,6 @@
 import sys, os
 sys.path.append(os.path.abspath(".."))
+import matplotlib.patches as patches
 
 import matplotlib.pyplot as pyplot
 import numpy as np
@@ -7,7 +8,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import pathCalculation
+from . import path_calculation
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
@@ -146,8 +147,6 @@ class Connection:
         else:
             print("Something Broke")
 
-               
-        
         if(self.node2 not in self.field.nodeGraph): #Needed for its first connection: When a node is made, it's key is automatically added to nodeGraph with a none value.
             self.field.nodeGraph.update({self.node2:{self.node1:self.distance}}) #Must use = to get rid of the none value
         
@@ -158,25 +157,10 @@ class Connection:
 
     def deleteConnection(self):
 
-       
-       
-        if self.node1 in self.field.nodeGraph: 
-            if self.node2 in self.field.nodeGraph[self.node1]:
-                del self.field.nodeGraph[self.node1][self.node2]
-            if len(self.field.nodeGraph[self.node1])==0:
-                self.node1.deleteNode()
-        else:
-            self.node1.deleteNode()
-        if self.node2 in self.field.nodeGraph: 
-            if self.node1 in self.field.nodeGraph[self.node2]:
-                del self.field.nodeGraph[self.node2][self.node1]
-            if len(self.field.nodeGraph[self.node2])==0:
-                self.node2.deleteNode()
-        else:
-            self.node2.deleteNode()
-            
-
-        
+        if self.node1 in self.field.nodeGraph and self.node2 in self.field.nodeGraph[self.node1]:
+            del self.field.nodeGraph[self.node1][self.node2]
+        if self.node2 in self.field.nodeGraph and self.node1 in self.field.nodeGraph[self.node2]:
+            del self.field.nodeGraph[self.node2][self.node1]
         '''
         node.connected = True
         connectedNode.connected = True
@@ -184,9 +168,6 @@ class Connection:
             node.parentMine.connectedMines.append(connectedNode.parentMine)
             connectedNode.parentMine.connectedMines.append(node.parentMine)
         '''
-
-    
-
     #Checks if a newly created path is valid, checks all mines for collisions
     def validPath(self):
         if(self.node1==self.node2):
@@ -200,9 +181,7 @@ class Connection:
             for mine in Connection.field.mines:
                 x3 = mine.x
                 y3 = mine.y
-                
-                
-                
+
                 # Fraction of segment between nodes that the mine lands perpendicular to segment
                 uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
                 uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
@@ -221,11 +200,22 @@ class Connection:
                     distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
                     if distanceFromMine < mine.radius:
                         return False
+
                 
-            
+                # Check if node is in mine
+                n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+                n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+                if self.node1.parentMine != mine:
+                    if n1distance <= mine.radius:
+                        return False
+                if self.node2.parentMine != mine:
+                    if n2distance <= mine.radius:
+                        return False
+
         #This is kinda complicated, but we have to check the hugging edge. 
-        #if self.connectionType==seg.ARC:
-            #print("We haven't implemented this yet")
+        if self.connectionType==seg.ARC:
+            print("We haven't implemented this yet")
             #raise NotImplemented()
         return True
 
@@ -257,12 +247,18 @@ class Connection:
             if distanceFromMine < mine.radius:
                 return True
         
+        # Check if either node is in mine
+        n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+        n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+        if self.node1.parentMine != mine:
+            if n1distance <= mine.radius:
+                return True
+        if self.node2.parentMine != mine:
+            if n2distance <= mine.radius:
+                return True
         
         return False
-    def __str__(self):
-        return f"{self.node1} <-> {self.node2}"
-    def __repr__(self):
-        return self.__str__()
 
 # Field generates nodes off of mines, generates mines too
 class Field:
@@ -288,7 +284,6 @@ class Field:
         
         if len(self.nodeGraph[fNode])==0:
             del self.nodeGraph[fNode]
-        
         return fNode
             
     #Due to the current node stucture, right now this only modifies the nodeGraph
@@ -304,7 +299,6 @@ class Field:
         return returnList
 
     def addMine(self,centerX,centerY,radius,color:str=''):
-
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
@@ -344,19 +338,21 @@ class Field:
 
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
-           
- 
             
-        shallowCopy=self.nodeGraph.copy()
+           
+        """Terminate pair of Nodes in certain conditions"""
+        # Check newMine Nodes intersecting other mines
+        for node in newMine.nodes:
+            if len(node.connections) > 0:
+                if(node.connections[0].validPath()):
+                    node.connections[0].addGraph()
+                
+        
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
-        for node1 in [n for n in shallowCopy.keys() if n not in newMine.nodes]:
-           deepCopy=shallowCopy[node1].copy()
-           for node2 in deepCopy:
-                oldConnection=Connection(node1,node2)
-                if(oldConnection.mineCollision(newMine)):
-                    print(f"deleting {oldConnection}")
-                    oldConnection.deleteConnection()
-
+        for node in [n for n in self.nodeGraph.keys() if n not in newMine.nodes]:
+            for connection in node.connections:
+                if(connection.mineCollision(newMine)):
+                    connection.deleteConnection()
 
     # Purely for debugging  
     def plotField(self,labeled:bool=False):
@@ -385,8 +381,12 @@ class Field:
                 plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
 
             if not node.plotted:
-                if self.nodeGraph[node] != None: # On the chance a node does not have a connection, skip over the node
-                    for connectedNode in self.nodeGraph[node].keys():
+            
+                for connectedNode in self.nodeGraph[node].keys():
+                    if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
+                        arc = patches.Arc((node.parentMine.x,node.parentMine.y), width=node.parentMine.radius, height=node.parentMine.radius, angle=0, theta1=int(node.angle*180/np.pi), theta2=int(connectedNode.angle*180/np.pi,color=plt.cm.tab10(random.randint(0,20)%15)))
+                        ax.add_patch(arc)
+                    else:
                         try:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
@@ -395,18 +395,35 @@ class Field:
         print("Displaying field...")
         plt.show()
 
+   
+
     # Run this to remove nodes that have no associated connection, ie, {node: None}
     def cleanNodeGraph(self):
-
         if self.nodeGraph != None:
-            nodeList=list(self.nodeGraph.keys())
-            for node in nodeList:
-                if self.nodeGraph[node] == None or len(self.nodeGraph[node])==0:
+            for node in self.nodeGraph.copy():
+                if self.nodeGraph[node] == None:
                     del self.nodeGraph[node]
-                    node.parentMine.removeNode(node) #I hate how ugly this line is
             return self.nodeGraph
         else:
             print("Node graph is empty")
+
+    def increaseRadius(self,step): 
+        for mine in self.mines:
+            mine.radius+=step
+
+
+        shallowCopy=self.nodeGraph.copy()
+        for node1 in shallowCopy:
+            if(node1.parentMine!=None):
+                node1.refreshLocation()
+        # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
+        for node1 in shallowCopy:
+           deepCopy=shallowCopy[node1].copy()
+           for node2 in deepCopy:
+                oldConnection=Connection(node1,node2)
+                if(not(oldConnection.validPath())):
+                    print(f"deleting {oldConnection}")
+                    oldConnection.deleteConnection()
 
 """MATH STUFF"""
 # Mine class keeps track of mine position and radii      
@@ -438,9 +455,6 @@ class Mine:
         return self.radius
     def getNodes(self):
         return self.nodes    
-    def removeNode(self,node):
-
-        self.nodes.remove(node)
 
     def addNode(self,node:"Node"):
         #Node.nodes.append(node)
@@ -451,15 +465,14 @@ class Mine:
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
-        for i in range(len(sortedNodes)-1):
-            
-            print(len(Connection.field.nodeGraph[sortedNodes[i]]))
-            
-        
-
-        
+        #delete connections
+        for node in self.nodes:
+            for connection in node.connections:
+                if connection.connectionType==seg.ARC:
+                    connection.deleteConnection()
        
         for i in range(len(sortedNodes)-1):
+           
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
             if(arcConnection.validPath()):
                 arcConnection.addGraph()
@@ -479,11 +492,8 @@ class Mine:
 # Node class keeps track of node positions
 class Node:
     nodeNum = 0
+    connectionList = []
     
-    
-
-
-
     def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
@@ -491,7 +501,7 @@ class Node:
         else:
             self.name = name 
         
-       
+        self.connections= [] #this list makes things much easier when checking all connections
         self.x = xPosition
         self.y = yPosition
         self.plotted = False # To prevent hopefully duplicate plotting
@@ -505,11 +515,9 @@ class Node:
         if(self==node):
             raise TypeError("Same nodes")
         nodeConnection=Connection(self,node) #connection initialization 
-        if(nodeConnection.validPath()):
-            nodeConnection.addGraph()
-            
-        else:
-            nodeConnection.deleteConnection()
+        
+        self.connections.append(nodeConnection)
+        node.connections.append(nodeConnection)
         #self.connected = True
         #node.connected = True
         """
@@ -519,12 +527,7 @@ class Node:
 
         """
         return nodeConnection
-    def deleteNode(self):
-        if self.parentMine != None:
-            
-            self.parentMine.removeNode(self)
-        if self in Connection.field.nodeGraph:
-            del Connection.field.nodeGraph[self]
+
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
@@ -557,6 +560,9 @@ class MineNode(Node):
         self.plotted = False # To prevent hopefully duplicate plotting
         self.targetMine = targetMine
         self.terminate = False # If node would be generated illegally, mark for termination/ignoring
+
+        self.internal=internal
+        self.primary=primary
         
         # categorize nodes
         if internal and primary:
@@ -621,14 +627,65 @@ class MineNode(Node):
         self.x = round(self.x,3)
         self.y = round(self.y,3)
         super().__init__(self.x,self.y,False,self.name)
-        
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
-        print(super().getParentMine())
         if len(name) < 1:
             self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
             self.name = name
+    
+    def refreshLocation(self):
         
+        d = np.sqrt((self.parentMine.x-self.targetMine.x)**2+(self.parentMine.y-self.targetMine.y)**2) # Algabraic Distance Formula
+
+
+        # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
+        # Formula is: arccos(x1-x2)/d+pi
+    
+        if self.parentMine.y > self.targetMine.y:
+            offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+        elif self.parentMine.y < self.targetMine.y:
+            offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+        elif self.parentMine.y == self.targetMine.y:
+            if self.parentMine.x < self.targetMine.x:
+                offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+            elif self.parentMine.x > self.targetMine.x:
+                offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+
+        # Offset Angle is the same for internal and external bitangents
+        if self.internal:
+            # Create internal angle
+            internalArccosParameter = ((self.parentMine.radius)+(self.targetMine.radius))/d
+            internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
+            
+            if self.primary:
+                self.angle=internalAngle+offsetAngle
+                self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
+                self.y = ((self.parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
+            else:
+                self.angle=internalAngle-(offsetAngle)
+                self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
+                self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
+            
+        else:
+            # Create external angle
+            externalArccosParameter = self.parentMine.radius-self.targetMine.radius/d
+            externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
+
+            if self.primary:
+                self.angle=externalAngle+offsetAngle
+                self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
+                self.y = ((self.parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
+            else:
+                self.angle=externalAngle-offsetAngle+np.pi
+                self.x = (self.parentMine.radius) * np.cos(self.angle-np.pi) + self.parentMine.x
+                self.y = (self.parentMine.radius) * np.sin(self.angle) +self.parentMine.y
+        
+        self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
+
+
+        self.x = round(self.x,3)
+        self.y = round(self.y,3)
+
     # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
     def getPathType(self,node:'Node') -> list:
         types = []

@@ -1,4 +1,4 @@
-import flight.pathfinding.nodeGeneration as nodeg
+import flight.pathfinding.node_generation as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -18,6 +18,7 @@ class PolygonMask:
         polygon = [(x1-self.bottom_x, y1-self.bottom_y),(2(node_1.x-x1)+x1-self.bottom_x, 2(node_1.y-y1)+y1-self.bottom_y),(x2-self.bottom_x, y2-self.bottom_y),(2(node_2.x-x2)+x2-self.bottom_x, 2(node_2.y-y2)+y2-self.bottom_y)]
 
         
+        img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
         img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
         ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
         self.body = np.array(img)
