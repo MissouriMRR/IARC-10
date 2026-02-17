@@ -44,6 +44,9 @@ for num in range(numMines):
 print("done adding mines\n")
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
+for mine in field.mines:
+    mine.connectMineNodes()
+    print("Connecting mine nodes")
 if pathFindingType == "dijkstra" or pathFindingType == "both":
     pathSolve = Graph(field.nodeGraph)
     temp = time.time()
@@ -54,6 +57,7 @@ if pathFindingType == "dijkstra" or pathFindingType == "both":
     dijkstraPathLength = 0
     for i in range(len(path)-1):
        dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+
 
 field.plotField()
 field.increaseRadius(100)

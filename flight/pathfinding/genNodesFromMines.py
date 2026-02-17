@@ -159,6 +159,7 @@ class Connection:
         else:
             print("Something Broke")
 
+
     def deleteConnection(self):
 
        
@@ -168,21 +169,17 @@ class Connection:
                 del self.field.nodeGraph[self.node1][self.node2]
             if len(self.field.nodeGraph[self.node1])==0:
                 self.node1.deleteNode()
+        else:
+            self.node1.deleteNode()
         if self.node2 in self.field.nodeGraph: 
             if self.node1 in self.field.nodeGraph[self.node2]:
                 del self.field.nodeGraph[self.node2][self.node1]
             if len(self.field.nodeGraph[self.node2])==0:
-                self.node1.deleteNode()
+                self.node2.deleteNode()
+        else:
+            self.node2.deleteNode()
             
 
-        
-        '''
-        node.connected = True
-        connectedNode.connected = True
-        if connectedNode.parentMine not in node.parentMine.connectedMines and node.parentMine not in connectedNode.parentMine.connectedMines:
-            node.parentMine.connectedMines.append(connectedNode.parentMine)
-            connectedNode.parentMine.connectedMines.append(node.parentMine)
-        '''
 
     
 
@@ -343,7 +340,11 @@ class Field:
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
            
- 
+                # Check newMine Nodes intersecting other mines
+        for node in newMine.nodes:
+            if len(node.connections) > 0:
+                if(node.connections[0].validPath()):
+                    node.connections[0].addGraph()
             
         
         # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
@@ -390,20 +391,33 @@ class Field:
         print("Done plotting")
         print("Displaying field...")
         plt.show()
-
+    
     # Run this to remove nodes that have no associated connection, ie, {node: None}
     def cleanNodeGraph(self):
-
         if self.nodeGraph != None:
-            nodeList=list(self.nodeGraph.keys())
-            for node in nodeList:
-                if self.nodeGraph[node] == None or len(self.nodeGraph[node])==0:
+            for node in self.nodeGraph.copy():
+                if self.nodeGraph[node] == None:
                     del self.nodeGraph[node]
-                    node.parentMine.removeNode(node) #I hate how ugly this line is
             return self.nodeGraph
         else:
             print("Node graph is empty")
+    def increaseRadius(self,step): 
+        for mine in self.mines:
+            mine.radius+=step
 
+
+        shallowCopy=self.nodeGraph.copy()
+        for node1 in shallowCopy:
+            if(node1.parentMine!=None):
+                node1.refreshLocation()
+        # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
+        for node1 in shallowCopy:
+           deepCopy=shallowCopy[node1].copy()
+           for node2 in deepCopy:
+                oldConnection=Connection(node1,node2)
+                if(not(oldConnection.validPath())):
+                    print(f"deleting {oldConnection}")
+                    oldConnection.deleteConnection()
 """MATH STUFF"""
 # Mine class keeps track of mine position and radii      
 class Mine:
@@ -444,11 +458,12 @@ class Mine:
         return node
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
-
-        for i in range(len(sortedNodes)-1):
-            
-            print(Connection.field.nodeGraph[sortedNodes[i]])
-            input()
+        
+        #delete connections
+        for node in self.nodes:
+            for connection in node.connections:
+                if connection.connectionType==seg.ARC:
+                    connection.deleteConnection()
 
         
        
@@ -515,10 +530,10 @@ class Node:
         return nodeConnection
     def deleteNode(self):
         if self.parentMine != None:
-            self.parentMine.nodes.remove(self)
+            self.parentMine.removeNode(self)
         if self in Connection.field.nodeGraph:
             del Connection.field.nodeGraph[self]
-        nodeList=Connection.field.nodeGraph
+        
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
@@ -552,6 +567,8 @@ class MineNode(Node):
         self.targetMine = targetMine
         self.terminated = False
         
+        self.internal=internal
+        self.primary=primary
         # categorize nodes
         if internal and primary:
             self.type = 'internal primary'
@@ -626,7 +643,60 @@ class MineNode(Node):
             self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
             self.name = name
+ 
+    def refreshLocation(self):
         
+        d = np.sqrt((self.parentMine.x-self.targetMine.x)**2+(self.parentMine.y-self.targetMine.y)**2) # Algabraic Distance Formula
+
+
+        # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
+        # Formula is: arccos(x1-x2)/d+pi
+    
+        if self.parentMine.y > self.targetMine.y:
+            offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+        elif self.parentMine.y < self.targetMine.y:
+            offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+        elif self.parentMine.y == self.targetMine.y:
+            if self.parentMine.x < self.targetMine.x:
+                offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+            elif self.parentMine.x > self.targetMine.x:
+                offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
+
+        # Offset Angle is the same for internal and external bitangents
+        if self.internal:
+            # Create internal angle
+            internalArccosParameter = ((self.parentMine.radius)+(self.targetMine.radius))/d
+            internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
+            
+            if self.primary:
+                self.angle=internalAngle+offsetAngle
+                self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
+                self.y = ((self.parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
+            else:
+                self.angle=internalAngle-(offsetAngle)
+                self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
+                self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
+            
+        else:
+            # Create external angle
+            externalArccosParameter = self.parentMine.radius-self.targetMine.radius/d
+            externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
+
+            if self.primary:
+                self.angle=externalAngle+offsetAngle
+                self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
+                self.y = ((self.parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
+            else:
+                self.angle=externalAngle-offsetAngle+np.pi
+                self.x = (self.parentMine.radius) * np.cos(self.angle-np.pi) + self.parentMine.x
+                self.y = (self.parentMine.radius) * np.sin(self.angle) +self.parentMine.y
+        
+        self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
+
+
+        self.x = round(self.x,3)
+        self.y = round(self.y,3)
+
     # Get type of path to a node -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
     def getPathType(self,node:'Node') -> list:
         types = []

@@ -157,17 +157,23 @@ class Connection:
 
     def deleteConnection(self):
 
-        if self.node1 in self.field.nodeGraph and self.node2 in self.field.nodeGraph[self.node1]:
-            del self.field.nodeGraph[self.node1][self.node2]
-        if self.node2 in self.field.nodeGraph and self.node1 in self.field.nodeGraph[self.node2]:
-            del self.field.nodeGraph[self.node2][self.node1]
-        '''
-        node.connected = True
-        connectedNode.connected = True
-        if connectedNode.parentMine not in node.parentMine.connectedMines and node.parentMine not in connectedNode.parentMine.connectedMines:
-            node.parentMine.connectedMines.append(connectedNode.parentMine)
-            connectedNode.parentMine.connectedMines.append(node.parentMine)
-        '''
+       
+       
+        if self.node1 in self.field.nodeGraph: 
+            if self.node2 in self.field.nodeGraph[self.node1]:
+                del self.field.nodeGraph[self.node1][self.node2]
+            if len(self.field.nodeGraph[self.node1])==0:
+                self.node1.deleteNode()
+        else:
+            self.node1.deleteNode()
+        if self.node2 in self.field.nodeGraph: 
+            if self.node1 in self.field.nodeGraph[self.node2]:
+                del self.field.nodeGraph[self.node2][self.node1]
+            if len(self.field.nodeGraph[self.node2])==0:
+                self.node2.deleteNode()
+        else:
+            self.node2.deleteNode()
+         
     #Checks if a newly created path is valid, checks all mines for collisions
     def validPath(self):
         if(self.node1==self.node2):
@@ -383,14 +389,14 @@ class Field:
             if not node.plotted:
             
                 for connectedNode in self.nodeGraph[node].keys():
-                    if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
-                        arc = patches.Arc((node.parentMine.x,node.parentMine.y), width=node.parentMine.radius, height=node.parentMine.radius, angle=0, theta1=int(node.angle*180/np.pi), theta2=int(connectedNode.angle*180/np.pi,color=plt.cm.tab10(random.randint(0,20)%15)))
-                        ax.add_patch(arc)
-                    else:
-                        try:
-                            plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
-                        except AttributeError:
-                            plt.plot([node.x],[node.y],nodeSymbol)
+                    #if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
+                        #arc = patches.Arc((node.parentMine.x,node.parentMine.y), width=node.parentMine.radius, height=node.parentMine.radius, angle=0, theta1=int(node.angle*180/np.pi), theta2=int(connectedNode.angle*180/np.pi),color=plt.cm.tab10(random.randint(0,20)%15))
+                        #ax.add_patch(arc)
+                    #else:
+                    try:
+                        plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
+                    except AttributeError:
+                        plt.plot([node.x],[node.y],nodeSymbol)
         print("Done plotting")
         print("Displaying field...")
         plt.show()
@@ -462,6 +468,8 @@ class Mine:
         self.nodes.append(node)
         #self.nodes.append(node) 
         return node
+    def removeNode(self,node):
+        self.nodes.remove(node)
     def connectMineNodes(self):
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
 
@@ -508,16 +516,18 @@ class Node:
         #self.nodeGraph.update({self:None})
         self.parentMine=None
         self.floating=floating
-
+   
     # Establishes a connection between nodes
     # Does not add it to the nodegraph yet however
     def connectNode(self,node:"Node") -> Connection:
         if(self==node):
             raise TypeError("Same nodes")
         nodeConnection=Connection(self,node) #connection initialization 
-        
-        self.connections.append(nodeConnection)
-        node.connections.append(nodeConnection)
+        if(nodeConnection.validPath()):
+            nodeConnection.addGraph()
+            
+        else:
+            nodeConnection.deleteConnection()
         #self.connected = True
         #node.connected = True
         """
@@ -527,7 +537,11 @@ class Node:
 
         """
         return nodeConnection
-
+    def deleteNode(self):
+        if self.parentMine != None:
+            self.parentMine.removeNode(self)
+        if self in Connection.field.nodeGraph:
+            del Connection.field.nodeGraph[self]
     def getPos(self) -> float:
         return (round(float(self.x),3),round(float(self.y),3))
 
