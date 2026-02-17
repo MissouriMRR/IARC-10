@@ -1,5 +1,5 @@
 import numpy as np
-import flight.pathfinding.utils.maskGen as maskGen
+import flight.pathfinding.utils.mask_gen as mask_gen
 from PIL import Image, ImageDraw
 import time as t
 import random
@@ -19,7 +19,7 @@ class SightTracker:
 
     # Checks for holes within the sightTracker map, within the predicted photo area, and within the given path clearence
     # a True means a there is a hole and a False means theres no hole
-    def check_holes(self, pre_photo:maskGen.PolygonMask, path_segment:maskGen.PolygonMask): # Maybe include the previous and following path segments?
+    def check_holes(self, pre_photo:mask_gen.PolygonMask, path_segment:mask_gen.PolygonMask): # Maybe include the previous and following path segments?
         result = True
         for i in range(path_segment.bottom_x, path_segment.top_x):
             for j in range(path_segment.bottom_y, path_segment.top_y):

@@ -1,8 +1,8 @@
-import flight.pathfinding.nodeGeneration as nodeg
-import flight.pathfinding.utils.seenByDrone as seenByDrone
-import flight.pathfinding.pathCalculation as dijk
-import flight.pathfinding.pathSubdivision as gotoDiv
-import flight.pathfinding.utils.maskGen as maskGen
+import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.utils.seen_by_drone as seen_by_drone
+import flight.pathfinding.path_calculation as dijk
+import flight.pathfinding.path_subdivision as gotoDiv
+import flight.pathfinding.utils.mask_gen as mask_gen
 import numpy as np
 import time as t
 from PIL import Image, ImageDraw

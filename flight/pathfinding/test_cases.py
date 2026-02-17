@@ -1,5 +1,5 @@
-from flight.pathfinding.nodeGeneration import Field, Mine, Node
-from flight.pathfinding.pathCalculation import Graph
+from flight.pathfinding.node_generation import Field, Mine, Node
+from flight.pathfinding.path_calculation import Graph
 from random import randint, seed
 import math
 import time

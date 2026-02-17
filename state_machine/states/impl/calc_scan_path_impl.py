@@ -13,9 +13,9 @@ from state_machine.states.state import State
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.app_share import AppShare
 
-import flight.pathfinding.pathSubdivision as gotoDiv
-from flight.pathfinding.nodeGeneration import Node, Mine, Field, Connection
-from flight.pathfinding.pathCalculation import Graph
+import flight.pathfinding.path_subdivision as gotoDiv
+from flight.pathfinding.node_generation import Node, Mine, Field, Connection
+from flight.pathfinding.path_calculation import Graph
 
 
 async def run(self: CalcScanPath) -> State:

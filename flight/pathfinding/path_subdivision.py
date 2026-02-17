@@ -5,8 +5,8 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from flight.pathfinding.nodeGeneration import Node, Mine, Field, Connection
-from flight.pathfinding.pathCalculation import Graph
+from flight.pathfinding.node_generation import Node, Mine, Field, Connection
+from flight.pathfinding.path_calculation import Graph
 #purpose: takes in list of nodes outputted from dijkstras algorthm, and creates goto points between each node (arc/line) 
 #with hardcoded lengths (arclength/step) between each point, outputting a final path of points for drone to follow.
 #hello

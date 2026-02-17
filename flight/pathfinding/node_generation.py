@@ -7,7 +7,7 @@ import random
 import time
 from sys import getrefcount
 import gc
-from . import pathCalculation
+from . import path_calculation
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
