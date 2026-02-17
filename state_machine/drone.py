@@ -86,6 +86,8 @@ class Drone:
         self.seenTracker = seen_by_drone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
         self.id = id
+        self.start_node = None
+        self.end_nodes = []
         # TODO: add reference to mine and path data classes
 
     async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:
@@ -341,9 +343,10 @@ class Drone:
     
     #Smart landing sequence, Should be usable in final product!!
     def recall(self):
-        if (fieldSizeX - self.x < fieldSizeY - self.y):
-            landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
+        if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
+            self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])
+            # Land
         else:
-            landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
-    
+            self.goto(self, [self.x, self.fieldSize[1]*round(self.y / self.fieldSize[1])])
+            # Land
 
