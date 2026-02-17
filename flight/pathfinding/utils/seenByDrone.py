@@ -1,6 +1,6 @@
 import numpy as np
-import flight.pathfinding.utils.maskGen as maskGen
-import flight.pathfinding.pathSubdivision as pathSub
+import flight.pathfinding.utils.mask_gen as maskGen
+import flight.pathfinding.path_subdivision as pathSub
 from PIL import Image, ImageDraw
 import time as t
 import random
