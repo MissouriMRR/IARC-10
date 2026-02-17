@@ -12,4 +12,5 @@ dependencies = [
     "pathlib>=1.0.1",
     "picamera2>=0.3.31",
     "scikit-image>=0.25.2",
+    "ultralytics>=8.4.14",
 ]
