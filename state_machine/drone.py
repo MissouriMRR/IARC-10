@@ -86,6 +86,8 @@ class Drone:
         self.seenTracker = seen_by_drone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
         self.id = id
+        self.start_node = None
+        self.end_nodes = []
         # TODO: add reference to mine and path data classes
 
     async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:

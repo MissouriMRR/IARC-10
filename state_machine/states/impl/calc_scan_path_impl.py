@@ -45,9 +45,10 @@ async def run(self: CalcScanPath) -> State:
         update_drone(self.drone)
         update_flight_settings(self.flight_settings)
         logging.info("CalcScanPath state running")
+        remove_start_end_nodes()
         update_nodes()
 
-        start, end = place_start_end_nodes()
+        self.drone.start_node, self.drone.end_nodes = place_start_end_nodes()
         newGraph=Graph(self.drone.field.nodeGraph)
         nodeList=newGraph.shortest_path(start,end)
 
