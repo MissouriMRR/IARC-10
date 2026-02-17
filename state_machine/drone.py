@@ -85,6 +85,7 @@ class Drone:
         self.tasks:tuple = []
         self.seenTracker = seenByDrone.SightTracker(self.fieldSize)
         self.field: 'nodeGen.Field' = None
+        self.taskList = []
         self.id = id
         # TODO: add reference to mine and path data classes
 
@@ -339,11 +340,12 @@ class Drone:
             photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
             self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
     
-    #Smart landing sequence, Should be usable in final product!!
+    # Smart landing sequence, Should be usable in final product!! Needs landAt logic finished and way to access drone simcoords
     def recall(self):
-        if (fieldSizeX - self.x < fieldSizeY - self.y):
-            landAt(fieldSizeX*round(self.x / fieldSizeX), self.y)
+        if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
+            self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])
+
         else:
-            landAt(self.x, fieldSizeY*round(self.y / fieldSizeY))
+            self.goto(self, [self.x, self.fieldSize[1]*round(self.y / self.fieldSize[1])])
     
 
