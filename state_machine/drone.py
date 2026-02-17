@@ -344,8 +344,8 @@ class Drone:
     def recall(self):
         if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
             self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])
-
+            # Land
         else:
             self.goto(self, [self.x, self.fieldSize[1]*round(self.y / self.fieldSize[1])])
-    
+            # Land
 
