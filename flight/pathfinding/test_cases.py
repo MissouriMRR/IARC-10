@@ -10,17 +10,17 @@ The output will be at the bottom.
 """
 # seed(2020) # make random or not
 numMines = 20
-radius = 16
+radius = 32
 pathFindingType = "none"  # dijkstra OR A* OR both OR none
 xMin = -numMines*radius
 xMax = numMines*radius
 yMin = -numMines*radius
 yMax = numMines*radius
 field = Field(xMin,xMax,yMin,yMax)
-genXMin = -radius*(numMines//2)
-genXMax = radius*(numMines//2)
-genYMin =-radius*(numMines//2)
-genYMax = radius*(numMines//2)
+genXMin = -radius*(numMines//4)
+genXMax = radius*(numMines//4)
+genYMin =-radius*(numMines//4)
+genYMax = radius*(numMines//4)
 position = [0,0]
 mineGenTolerance = 0*radius
 
