@@ -13,9 +13,9 @@ class MessageType(Enum):
     APP_CONFIG = 401
     APP_DEBUG = 402
     SET_HOVER_STATUS = 412
-    SEND_APP_SCANNING_ERROR =421
+    SEND_APP_SCANNING_ERROR = 421
     REQUEST_MAP_DATA = 414
-    SEND_PATHS_TO_APP=420
+    SEND_PATHS_TO_APP = 420
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -75,24 +75,22 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "setHoverStatus": bool,
         "height": float,
     },
-        MessageType.SEND_APP_SCANNING_ERROR: {
-            
+    MessageType.SEND_APP_SCANNING_ERROR: {
         "id": MessageType.SEND_APP_SCANNING_ERROR,
         "dronesToSendData": tuple[int, ...],
-        "errorType" : int,
+        "errorType": int,
         "errorMessage": str,
-            },
-    
-MessageType.REQUEST_MAP_DATA: {
-    "id": MessageType.REQUEST_MAP_DATA,
-    "dronesToSendData": tuple[int, ...],
-    "string_payload": str, # will need to update data when decided
-},
-MessageType.SEND_PATHS_TO_APP: {
-    "id": MessageType.SEND_PATHS_TO_APP,
-    "dronesToSendData": tuple[int, ...],
-    "MapDataReady": bool,
-},
+    },
+    MessageType.REQUEST_MAP_DATA: {
+        "id": MessageType.REQUEST_MAP_DATA,
+        "dronesToSendData": tuple[int, ...],
+        "string_payload": str,  # will need to update data when decided
+    },
+    MessageType.SEND_PATHS_TO_APP: {
+        "id": MessageType.SEND_PATHS_TO_APP,
+        "dronesToSendData": tuple[int, ...],
+        "MapDataReady": bool,
+    },
     # Message: SPEED_TEST_REQUEST
     # Usage: Used in network_test. Sent to other drones, their server updates the data, and it's then sent back to the client for processing. Client outputs SPEED_TEST_RESPONSE
     # Description of Data: TODO Talk to team and see if we want to include this for message documentation
