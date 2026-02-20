@@ -90,32 +90,7 @@ class Drone:
         self.end_nodes = []
         # TODO: add reference to mine and path data classes
 
-    async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:
-        """Send a DO_SET_SERVO MAVLink message to the drone.
 
-        Parameters
-        ----------
-        servo_num : int
-            The number of the servo to control.
-            This should be the same value that is shown in MissionPlanner
-            and the parameters of the drone.
-        pwm : int
-            The PWM value to send to the servo.
-        """
-        msg: MAVLink_command_long_message = self.vehicle.message_factory.command_long_encode(
-            0,  # target_system, should always be 0
-            0,  # target_component, should always be 0
-            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # cmd
-            0,  # confirmation
-            servo_num,  # servo number
-            pwm,  # servo value
-            0,
-            0,
-            0,
-            0,
-            0,  # param3-7 unused
-        )
-        self.vehicle.send_mavlink(msg)
 
     @property
     def is_connected(self) -> bool:
