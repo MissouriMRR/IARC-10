@@ -9,6 +9,8 @@ dependencies = [
     "matplotlib>=3.10.7",
     "numpy>=2.3.4",
     "opencv-python>=4.11.0.86",
+    "pathlib>=1.0.1",
     "picamera2>=0.3.31",
     "scikit-image>=0.25.2",
+    "ultralytics>=8.4.14",
 ]
