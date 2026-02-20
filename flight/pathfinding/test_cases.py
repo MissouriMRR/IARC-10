@@ -10,17 +10,17 @@ The output will be at the bottom.
 """
 # seed(2020) # make random or not
 numMines = 20
-radius = 16
+radius = 32
 pathFindingType = "none"  # dijkstra OR A* OR both OR none
 xMin = -numMines*radius
 xMax = numMines*radius
 yMin = -numMines*radius
 yMax = numMines*radius
 field = Field(xMin,xMax,yMin,yMax)
-genXMin = -radius*(numMines//2)
-genXMax = radius*(numMines//2)
-genYMin =-radius*(numMines//2)
-genYMax = radius*(numMines//2)
+genXMin = -radius*(numMines//4)
+genXMax = radius*(numMines//4)
+genYMin =-radius*(numMines//4)
+genYMax = radius*(numMines//4)
 position = [0,0]
 mineGenTolerance = 0*radius
 
@@ -44,6 +44,9 @@ for num in range(numMines):
 print("done adding mines\n")
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
+for mine in field.mines:
+    mine.connectMineNodes()
+    print("Connecting mine nodes")
 if pathFindingType == "dijkstra" or pathFindingType == "both":
     pathSolve = Graph(field.nodeGraph)
     temp = time.time()
@@ -54,6 +57,7 @@ if pathFindingType == "dijkstra" or pathFindingType == "both":
     dijkstraPathLength = 0
     for i in range(len(path)-1):
        dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+
 
 field.plotField()
 field.increaseRadius(100)

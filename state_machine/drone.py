@@ -90,32 +90,7 @@ class Drone:
         self.end_nodes = []
         # TODO: add reference to mine and path data classes
 
-    async def _send_servo_msg(self, servo_num: int, pwm: int) -> None:
-        """Send a DO_SET_SERVO MAVLink message to the drone.
 
-        Parameters
-        ----------
-        servo_num : int
-            The number of the servo to control.
-            This should be the same value that is shown in MissionPlanner
-            and the parameters of the drone.
-        pwm : int
-            The PWM value to send to the servo.
-        """
-        msg: MAVLink_command_long_message = self.vehicle.message_factory.command_long_encode(
-            0,  # target_system, should always be 0
-            0,  # target_component, should always be 0
-            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # cmd
-            0,  # confirmation
-            servo_num,  # servo number
-            pwm,  # servo value
-            0,
-            0,
-            0,
-            0,
-            0,  # param3-7 unused
-        )
-        self.vehicle.send_mavlink(msg)
 
     @property
     def is_connected(self) -> bool:
@@ -259,37 +234,6 @@ class Drone:
             await asyncio.sleep(0.5)
         logging.info("Reached ground.")
 
-    async def open_servo(self, servo_num: int) -> None:
-        """
-        Open the servo with the given number.
-
-        Parameters
-        ----------
-        servo_num : int
-            The number of the servo to open. This should
-            be from 1 to 4, and matches with the AUX port on
-            the carrier board that the servo is connected to.
-        """
-        if servo_num < 1 or servo_num > 4:
-            raise ValueError("Servo number must be between 1 and 4")
-        open_values: list[int] = [950, 1600, 1950, 1900]
-        await self._send_servo_msg(servo_num + 8, open_values[servo_num - 1])
-
-    async def close_servo(self, servo_num: int) -> None:
-        """
-        Close the servo with the given number.
-
-        Parameters
-        ----------
-        servo_num : int
-            The number of the servo to close. This should
-            be from 1 to 4, and matches with the AUX port on
-            the carrier board that the servo is connected to.
-        """
-        if servo_num < 1 or servo_num > 4:
-            raise ValueError("Servo number must be between 1 and 4")
-        closed_values: list[int] = [2000, 1100, 1100, 1100]
-        await self._send_servo_msg(servo_num + 8, closed_values[servo_num - 1])
 
     async def close(self) -> None:
         """Close the owned DroneKit Vehicle object."""
