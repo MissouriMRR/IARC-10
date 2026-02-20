@@ -46,17 +46,17 @@ def pixel_to_ground(u, v, W, H, FOVx_deg, FOVy_deg, yaw, pitch, roll, altitude):
 @dataclass
 class DronePose:  #these float values should be given by the flight controller
     lat: float
-    lat = 37.9486929
+    #lat = 37.9486929
     lon: float
-    lon =-91.7841478
+    #lon =-91.7841478
     altitude: float
-    altitude = 30.357 # meters AGL
+    #altitude = 30.357 # meters AGL
     yaw: float # degrees
-    yaw = -2.106571572697931
+    #yaw = -2.106571572697931
     pitch: float      # degrees
-    pitch = -79.59291162486421
+    #pitch = -79.59291162486421
     roll: float       # degrees
-    roll = 12.158130312273618
+    #roll = 12.158130312273618
 
 
 @dataclass
@@ -139,8 +139,8 @@ def pixel_to_geocoord_gimbal(
     x = (px - image_width / 2) / (image_width / 2)
     y = (py - image_height / 2) / (image_height / 2)
 
-    h_fov = radians(1.41372)
-    v_fov = radians(0.797528202)
+    h_fov = 1.41372
+    v_fov = 0.797528202
 
     ray_camera = np.array([
         x * tan(h_fov / 2),
