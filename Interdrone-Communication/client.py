@@ -44,6 +44,9 @@ class Client:
         # Update otherDronesIds tuple with tempOtherDronesIds values
         self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
 
+        # Get range test toggle variable
+        self.rangeTestEnabled: bool = self.jsonConfigData.get_range_test_toggle()
+
     # Start client code and call the client_loop()
     async def start_client_async(self):
         await self.client_loop()
@@ -153,6 +156,11 @@ class Client:
             # NOTE: In the future if you need the client to resend a message after a timeout view commit history,
             # 671f673486ea4c57ad2320c1506bafef70aa5e15 to see how we did it for the deprecated startup message
             # print(f"Timeout error! {e}")
+            # TODO add resend functionality here for app as needed
+            if self.rangeTestEnabled:
+                print(
+                    f"Timeout error sending data from drone #{self.jsonConfigData.get_self_id()} to #{serverPort - 5000}"
+                )
             return "timeout"  # NOTE could be bad
             # raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
         except ConnectionRefusedError as e:
@@ -216,16 +224,13 @@ class Client:
                     if downloadTime > 0
                     else float("inf")
                 )
-
-                # For now, this will be a separate message from 513 to maintain
-                # the immutability of the fields in 513. This is an ugly hack,
-                # but it works for now before I refactor messages and make them
-                # their own class in order to enforce immutability.
                 result: Message = Message.create(
                     id=MessageType.SPEED_TEST_RESPONSE,
                     dronesToSendData=(),
                     data={
                         "target": f"{serverIP}:{serverPort}",
+                        "targetId": serverPort
+                        - 5000,  # Port is 500* with start being id
                         "uploadRttMs": round(uploadTime * 1000, 2),
                         "uploadThroughputKbps": round(uploadThroughputKbps, 2),
                         "downloadRttMs": round(downloadTime * 1000, 2),

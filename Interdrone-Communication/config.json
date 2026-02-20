@@ -23,6 +23,7 @@
   },
   "localInfo": {
     "selfId": "2",
-    "speedTestKbDataSize": "16"
+    "speedTestKbDataSize": "16",
+    "rangeTestToggle": "0"
   }
 }

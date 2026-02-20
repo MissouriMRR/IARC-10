@@ -109,6 +109,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SPEED_TEST_RESPONSE,
         "dronesToSendData": tuple[int, ...],
         "target": str,
+        "targetId": int,
         "uploadRttMs": float,
         "uploadThroughputKbps": float,
         "downloadRttMs": float,

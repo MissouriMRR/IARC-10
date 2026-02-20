@@ -49,6 +49,16 @@ class JsonConfigReader:  # TODO update this the name of this to follow correct c
     def get_speed_test_data_size(self) -> int:
         return int(self.config["localInfo"]["speedTestKbDataSize"])
 
+    # Get range test bool (TODO have timeout print if range test is true)
+    def get_range_test_toggle(self) -> bool:
+        return bool(
+            int(self.config["localInfo"]["rangeTestToggle"])
+        )  # If value is 1 true and 0 is false
+
+    # TODO test this
+    def set_range_test_toggle(self, rangeTestToggle: bool) -> None:
+        self.config["localInfo"]["rangeTestToggle"] = rangeTestToggle
+
     # Gets number of drones
     def get_number_of_drones(self):
         return len(self.config["drones"])
