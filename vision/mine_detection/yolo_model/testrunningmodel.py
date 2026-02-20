@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 import cv2
 from pathlib import Path
+import os
 
 
 # init the model data structure
@@ -17,7 +18,9 @@ for file in allPics:
     results = model(file)
     frame = results[0].plot()
 
-    print(len(results))
+    #show me what the bounding boxes are in the terminal
+    os.system("clear")
+    print(results[0].boxes.data)
 
     cv2.imshow("window",frame)
     while(True):
