@@ -7,10 +7,20 @@ class PolygonMask:
     # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
     # Array size is the dimensions of the sight array (which should be the same size as the minefield simulation array)
     def __init__(self, node_1:nodeg.Node, node_2:nodeg.Node):
-        x1 = node_1.parentMine.x
-        y1 = node_1.parentMine.y
-        x2 = node_2.parentMine.x
-        y2 = node_2.parentMine.y
+        if (node_1.getParentMine() != None):
+            x1 = node_1.parentMine.x
+            y1 = node_1.parentMine.y
+        else:
+            # x1 = node_1.x + (path width, will need access to the current one somehow) 
+            y1 = node_1.y
+
+        if (node_2.getParentMine() != None):
+            x2 = node_2.parentMine.x
+            y2 = node_2.parentMine.y
+        else:
+            # x2 = node_2.x + (path width, will need access to the current one somehow) 
+            y2 = node_2.y
+            
         self.top_x = max([x1, 2(node_1.x-x1)+x1, x2, 2(node_2.x-x2)+x2])
         self.bottom_x = min([x1, 2(node_1.x-x1)+x1, x2, 2(node_2.x-x2)+x2])
         self.top_y = max([y1, 2(node_1.y-y1)+y1, y2, 2(node_2.y-y2)+y2])
