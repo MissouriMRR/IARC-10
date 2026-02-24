@@ -1,3 +1,6 @@
+from _asyncio import Task
+
+
 from message_types import Message, MessageType
 from json_config_reader import JsonConfigReader
 from networking_thread import NetworkingThread
@@ -38,6 +41,7 @@ async def main():
         daemon=True,
     )
     networkingThread.start()
+    backgroundTasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
 
     # Wait for networking to be ready
     networking: NetworkingInterface = resourcesReady.get()
@@ -74,8 +78,7 @@ async def main():
             clientMsg = networking.try_get_client_response(timeout=0.02)
             if clientMsg is not None:
                 # Print speed test results
-                try:
-                    # Append client Message to dict list
+                try:  # Append client Message to dict list
                     targetId: int = clientMsg.data["targetId"]
                     # print(targetId)
                     if targetId not in speedResults:
@@ -91,7 +94,7 @@ async def main():
                         numTestsPerTarget[targetId] += 1
 
                         # Run logging in a separate thread
-                        asyncio.create_task(
+                        task: Task[None] = asyncio.create_task(
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
@@ -99,6 +102,13 @@ async def main():
                                 current_test_num,
                             )
                         )
+
+                        # Add to set to prevent garbage collection
+                        backgroundTasks.add(task)
+
+                        # Remove from set when done
+                        task.add_done_callback(backgroundTasks.discard)
+
                         print(
                             f"Test {current_test_num} completed from {jsonConfigData.get_self_id()} -> {targetId}"
                         )
