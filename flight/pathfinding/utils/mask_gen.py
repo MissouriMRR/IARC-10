@@ -11,14 +11,14 @@ class PolygonMask:
             x1 = node_1.parentMine.x
             y1 = node_1.parentMine.y
         else:
-            # x1 = node_1.x + (path width, will need access to the current one somehow) 
+            x1 = node_1.x + nodeg.Mine.radius
             y1 = node_1.y
 
         if (node_2.getParentMine() != None):
             x2 = node_2.parentMine.x
             y2 = node_2.parentMine.y
         else:
-            # x2 = node_2.x + (path width, will need access to the current one somehow) 
+            x2 = node_2.x + nodeg.Mine.radius 
             y2 = node_2.y
             
         self.top_x = max([x1, 2(node_1.x-x1)+x1, x2, 2(node_2.x-x2)+x2])
@@ -35,8 +35,25 @@ class PolygonMask:
 
     # Overload of the Polygon Mask function, this one is for specifically generating a predicted image area
     # should a picture be taken at a given path coord and orientation
-    def __init__(self, center_coord:tuple[float, float], tan_angle:int, cam_size:tuple[float, float]):
-        pass
+    def __init__(self, center:tuple[float, float], tan_angle:float, cam_size:tuple[float, float]):
+        corner_1 = (center[0]+(cam_size[0]/2)*np.cos(tan_angle)-(cam_size[1]/2)*np.sin(tan_angle), center[1]+(cam_size[0]/2)*np.sin(tan_angle)+(cam_size[1]/2)*np.cos(tan_angle))
+        corner_2 = (center[0]-(cam_size[0]/2)*np.cos(tan_angle)-(cam_size[1]/2)*np.sin(tan_angle), center[1]-(cam_size[0]/2)*np.sin(tan_angle)+(cam_size[1]/2)*np.cos(tan_angle))
+        corner_3 = (center[0]-(cam_size[0]/2)*np.cos(tan_angle)+(cam_size[1]/2)*np.sin(tan_angle), center[1]-(cam_size[0]/2)*np.sin(tan_angle)-(cam_size[1]/2)*np.cos(tan_angle))
+        corner_4 = (center[0]+(cam_size[0]/2)*np.cos(tan_angle)+(cam_size[1]/2)*np.sin(tan_angle), center[1]+(cam_size[0]/2)*np.sin(tan_angle)-(cam_size[1]/2)*np.cos(tan_angle))
+        self.top_x = max(corner_1[0],corner_2[0],corner_3[0],corner_4[0])
+        self.bottom_x = min(corner_1[0],corner_2[0],corner_3[0],corner_4[0])
+        self.top_y = max(corner_1[1],corner_2[1],corner_3[1],corner_4[1])
+        self.bottom_y = min(corner_1[1],corner_2[1],corner_3[1],corner_4[1])
+        corner_1 = np.subtract(corner_1, [self.bottom_x, self.bottom_y])
+        corner_2 = np.subtract(corner_2, [self.bottom_x, self.bottom_y])
+        corner_3 = np.subtract(corner_3, [self.bottom_x, self.bottom_y])
+        corner_4 = np.subtract(corner_4, [self.bottom_x, self.bottom_y])
+        corners = [corner_1,corner_2,corner_3,corner_4]
+
+        img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
+        img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
+        ImageDraw.Draw(img).polygon(corners, outline=1, fill=1)
+        self.body = np.array(img)
 
     # Here is where a future Arc/Pie slice shaped mask function will go
     def __init__(self, node1:nodeg.Node, node2:nodeg.Node, pie:bool):
