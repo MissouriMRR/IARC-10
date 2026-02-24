@@ -64,7 +64,7 @@ class Drone:
         Get the Dronekit Vehicle object owned by this Drone object.
     """
 
-    def __init__(self, address: str = "", baud: int | None = None, mineRadius: int = 36, id: int = 0) -> None:
+    def __init__(self, address: str = "", baud: int | None = None, mine_radius: int = 36, id: int = 0) -> None:
         """
         Initialize a new Drone object, but do not connect to a drone.
 
@@ -80,10 +80,10 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
-        self.fieldSize: tuple[int, int] = [3600, 960]
-        self.mineRadius = mineRadius
+        self.field_size: tuple[int, int] = [3600, 960]
+        self.mine_radius = mine_radius
         self.tasks:tuple = []
-        self.seenTracker = seen_by_drone.SightTracker(self.fieldSize)
+        self.seen_tracker = seen_by_drone.SightTracker(self.field_size)
         self.field: 'nodeGen.Field' = None
         self.id = id
         self.start_node = None
@@ -287,10 +287,10 @@ class Drone:
     
     #Smart landing sequence, Should be usable in final product!!
     def recall(self):
-        if (self.fieldSize[0] - self.x < self.fieldSize[1] - self.y):
-            self.goto(self, [self.fieldSize[0]*round(self.x / self.fieldSize[0]), self.y])
+        if (self.field_size[0] - self.x < self.field_size[1] - self.y):
+            self.goto(self, [self.field_size[0]*round(self.x / self.field_size[0]), self.y])
             # Land
         else:
-            self.goto(self, [self.x, self.fieldSize[1]*round(self.y / self.fieldSize[1])])
+            self.goto(self, [self.x, self.field_size[1]*round(self.y / self.field_size[1])])
             # Land
 
