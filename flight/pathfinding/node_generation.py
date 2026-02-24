@@ -28,7 +28,7 @@ KEY NODE ATTRIBUTES/METHODS:
  - Node.connectNode(node:Node) -> returns Connection: Establishes connection between current and target Node
  - Node.getPos() -> gets position of node
  - Node.getTargetMine() -> returns Mine; gets the target mine
- - Node.getParentMine() -> returns Mine or None if floating; gets the parent mien
+ - Node.getParentMine() -> returns Mine or None if floating; gets the parent mine
  - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,name:str)
     -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
 
