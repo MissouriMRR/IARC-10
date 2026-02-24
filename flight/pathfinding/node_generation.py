@@ -78,7 +78,7 @@ Ex: A basic setup of 3 Mines with start and end nodes.
     field.placeEndNodes(-100,100,250,4)
     field.plotField()
 
-For now, there is a more complex example at the bottom for testing. Will be removed or moved eventually.
+Complex example moved to test_cases.py
 """
 #Simple class which is used in the nodegraph and holds informatation about distance path and type (straight/arc-ed)
 #Moved some useful connection functions here as well.
@@ -227,7 +227,7 @@ class Connection:
         return True
 
     #checks if a path collides with a specific mine
-    def mineCollision(self,mine):
+    def mineCollision(self,mine) -> bool:
         x1 = float(self.node1.x)
         y1 = float(self.node1.y)
         x2 = float(self.node2.x)
@@ -267,6 +267,54 @@ class Connection:
                 return True
         
         return False
+    
+    # Get point(s) of intersection between two mines
+    def mineIntersectionPoints(mine1:"Mine",mine2:"Mine") -> tuple[float]:        
+        point1 : tuple[float] = (0.0,0.0)
+        point2 : tuple[float] = (0.0,0.0)
+        distance : float = np.sqrt((mine1.x-mine2.x)**2 + (mine1.y-mine2.y)**2)
+
+        # Fraction of the area of each mine that is not overlapping
+        intersectionPortion: float = ((mine1.radius - mine2.radius + distance))/(2*mine1.radius)
+        
+        if intersectionPortion >= 1:
+            return None
+
+        # Plus and minus this angle to get the angle at which the circles overlap
+        intersectionAngle = np.arccos(intersectionPortion)
+
+        # Calculate offset angle, same formula from node calculation
+        if mine1.y > mine2.y:
+            offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
+        elif mine1.y < mine2.y:
+            offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
+        elif mine1.y == mine2.y:
+            if mine1.x < mine2.x:
+                offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
+            elif mine1.x > mine2.x:
+                offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
+        
+
+        point1[0] = mine1.radius * np.cos(intersectionAngle + offsetAngle) + mine1.x
+        point1[1] = mine1.radius * np.sin(intersectionAngle + offsetAngle) + mine1.y
+
+        point2[0] = mine1.radius * np.cos(-intersectionAngle + offsetAngle) + mine1.x
+        point2[1] = mine1.radius * np.sin(-intersectionAngle + offsetAngle) + mine1.y
+
+        return (point1,point2)
+    
+    # WIP
+    def validHuggingEdge(self) -> bool:
+        node1 = self.node1
+        node2 = self.node2
+        
+        parentMine = node1.parentMine
+        testMine = node2.parentMine
+
+        intersectPoints: tuple[float] = self.mineIntersectionPoints(parentMine,testMine)
+
+        
+
     def __str__(self):
         return f"{self.node1} <-> {self.node2}"
     def __repr__(self):
@@ -448,7 +496,10 @@ class Field:
 class Mine:
     numMines = 0
     mines = []
+    radius = None
     def __init__(self,centerX,centerY,radius,color:str='',name:str=''):
+        if radius == None:
+            Mine.radius = radius
         Mine.numMines += 1
         self.number=Mine.numMines
         if len(name) > 0:
@@ -615,7 +666,7 @@ class MineNode(Node):
                 offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
             elif parentMine.x > targetMine.x:
                 offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-
+        
         # Offset Angle is the same for internal and external bitangents
         if internal:
             # Create internal angle
@@ -756,4 +807,5 @@ X=Done
  X Generate Floating Nodes
  - Termination Way that can help optimize generation?:
     + check if a pair of nodes can exist before actually creating them.
+ - Generate tangent mineNodes connecting to floating nodes
 """
