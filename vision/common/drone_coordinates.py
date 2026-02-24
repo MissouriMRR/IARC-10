@@ -1,93 +1,40 @@
 import numpy as np
 from math import sin, cos, tan, radians, degrees
 from dataclasses import dataclass
-
-'''#Pseudocode: import altimeter, flight controller
-import math
-x = 0
-y = 0
-focusx = 0
-focusy = 0
-image_width = 0
-image_height = 0
-xcamera_coordinate = 0
-ycamera_coordinate = 0
-camera_swivel_angle = math.radians(0)
-camera_depression_angle = math.radians(0)
-latitudex = 0
-longitudey =0
-Altitude = 0
-def findGeographicalCoordinates():
-    focusx = Altitude*math.cos.radians(camera_swivel_angle)*math.tan.radians(camera_depression_angle)
-    focusy = Altitude*math.cos.radians(camera_swivel_angle)*math.tan.radians(camera_depression_angle)
-    latitudex = xcamera_coordinate + focusx
-    longitudey= ycamera_coordinate + focusy
-
-import numpy as np
-
-
-def pixel_to_ground(u, v, W, H, FOVx_deg, FOVy_deg, yaw, pitch, roll, altitude):
-    """
-    Convert image pixel (u,v) to ground coordinates (X,Y)
-    assuming ground plane z=0 and camera at (0,0,altitude).
-    """
-
-    # Convert FOV to radians
-    FOVx = np.radians(FOVx_deg)
-    FOVy = np.radians(FOVy_deg)
-
-    # 1. Convert pixel to normalized image coordinates in range [-1,1]
-    x = (u - W/2) / (W/2)
-'''
-# ============================================================
-# Data classes
-# ============================================================
-
+# ######Data classes
 @dataclass
 class DronePose:  #these float values should be given by the flight controller
     lat: float
-    #lat = 37.9486929
     lon: float
-    #lon =-91.7841478
-    altitude: float
-    #altitude = 30.357 # meters AGL
+    altitude: float # meters AGL
     yaw: float # degrees
-    #yaw = -2.106571572697931
     pitch: float      # degrees
-    #pitch = -79.59291162486421
     roll: float       # degrees
-    #roll = 12.158130312273618
 
 
 @dataclass
-class GimbalPose:       #yaw pitch role values of gimbal
-    yaw: float        # degrees (relative to drone)
-    pitch: float      # degrees
-    roll: float       # degrees
-
-
-# ============================================================
-# Rotation math
-# ============================================================
+class GimbalPose:       #yaw pitch role values of gimbal----converted to default parameter
+    yaw: float = 0        # degrees (relative to drone)
+    pitch: float =-90    # degrees  # This default parameter assumes that the camera is pointing straight down
+    roll: float =0      # degrees
+# ###################### Rotational math
 
 def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z directions
-    """
-    ZYX rotation: yaw (Z), pitch (Y), roll (X)
-    """
+   #These matrices are basic definitions of rotational motion; I found them on a lesson about rotation on cuemath.com 
     yaw, pitch, roll = map(radians, (yaw, pitch, roll))
-#yaw z axis (rotate drone left and right)
+#yaw is rotation about the z axis (rotate drone clockwise and counterclockwise) The angle is the equivalent of gamma.
     Rz = np.array([
         [cos(yaw), -sin(yaw), 0],
         [sin(yaw),  cos(yaw), 0],
         [0,         0,        1]
     ])
-#pitch y axis (tilt forward backward)
+#pitch is rotation about the y axis (tilt forward/backward)The angle is the equivalent of beta.
     Ry = np.array([
         [ cos(pitch), 0, sin(pitch)],
         [ 0,          1, 0         ],
         [-sin(pitch), 0, cos(pitch)]
     ])
-#roll x axis (tilt left/right)
+#roll is rotation about the x axis (tilt left/right) The angle is the equivalent of alpha.
     Rx = np.array([
         [1, 0,          0         ],
         [0, cos(roll), -sin(roll)],
@@ -97,14 +44,12 @@ def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z d
     return Rz @ Ry @ Rx
 
 
-# ============================================================
-# Geometry helpers
-# ============================================================
+# Geometrics
 
-def meters_to_latlon(dx, dy, lat):  #coverts meters into lat and lon coordinates using derivatives
+def meters_to_latlon(deltax, deltay, lat):  #coverts meters into latitude and longitude coordinates
     earth_radius = 6378137.0
-    dlat = dy / earth_radius
-    dlon = dx / (earth_radius * cos(radians(lat)))
+    dlat = deltay / earth_radius    #dlat and dlong are measured in radians; this is the arc length formula s=rtheta
+    dlon = deltax / (earth_radius * cos(radians(lat)))
     return degrees(dlat), degrees(dlon)
 
 
@@ -175,31 +120,28 @@ def pixel_to_geocoord_gimbal(
     dx, dy = ground_point[1], ground_point[0]
     dlat, dlon = meters_to_latlon(dx, dy, drone.lat)
 
-    return drone.lat + dlat, drone.lon + dlon
+    return drone.lat + dlat, drone.lon + dlon  #Returns the latitude and longitude of pixel. Drone position plus the change in lat and lon
 
-
-# ============================================================
 # Example usage
-# ============================================================
 
 if __name__ == "__main__":
     drone_pose = DronePose(
         lat=37.9487475,
         lon=-91.784163,
         altitude=26.882,
-        yaw=-8.839487389857933,      # drone turning
+        yaw=-8.839487389857933,      # drone turning about z-axis
         pitch=-94.27803780815711,     # drone pitching forward
         roll=-141.86456851876127       # drone banking
     )
 
     # Gimbal stabilizes roll & pitch, points slightly forward
     gimbal_pose = GimbalPose(
-        yaw=0,       # locked forward
+        yaw=0,       # locked forward--- (0,0,0) is camera pointing directly downwards
         pitch=0,   # nadir view
         roll=0
     )
 
-    latlon = pixel_to_geocoord_gimbal(
+    pixel_to_latlon = pixel_to_geocoord_gimbal(     #px,py,image_width, and image_height may be subject to change once the hardware is studied
         px=640,
         py=360,
         image_width=1280,
@@ -210,4 +152,4 @@ if __name__ == "__main__":
         gimbal=gimbal_pose
     )
 
-    print("Ground coordinate:", latlon)
+    print("Ground coordinate:", pixel_to_latlon)  #latlon
