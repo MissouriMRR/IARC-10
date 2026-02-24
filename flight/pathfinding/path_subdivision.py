@@ -54,13 +54,16 @@ for mine in field.mines:
 #step for linear, arc_step for arc to determine number of goto pts.
 def generate_goto_points(nodeList:Node, step: int = 10): #distance between points is 3 feet, subject to change. NOTE: has to be int.
     finalGotoList = []   
-
+    segmentedList = []
+    isArc = False
     for i in range(len(nodeList) - 1):
         n1 = nodeList[i] #first node
         n2 = nodeList[i + 1] #second node in each iteration
 
         # linear gotos or floating points
         if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
+            segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+            
             dx = n2.x - n1.x
             dy = n2.y - n1.y
             distance = m.sqrt(dx**2 + dy**2)
@@ -73,6 +76,9 @@ def generate_goto_points(nodeList:Node, step: int = 10): #distance between point
         
         #arc gotos
         elif n1.parentMine==n2.parentMine :
+            isArc = True
+            segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+            
             #get center coords
             mine = n1.parentMine
             cx, cy = mine.getPos()
@@ -99,9 +105,10 @@ def generate_goto_points(nodeList:Node, step: int = 10): #distance between point
                 x = cx + r * m.cos(a)
                 y = cy + r * m.sin(a)
                 finalGotoList.append((float(x), float(y)))
+                
       
     #print("segment List:", segmentList)                    
-    return finalGotoList, segmentList
+    return finalGotoList, segmentedList
 
 path, segmentedList  = generate_goto_points(nodeList)
 print("This is all the points:")
@@ -111,10 +118,10 @@ print("goto x and goto y")
 # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
 goto_x = [coord[0] for coord in path]
 goto_y = [coord[1] for coord in path]
-print(goto_x)
-print('\n'*5)
-print(goto_y)
-
+#print(goto_x)
+#print('\n'*5)
+#print(goto_y)
+print(segmentedList)
 
 fig, ax = plt.subplots()
 ax.set_aspect('equal')
