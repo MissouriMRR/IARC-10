@@ -38,7 +38,7 @@ def pixel_to_ground(u, v, W, H, FOVx_deg, FOVy_deg, yaw, pitch, roll, altitude):
 
     # 1. Convert pixel to normalized image coordinates in range [-1,1]
     x = (u - W/2) / (W/2)
-'''   
+'''
 # ============================================================
 # Data classes
 # ============================================================
@@ -137,7 +137,7 @@ def pixel_to_geocoord_gimbal(
 
     # ---- Pixel to camera ray ----
     x = (px - image_width / 2) / (image_width / 2)
-    y = (py - image_height / 2) / (image_height / 2)
+    y = -(py - image_height / 2) / (image_height / 2)
 
     h_fov = 1.41372
     v_fov = 0.797528202
@@ -172,7 +172,7 @@ def pixel_to_geocoord_gimbal(
     if ground_point is None:
         return None
 
-    dx, dy = ground_point[0], ground_point[1]
+    dx, dy = ground_point[1], ground_point[0]
     dlat, dlon = meters_to_latlon(dx, dy, drone.lat)
 
     return drone.lat + dlat, drone.lon + dlon
@@ -184,18 +184,18 @@ def pixel_to_geocoord_gimbal(
 
 if __name__ == "__main__":
     drone_pose = DronePose(
-        lat=37.7749,
-        lon=-122.4194,
-        altitude=120,
-        yaw=15,      # drone turning
-        pitch=5,     # drone pitching forward
-        roll=8       # drone banking
+        lat=37.9487475,
+        lon=-91.784163,
+        altitude=26.882,
+        yaw=-8.839487389857933,      # drone turning
+        pitch=-94.27803780815711,     # drone pitching forward
+        roll=-141.86456851876127       # drone banking
     )
 
     # Gimbal stabilizes roll & pitch, points slightly forward
     gimbal_pose = GimbalPose(
         yaw=0,       # locked forward
-        pitch=-90,   # nadir view
+        pitch=0,   # nadir view
         roll=0
     )
 
@@ -204,8 +204,8 @@ if __name__ == "__main__":
         py=360,
         image_width=1280,
         image_height=720,
-        h_fov=84,
-        v_fov=60,
+        h_fov=1.41372,
+        v_fov=0.797528202,
         drone=drone_pose,
         gimbal=gimbal_pose
     )
