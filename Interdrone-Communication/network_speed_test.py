@@ -121,6 +121,7 @@ async def main():
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
+            break
 
 
 # Do async function call to this
