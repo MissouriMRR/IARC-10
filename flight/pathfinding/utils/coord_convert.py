@@ -1,57 +1,34 @@
 import numpy as np
 
-class GridToLatLonTransformer:
-    affine_transform = None
-    def __init__(self, src_pts, dst_pts):
-        """
-        Initialize the transformer with source and destination points.
+class SimToLatLonTransformer:
+    def __init__(self, corner_coords:tuple[tuple[float,float]], sim_side_lengths:tuple[int,int]):
+        self.sim_sides = sim_side_lengths
 
-        Parameters:
-            src_pts: list of (x, y) tuples (length 3 or 4)
-            dst_pts: list of (lat, lon) tuples (same length)
-        """
-        self.affine_transform = self.compute_affine_transform(src_pts, dst_pts)
+        '''
+        1----------2
+        |          |
+        |          |
+        3----------4
+        '''
 
-    def compute_affine_transform(self, src_pts, dst_pts):
-        """
-        Compute 2D affine transform matrix A that maps src_pts -> dst_pts.
-
-        Parameters:
-            src_pts: list of (x, y) tuples (length 3 or 4)
-            dst_pts: list of (lat, lon) tuples (same length)
-
-        Returns:
-            3x3 affine transform matrix (NumPy array)
-        """
-        src = np.array([[x, y, 1] for (x, y) in src_pts])
-        dst = np.array(dst_pts)
-
-        # Solve least squares for affine matrix coefficients
-        A, _, _, _ = np.linalg.lstsq(src, dst, rcond=None)
-        A = np.vstack([A.T, [0, 0, 1]])
-        return A
+        self.corner_coord_1 = corner_coords[0]
+        self.corner_coord_2 = corner_coords[1]
+        self.corner_coord_3 = corner_coords[2]
+        self.corner_coord_4 = corner_coords[3]
     
-    def grid_to_latlon(self, x, y):
-        """
-        Apply affine transform to convert grid coordinates (x, y) to (lat, lon).
-        """
-        vec = np.array([x, y, 1])
-        lat, lon, _ = self.affine_transform @ vec
-        return lat, lon
+    def convert_coords(self, sim_coords:tuple[int,int]):
+        segment_size_12 = [(self.corner_coord_2[0] - self.corner_coord_1[0])/self.sim_sides[0], (self.corner_coord_2[1] - self.corner_coord_1[1])/self.sim_sides[0]]
+        segment_size_34 = [(self.corner_coord_4[0] - self.corner_coord_3[0])/self.sim_sides[0], (self.corner_coord_4[1] - self.corner_coord_3[1])/self.sim_sides[0]]
+        segment_size_31 = [(self.corner_coord_1[0] - self.corner_coord_3[0])/self.sim_sides[0], (self.corner_coord_1[1] - self.corner_coord_3[1])/self.sim_sides[0]]
+        segment_size_42 = [(self.corner_coord_2[0] - self.corner_coord_4[0])/self.sim_sides[0], (self.corner_coord_2[1] - self.corner_coord_4[1])/self.sim_sides[0]]
+
+        slider_point12 = [self.corner_coord_1[0]+sim_coords[0]*segment_size_12,self.corner_coord_1[1]+sim_coords[0]*segment_size_12]
+        slider_point34 = [self.corner_coord_3[0]+sim_coords[0]*segment_size_34,self.corner_coord_3[1]+sim_coords[0]*segment_size_34]
+        slider_point31 = [self.corner_coord_3[0]+sim_coords[1]*segment_size_31,self.corner_coord_3[1]+sim_coords[1]*segment_size_31]
+        slider_point42 = [self.corner_coord_4[0]+sim_coords[1]*segment_size_42,self.corner_coord_4[1]+sim_coords[1]*segment_size_42]
+
+        final_lon = ((slider_point12[0]*slider_point34[1]-slider_point12[1]*slider_point34[0])*(slider_point31[0]-slider_point42[0])-(slider_point12[0]-slider_point34[0])*(slider_point31[0]*slider_point42[1]-slider_point31[0]*slider_point42[0]))/((slider_point12[0]-slider_point34[0])*(slider_point31[1]-slider_point42[1])-(slider_point12[1]-slider_point34[1])*(slider_point31[0]-slider_point42[0]))
+        final_lat = ((slider_point12[0]*slider_point34[1]-slider_point12[1]*slider_point34[0])*(slider_point31[1]-slider_point42[1])-(slider_point12[1]-slider_point34[1])*(slider_point31[0]*slider_point42[1]-slider_point31[0]*slider_point42[0]))/((slider_point12[0]-slider_point34[0])*(slider_point31[1]-slider_point42[1])-(slider_point12[1]-slider_point34[1])*(slider_point31[0]-slider_point42[0]))
+
+        return final_lon, final_lat
     
-    def latlon_to_grid(self, lat, lon):
-        """
-        Apply inverse affine transform to convert (lat, lon) to grid coordinates (x, y).
-        """
-        inv_transform = np.linalg.inv(self.affine_transform)
-        vec = np.array([lat, lon, 1])
-        x, y, _ = inv_transform @ vec
-        return x, y
-
-
-src_pts = [(10, 20), (30, 40), (50, 60), (70, 80)]
-dst_pts = [(35.1, -97.5), (35.2, -97.6), (35.3, -97.7), (35.4, -97.8)]
-
-transformer = GridToLatLonTransformer(src_pts, dst_pts)
-lat, lon = transformer.grid_to_latlon(25, 35)
-print(lat, lon)  # Output: latitude, longitude estimate
