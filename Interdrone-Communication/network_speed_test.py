@@ -1,4 +1,4 @@
-from _asyncio import Task
+from asyncio import Task
 
 
 from message_types import Message, MessageType
@@ -63,9 +63,6 @@ async def main():
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
-    print("Server and Client started")
-
-    # TODO UPDATE NETWORK SPEED TEST TO SEPARATE BASED ON RESPONDENT
 
     continuousSpeedTest = True
     speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
