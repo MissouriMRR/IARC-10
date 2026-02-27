@@ -57,7 +57,7 @@ class Client:
         clientMessageTasks: set[asyncio.Task[None]] = set()
         while True:
             # Check for new message from clientInData
-            if not self.clientInData.empty():
+            while not self.clientInData.empty():
                 # Get new message from clientInData
                 message: Message = await self.clientInData.get()
                 # Create a background task to handle this message (allows for asynchronous messaging)
@@ -68,7 +68,7 @@ class Client:
                 )  # Clean up completed tasks
 
             # Wait 0.05 second before checking for next message
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.001)
 
     # Create messageTasks to send data to all other drones
     async def handle_message(self, message: Message):
@@ -119,7 +119,11 @@ class Client:
                     messageTasks.append(messageTask)
 
         # Run all messageTasks concurrently
-        _ = await asyncio.gather(*messageTasks, return_exceptions=True)
+        # NOTE: If we await here, we block the loop. This is fine if we want to throttle sending to connection speed.
+        # But if we want to send fast, we should not await. However, if we don't await, we might spawn too many tasks.
+        # TODO: Look into what to do here. Could be optimizations
+        if messageTasks:
+            _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
     # Takes data and sends it passed in server
     async def send_data_async(
