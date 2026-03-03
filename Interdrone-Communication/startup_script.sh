@@ -22,11 +22,12 @@ if git -C "$REPO_ROOT" fetch origin "$BRANCH" 2>/dev/null && \
    git -C "$REPO_ROOT" show "origin/$BRANCH:Interdrone-Communication/instruction_set.sh" > "$TMP_FILE" 2>/dev/null && \
    [ -s "$TMP_FILE" ]; then
   mv "$TMP_FILE" "$SCRIPT_DIR/instruction_set.sh"
+  chmod +x "$SCRIPT_DIR/instruction_set.sh"
 else
   rm -f "$TMP_FILE"
 fi
 
-"$SCRIPT_DIR/instruction_set.sh"
+bash "$SCRIPT_DIR/instruction_set.sh"
 
 # Step 4: Verify the Multirotor network exists and switch to it
 if nmcli dev wifi show | grep -q "Multirotor"; then
