@@ -35,3 +35,8 @@ else
     exit 1
 fi
 
+# Step 5: Do pi specific stuff (update later)
+
+# Step 6: Run the python code
+uv run main.py -i $PI_NUMBER
+
