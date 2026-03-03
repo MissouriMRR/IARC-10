@@ -38,7 +38,7 @@ apt-get install -y -qq \
     curl \
     ca-certificates \
     net-tools \
-    batctl \ 
+    batctl
 
 
 # Install uv
@@ -100,9 +100,8 @@ systemctl enable "$SERVICE_NAME"
 echo "$PI_VERSION" > "$PI_VERSION_FILE"
 chmod 644 "$PI_VERSION_FILE"
 
-# Run the batman mesh setup script
-chmod +x "$STARTUP_INSTALL_DIR/$BATMAN_MESH_SETUP_SCRIPT_PATH"
-"$STARTUP_INSTALL_DIR/$BATMAN_MESH_SETUP_SCRIPT_PATH"
-
 # Done
 echo "Image setup complete. Startup script: $STARTUP_INSTALL_DIR/$STARTUP_SCRIPT_PATH (runs at boot via $SERVICE_NAME). Pi version: $PI_VERSION (stored in $PI_VERSION_FILE)."
+echo "Running startup script..."
+# Run the startup script (use same cwd as systemd runner so paths match)
+cd "$STARTUP_INSTALL_DIR" && exec ./$STARTUP_SCRIPT_PATH
