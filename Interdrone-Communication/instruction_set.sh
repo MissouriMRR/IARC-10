@@ -5,7 +5,10 @@
 # Current version of the Pi (semantic versioning)
 CURRENT_VERSION="1.0.0"
 
-# Get the current Pi version
+# Get the current Pi version (create with default if missing)
+if [ ! -f /etc/drone-version ]; then
+    echo "1.0.0" > /etc/drone-version
+fi
 PI_VERSION=$(cat /etc/drone-version)
 
 
@@ -13,10 +16,9 @@ PI_VERSION=$(cat /etc/drone-version)
 
 
 # If the Pi version is the same as the current version, exit
-if [ "$PI_VERSION" -eq "$CURRENT_VERSION" ]; then
+if [ "$PI_VERSION" = "$CURRENT_VERSION" ]; then
     exit 0
 fi
 
-# Update Pi version
-PI_VERSION=$((PI_VERSION + 1))
-echo "$PI_VERSION" > /etc/drone-version
+# Update Pi version (store current as the new installed version)
+echo "$CURRENT_VERSION" > /etc/drone-version
