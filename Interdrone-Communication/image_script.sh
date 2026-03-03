@@ -67,6 +67,7 @@ RUNNER_SCRIPT="/usr/local/bin/drone-startup-runner.sh"
 cat > "$RUNNER_SCRIPT" << RUNNER
 #!/bin/bash
 set -euo pipefail
+export PATH="/root/.local/bin:\${PATH}"
 cd "$STARTUP_INSTALL_DIR"
 git pull -q || true
 exec ./$STARTUP_SCRIPT_PATH
