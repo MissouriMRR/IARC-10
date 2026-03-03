@@ -13,6 +13,11 @@ STARTUP_INSTALL_DIR="${STARTUP_INSTALL_DIR:-/opt/drone-startup}"
 PI_VERSION="${PI_VERSION:-1.0.0}"
 PI_VERSION_FILE="${PI_VERSION_FILE:-/etc/drone-version}"
 
+# If there is already a version file, this script already ran, so exit
+if [ -f "$PI_VERSION_FILE" ]; then
+    exit 0
+fi
+
 # Package install
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -32,7 +37,6 @@ apt-get install -y -qq \
     ca-certificates \
     net-tools \
     batctl \ 
-    
 
 
 # Install uv
