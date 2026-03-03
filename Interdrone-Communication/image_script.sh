@@ -8,6 +8,8 @@ STARTUP_BRANCH="${STARTUP_BRANCH:-IARC-LVP}"
 STARTUP_SCRIPT_PATH="${STARTUP_SCRIPT_PATH:-Interdrone-Communication/startup_script.sh}"
 # Where to clone the startup repo on the Pi.
 STARTUP_INSTALL_DIR="${STARTUP_INSTALL_DIR:-/opt/drone-startup}"
+# Path inside the repo to the batman mesh setup script.
+BATMAN_MESH_SETUP_SCRIPT_PATH="${BATMAN_MESH_SETUP_SCRIPT_PATH:-Interdrone-Communication/batman-mesh-setup.sh}"
 
 # Pi version: stored in /etc/drone-version so other scripts can read and update it
 PI_VERSION="${PI_VERSION:-1.0.0}"
@@ -97,6 +99,10 @@ systemctl enable "$SERVICE_NAME"
 # Persist Pi version for other scripts to read/update
 echo "$PI_VERSION" > "$PI_VERSION_FILE"
 chmod 644 "$PI_VERSION_FILE"
+
+# Run the batman mesh setup script
+chmod +x "$STARTUP_INSTALL_DIR/$BATMAN_MESH_SETUP_SCRIPT_PATH"
+"$STARTUP_INSTALL_DIR/$BATMAN_MESH_SETUP_SCRIPT_PATH"
 
 # Done
 echo "Image setup complete. Startup script: $STARTUP_INSTALL_DIR/$STARTUP_SCRIPT_PATH (runs at boot via $SERVICE_NAME). Pi version: $PI_VERSION (stored in $PI_VERSION_FILE)."
