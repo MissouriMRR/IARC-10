@@ -51,11 +51,12 @@ async def run(self: InitialCalcScanPath) -> State:
         newGraph=Graph(self.drone.field.nodeGraph)
         nodeList=newGraph.shortest_path(start_node,end_nodes)
 
-        gotoCoords, seg_path = gotoDiv.generate_goto_points(nodeList)
-        diviedGoto = []
-        for y in range(len(gotoCoords)/4):
-            diviedGoto.append(gotoCoords[id*6+y])
-        self.drone.updateTasks(diviedGoto)
+        goto_coords, seg_path = gotoDiv.generate_goto_points(nodeList)
+
+        # This relies on the ID's for the drones being 0-3 and not 1-4 CHANGE IF THAT ISN'T THE CASE
+        divied_goto = goto_coords[id*len(divied_goto)/4:(id+1)*len(divied_goto)/4]
+
+        self.drone.updateTasks(divied_goto)
         # Add InitialCalcScanPath code here
 
         return Scan(self.drone, self.flight_settings)

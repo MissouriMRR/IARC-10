@@ -9,9 +9,17 @@ This will generate 10 (or however many you want) mines that are placed.
 The output will be at the bottom.
 """
 # seed(2020) # make random or not
-numMines = 20
+numMines = 40
 radius = 32
-pathFindingType = "none"  # dijkstra OR A* OR both OR none
+
+# NOTE: for some reason, running either one takes really long.
+# I have not altered the path_calculation file personally. - Jack
+pathFindingType = "none"  # dijkstra OR A* OR both OR none 
+
+stepDebug = False # True if you want to step through mines being added, 
+                  # closing the generated window moves onto to the next step.
+                  # NOTE:In order to fully end the program you need to run ctrl+C in the terminal
+
 xMin = -numMines*radius
 xMax = numMines*radius
 yMin = -numMines*radius
@@ -23,9 +31,11 @@ genYMin =-radius*(numMines//4)
 genYMax = radius*(numMines//4)
 position = [0,0]
 mineGenTolerance = 0*radius
+step = 0
 
 # Mine generation, do not add floating nodes before this point
 for num in range(numMines):
+    step += 1
     while True: # To make sure generated mines arent clipping off the edges of the field
         position[0], position[1] = randint(genXMin,genXMax+1),randint(genYMin,genYMax+1)
         invalidPosition = False
@@ -41,29 +51,31 @@ for num in range(numMines):
     field.addMine(position[0],position[1],radius)
     
     print("added a mine")
-print("done adding mines\n")
-start = field.placeStartNode(0,yMin + (radius*1.5))
-endPoints = field.placeEndNodes(yMax - (radius*1.5),10)
-for mine in field.mines:
-    mine.connectMineNodes()
-    print("Connecting mine nodes")
+    print("done adding mines\n")
+    start = field.placeStartNode(0,yMin + (radius*1.5))
+    endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
+    
+    if stepDebug:
+        print("\nStep " + str(step))
+        field.plotField()
+    else:
+        continue
+if not stepDebug:
+    field.plotField()
+
 if pathFindingType == "dijkstra" or pathFindingType == "both":
-    pathSolve = Graph(field.nodeGraph)
-    temp = time.time()
-    path = pathSolve.shortest_path(start,endPoints)
-    dijkstraTime = time.time()-temp
-    print("optimal path:",path)
+        print("Calculating dijkstra's")
+        pathSolve = Graph(field.nodeGraph)
+        temp = time.time()
+        path = pathSolve.shortest_path(start,endPoints)
+        dijkstraTime = time.time()-temp
+        print("optimal path:",path)
 
-    dijkstraPathLength = 0
-    for i in range(len(path)-1):
-       dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
-
-
-field.plotField()
-field.increaseRadius(100)
-field.plotField()
-
+        dijkstraPathLength = 0
+        for i in range(len(path)-1):
+            dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
 if pathFindingType == "A*" or pathFindingType == "both":
+    print("Calculating A*")
     def yMax(node):
         return (460-node.y)
 
@@ -81,3 +93,6 @@ if pathFindingType == "A*" or pathFindingType == "both":
     print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
     print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
     print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
+
+field.increaseRadius(100)
+field.plotField()
