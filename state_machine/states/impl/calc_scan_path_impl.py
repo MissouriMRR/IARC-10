@@ -59,7 +59,7 @@ async def run(self: CalcScanPath) -> State:
             diviedGoto.append(gotoCoords[id*6+y])
         self.drone.updateTasks(diviedGoto)
         # Add CalcScanPath code here
-
+        
         return AppShare(self.drone, self.flight_settings)
     except asyncio.CancelledError as ex:
         logging.error("CalcScanPath state canceled")
