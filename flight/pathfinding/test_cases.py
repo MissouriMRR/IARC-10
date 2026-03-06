@@ -8,27 +8,41 @@ Use this file for getting the node graph.
 This will generate 10 (or however many you want) mines that are placed. 
 The output will be at the bottom.
 """
-# seed(2020) # make random or not
-numMines = 40
+seed(2020) # make random or not
+numMines = 3
 radius = 32
 
 # NOTE: for some reason, running either one takes really long.
 # I have not altered the path_calculation file personally. - Jack
-pathFindingType = "none"  # dijkstra OR A* OR both OR none 
+pathFindingType = ""  # dijkstra OR A* OR both OR none 
 
 stepDebug = False # True if you want to step through mines being added, 
                   # closing the generated window moves onto to the next step.
                   # NOTE:In order to fully end the program you need to run ctrl+C in the terminal
+                  # or fully iterate through numMines times
+labeled = True
+if numMines >= 20:
+    xMin = -numMines*radius
+    xMax = numMines*radius
+    yMin = -numMines*radius
+    yMax = numMines*radius
 
-xMin = -numMines*radius
-xMax = numMines*radius
-yMin = -numMines*radius
-yMax = numMines*radius
+    genXMin = -radius*(numMines//4)
+    genXMax = radius*(numMines//4)
+    genYMin =-radius*(numMines//4)
+    genYMax = radius*(numMines//4)
+else:
+    xMin = -numMines*radius*4
+    xMax = numMines*radius*4
+    yMin = -numMines*radius*4
+    yMax = numMines*radius*4
+
+    genXMin = -radius*(numMines//2)
+    genXMax = radius*(numMines//2)
+    genYMin =-radius*(numMines//2)
+    genYMax = radius*(numMines//2)
+
 field = Field(xMin,xMax,yMin,yMax)
-genXMin = -radius*(numMines//4)
-genXMax = radius*(numMines//4)
-genYMin =-radius*(numMines//4)
-genYMax = radius*(numMines//4)
 position = [0,0]
 mineGenTolerance = 0*radius
 step = 0
@@ -56,13 +70,12 @@ for num in range(numMines):
     endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
     
     if stepDebug:
-        print("\nStep " + str(step))
-        field.plotField()
+        field.plotField(labeled=labeled,xlabel="[ctr+c] in the terminal to force end the program.\n(If it doesn't close initially, focus on the generated window)",title="Mines and Potential Paths:\n" + "Number of Mines: " + str(step) + "/" + str(numMines))
     else:
         continue
 if not stepDebug:
-    field.plotField()
-
+    field.plotField(labeled=labeled)
+print("Done displaying field.")
 if pathFindingType == "dijkstra" or pathFindingType == "both":
         print("Calculating dijkstra's")
         pathSolve = Graph(field.nodeGraph)
@@ -83,7 +96,7 @@ if pathFindingType == "A*" or pathFindingType == "both":
     temp = time.time()
     aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
     aStarTime = time.time()-temp
-    print("A* path:",path)
+    print("A* path:",aStarPath)
 
 
     aStarPathLength = 0
@@ -94,5 +107,5 @@ if pathFindingType == "A*" or pathFindingType == "both":
     print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
     print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
 
-field.increaseRadius(100)
-field.plotField()
+# field.increaseRadius(100)
+# field.plotField()

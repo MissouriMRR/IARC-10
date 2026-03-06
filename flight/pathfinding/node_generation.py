@@ -95,21 +95,12 @@ class Connection:
         self.node2=node2
         
         if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
-            
             self.connectionType=seg.LINE
         else:
             self.connectionType=seg.ARC
-        
-        if self.connectionType == seg.ARC:
-            # Major or Minor Arc, used to determine if minor arc 
-            # intersects another mine, then use major arc, 
-            # if both arcs intersects another mine, delete/ignore connection
-            arcType = "minor" # major/minor/invalid
-
 
         if node1.parentMine and node2.parentMine:
             if(node1.parentMine != node2.parentMine):
-                
                 self.connectionType=seg.LINE
             else:
                 self.connectionType=seg.ARC
@@ -186,59 +177,62 @@ class Connection:
     def validPath(self):
         if(self.node1==self.node2):
             return False
-        if self.connectionType==seg.LINE:
-            x1 = float(self.node1.x)
-            y1 = float(self.node1.y)
-            x2 = float(self.node2.x)
-            y2 = float(self.node2.y)
+        x1 = float(self.node1.x)
+        y1 = float(self.node1.y)
+        x2 = float(self.node2.x)
+        y2 = float(self.node2.y)
 
-            for mine in Connection.field.mines:
-                x3 = mine.x
-                y3 = mine.y
+        for mine in Connection.field.mines:
+            x3 = mine.x
+            y3 = mine.y
 
-                # Fraction of segment between nodes that the mine lands perpendicular to segment
-                uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
-                uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
-                if uDenominator == 0:
-                    u = 0
-                else:
-                    u = np.clip(uNumerator/uDenominator,0,1) # Restrict to the constraints of a segment
+            # Fraction of segment between nodes that the mine lands perpendicular to segment
+            uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
+            uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
+            if uDenominator == 0:
+                u = 0
+            else:
+                u = np.clip(uNumerator/uDenominator,0,1) # Restrict to the constraints of a segment
 
-                # Adjust accordingly, determines how close a mine can be to a node before the node terminates
-                uMin = 0.03
-                uMax = 0.98
+            # Adjust accordingly, determines how close a mine can be to a node before the node terminates
+            uMin = 0.03
+            uMax = 0.98
+            
+            if uMin <= u <= uMax:
+                # Point on segment that is tangent and perpendicular to mine
+                tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
                 
-                if uMin <= u <= uMax:
-                    # Point on segment that is tangent and perpendicular to mine
-                    tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
-                    
-                    distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-                    if distanceFromMine < mine.radius:
-                        return False
+                distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
+                if distanceFromMine < mine.radius:
+                    return False
 
+            
+            # Check if node is in mine
+            n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+            n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+            if self.node1.parentMine != mine:
+                if n1distance <= mine.radius:
+                    return False
+            if self.node2.parentMine != mine:
+                if n2distance <= mine.radius:
+                    return False
+            
+            # Other than being None, there should only be 2 values
+            midPoints = self.generateMidpoints(self.node1,self.node2)
+            if self.node1.parentMine != None and self.node2.parentMine != None:
+                # Other than being None, there should only be 2 values
+                intersectionPoints = self.generateIntersectionPoints(self.node1.parentMine,self.node2.parentMine)
                 
-                # Check if node is in mine
-                n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
-                n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
-
-                if self.node1.parentMine != mine:
-                    if n1distance <= mine.radius:
-                        return False
-                if self.node2.parentMine != mine:
-                    if n2distance <= mine.radius:
-                        return False
-
-        #This is kinda complicated, but we have to check the hugging edge. 
-        if self.connectionType==seg.ARC:
-            # print("We haven't implemented this yet")
-            # print("Testing hugging edges")
-            # validEdge = self.validHuggingEdge(self.node1.parentMine,self.node2.parentMine)
-            # print("Hugging edge test: ",validEdge)
-            pass
-            # angleDiff = abs(self.node1.angle - self.node2.angle) # In Radians
-            # print(angleDiff)
-            # return validEdge
-            #raise NotImplemented()
+            if midPoints != None and intersectionPoints != None:
+                for point in intersectionPoints:
+                    Field.debugPoints.append(point)
+                for midPoint in midPoints:
+                    Field.debugPoints.append(midPoint)
+                # Checking for hugging edges
+                if self.connectionType==seg.ARC:
+                    validEdge = self.validHuggingEdge(midPoints,intersectionPoints)
+    
         return True
 
     #checks if a path collides with a specific mine
@@ -282,21 +276,30 @@ class Connection:
         
         return False
     
-    # WIP
-    def validHuggingEdge(self,mine1:"Mine",mine2:"Mine") -> bool:
+    def validHuggingEdge(self,midPoints:list[float],intersectionPoints:list[float]):
+        # Because it is hard to differentiate between major and minor arcs,
+        # Edges will be refered as left/1, right/2, up/-1, or down/-2 side of the mine;
+        # left = 1 right = 2 up = -1 down = -2
+        # NOTE: For now, determining the type of edges will not be used
         node1 = self.node1
         node2 = self.node2
-        distance : float = np.sqrt((mine1.x-mine2.x)**2 + (mine1.y-mine2.y)**2)
+        
 
+    """Generating the points where mines intersect"""
+    @staticmethod # Used for logic elsewhere in this class, but does not need stuff from the class
+    def generateIntersectionPoints(mine1:"Mine",mine2:"Mine") -> list[float]:
+        distance : float = np.sqrt((mine1.x-mine2.x)**2 + (mine1.y-mine2.y)**2)
         # Fraction of the area of each mine that is not overlapping
         intersectionPortion: float = ((mine1.radius - mine2.radius + distance))/(2*mine1.radius)
         
         if intersectionPortion >= 1:
             return None
-        if (mine1.x == mine2.x and mine1.y == mine2.y):
-            offsetAngle = 0
         # Plus and minus this angle to get the angle at which the circles overlap
         intersectionAngle = np.arccos(intersectionPortion)
+        if (mine1.y == mine2.y):
+            offsetAngle = 0
+        elif (mine1.x == mine2.x):
+            offsetAngle = np.pi/2
         # Calculate offset angle, same formula from node calculation
         if mine1.y > mine2.y:
             offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
@@ -308,38 +311,21 @@ class Connection:
             elif mine1.x > mine2.x:
                 offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
         
-        point1x = mine1.radius * np.cos(intersectionAngle + offsetAngle) + mine1.x
-        point1y = mine1.radius * np.sin(intersectionAngle + offsetAngle) + mine1.y
+        intersectP1 = [mine1.radius * np.cos(intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(intersectionAngle + offsetAngle) + mine1.y]
+        intersectP2 = [mine1.radius * np.cos(-intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(-intersectionAngle + offsetAngle) + mine1.y]
+        return (intersectP1,intersectP2)
 
-        point2x = mine1.radius * np.cos(-intersectionAngle + offsetAngle) + mine1.x
-        point2y = mine1.radius * np.sin(-intersectionAngle + offsetAngle) + mine1.y
-
-
-        upperYLim = max(point1y,point2y)
-        lowerYLim = min(point1y,point2y)
-        upperXLim = max(point1x,point2x)
-        lowerXLim = min(point1x,point1x)
-
-        if ((lowerXLim <= node1.x <= upperXLim) and (lowerYLim <= node1.y <= upperYLim) or
-            (lowerXLim <= node2.x <= upperXLim) and (lowerYLim <= node2.y <= upperYLim)):
-            return False
-        else:
-            return True
-
-    def determineArcs(self):
-        node1 = self.node1
-        node2 = self.node2
-        if node1.parentMine == node2.parentMine:
-            parentMine = node1.parentMine
+    """generate midpoints of the minor and major arcs between parentMine's nodes"""
+    @staticmethod # Used for logic elsewhere in this class, but does not need stuff from the class
+    def generateMidpoints(node1:"MineNode", node2:"MineNode"):
+        if node1.parentMine != None and node2.parentMine != None:
+            mine = node1.parentMine
+            angle = ((node1.angle + node2.angle)/2)
+            midpoint1 = [mine.radius * np.cos(angle) + mine.x, mine.radius * np.sin(angle) + mine.y]
+            midpoint2 = [mine.radius * np.cos(angle+np.pi) + mine.x, mine.radius * np.sin(angle+np.pi) + mine.y]
+            return (midpoint1,midpoint2)
         else:
             return None
-        
-        # Angle in radians
-        node1DefAngle = node1.angle
-        node2DefAngle = node2.angle 
-
-        
-
 
     def __str__(self):
         return f"{self.node1} <-> {self.node2}"
@@ -349,6 +335,7 @@ class Connection:
 # Field generates nodes off of mines, generates mines too
 class Field:
     mines = []
+    debugPoints = [] # purely for debuging and testing, field will plot these points
     def __init__(self,xMin,xMax,yMin,yMax):
         self.nodeGraph={}
         self.xMin = xMin
@@ -369,9 +356,10 @@ class Field:
             mine.addNode(mineNodeSecondary)
             mineNodePrimary.connectNode(fNode)
             mineNodeSecondary.connectNode(fNode)
-            
-        if len(self.nodeGraph[fNode])==0:
-            del self.nodeGraph[fNode]
+        
+        if fNode in self.nodeGraph:
+            if len(self.nodeGraph[fNode])==0:
+                del self.nodeGraph[fNode]
         return fNode
     
     #Due to the current node stucture, right now this only modifies the nodeGraph
@@ -430,7 +418,8 @@ class Field:
 
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
-            
+            mine.connectMineNodes()
+            target.connectMineNodes()
         
         shallowCopy=self.nodeGraph.copy()
         # Check if any of the other node connections pass through the newly created mine.
@@ -442,7 +431,7 @@ class Field:
                     connection.deleteConnection()
 
     # Purely for debugging  
-    def plotField(self,labeled:bool=False):
+    def plotField(self,labeled:bool=False,title:str="Mines and Potential Paths",xlabel:str="") -> None:
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
@@ -458,18 +447,20 @@ class Field:
             ax.add_patch(circle)
         for mine in Mine.mines:
             if labeled:
-                plt.text(mine.x,mine.y,str(mine),horizontalalignment='center',verticalalignment='center',bbox=dict(facecolor=(0.5,0.5,0.5),alpha=0.3,linewidth=0))
-
-        # Plot the nodes
+                vertalignment = ['top','bottom','baseline','center_baseline']
+                horzalignment = ['left','right','center']
+                plt.text(mine.x,mine.y,str(mine),horizontalalignment=random.choice(horzalignment),verticalalignment=random.choice(vertalignment),bbox=dict(facecolor=(0.5,0.5,0.5),alpha=0.3,linewidth=0))
+            plt.plot(mine.x,mine.y,"x",color=(1,1,1))
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         print("Start plotting, will not affect node generation")
         for node in self.nodeGraph.keys():
             if labeled:
-                plt.text(node.x, node.y, str(node),horizontalalignment='center',verticalalignment='center',c=(0.0,0.0,0.0))
+                vertalignment = ['top','bottom','baseline','center_baseline']
+                horzalignment = ['left','right','center']
+                plt.text(node.x, node.y, str(node),horizontalalignment=random.choice(horzalignment),verticalalignment=random.choice(vertalignment),c=(0.0,0.0,0.0))
 
             if not node.plotted:
                 for connectedNode in self.nodeGraph[node].keys():
-                    
                     # If it is an arc connection, same parent mines, then draw a curve
                     if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
                         pass
@@ -486,8 +477,15 @@ class Field:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
+        if len(Field.debugPoints) > 0: # Points that are plotted for debugging only
+            print("Plotting debug points")
+            for point in Field.debugPoints:
+                plt.plot(point[0],point[1],"o",color=(0,0,0))
+        
         print("Done plotting")
         print("Displaying field...")
+        plt.title(title)
+        plt.xlabel(xlabel)
         plt.show()
 
     # Run this to remove nodes that have no associated connection, ie, {node: None}
@@ -547,7 +545,8 @@ class Mine:
         if len(color) > 0:
             self.color = color
         else:
-            self.color = np.random.random(),np.random.random(),np.random.random()
+            
+            self.color = random.randint(20,80)/100,random.randint(20,80)/100,random.randint(20,80)/100
         self.x, self.y, self.radius = np.round(centerX,2) , np.round(centerY,2), np.round(radius,2)
         # Node storage
         self.nodes = [] 
@@ -600,7 +599,7 @@ class Node:
     nodeNum = 0
     connectionList = []
     
-    def __init__(self, xPosition: float, yPosition:float,floating:bool,name:str=""):
+    def __init__(self, xPosition: float, yPosition:float,floating:bool,angle:float=0,name:str=""):
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "NID: "+str(Node.nodeNum)
@@ -614,6 +613,7 @@ class Node:
         #self.nodeGraph.update({self:None})
         self.parentMine=None
         self.floating=floating
+        self.angle = angle # will stay 0 if node doesnt have an angle, AKA it is floating
 
 
    
@@ -767,7 +767,7 @@ class MineNode(Node):
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
 
         
-        super().__init__(self.x,self.y,False,self.name)
+        super().__init__(self.x,self.y,False,angle=self.angle,name=self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
             self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
@@ -890,11 +890,10 @@ X=Done
  X Arc lengths
  X Terminate nodes if the nodes themselves are created within another mine
  X Establish a list of paths between connected Nodes
- - Terminate internal bitangents unless external bitangents are intersecting ???
+ X Terminate internal bitangents unless external bitangents are intersecting
  X Combine all node lists into one
- - Generate Hugging Nodes
  X Generate Floating Nodes
- - Termination Way that can help optimize generation?:
-    + check if a pair of nodes can exist before actually creating them.
- - Generate tangent mineNodes connecting to floating nodes
+ X Generate tangent mineNodes connecting to floating nodes
+ -  Expanding mines
+ - Hugging 
 """
