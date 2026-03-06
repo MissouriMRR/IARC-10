@@ -98,20 +98,19 @@ class path:
         return finalGotoList, segmentedList 
     
     
-    def numScorePoints(list,flightMin: int): #list is finalGotoList
-        W = mine.getRadius() # mine radius: narrowest width of path in FEET 
-        L = pathObj.total_path_length #distance covered in overall path
-        B = 0 # num of missed mines in optimal path
-        N = 4 #ounces over 1 pound weight limit
-        score = ((150000 * W) / ((1 + B) * L * (1 + 7 * flightMin + (100 * N))))
+    def numScorePoints(self, flightMin: int, minesMissed: int, L: float, W: float, N: float ): 
+        if (flightMin > 7): 
+            score = 0
+        score = ((150000 * W) / ((1 + minesMissed) * L * (1 + 7 * flightMin + (100 * N))))
 
 
 #use node connections
 field = Field(0, 200, 0, 200)
-field.addMine(80, 30, 20)
+
+field.addMine(80, 30, 20) 
 field.addMine(70, 90, 20) 
 field.addMine(140, 30, 20) 
-field.addMine(170, 100, 40)
+field.addMine(170, 100, 20)
 
 for mine in field.mines:
     print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
@@ -130,10 +129,16 @@ for mine in field.mines:
 """
 
 pathObj = path()
-
-#step for linear, arc_step for arc to determine number of goto pts.
 finalPath, segmentedList = pathObj.generate_goto_points(nodeList)  
-    
+
+
+W = Mine.getRadius()
+N = 0 #ounces over 1 pound weight limit
+flightMin = 4
+L = pathObj.total_path_length
+score = pathObj.numScorePoints(flightMin, 0, L, W, N)
+print("This is the score: " + score)
+
 
 print("This is all the points:")
 print(finalPath)
@@ -142,30 +147,22 @@ print("goto x and goto y")
 # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
 goto_x = [coord[0] for coord in finalPath]
 goto_y = [coord[1] for coord in finalPath]
-#print(goto_x)
-#print('\n'*5)
-#print(goto_y)
+
 print(segmentedList)
 
 fig, ax = plt.subplots()
 ax.set_aspect('equal')
 
-# Plot the goto points in red
 plt.plot(goto_x, goto_y, marker='o', color='red', linestyle='-', markersize=4, label='Goto Points')
 
-# Plot the nodes in blue
 for node in nodeList:
     plt.plot(node.x, node.y, marker='o', color='blue', markersize= 4, label='Node')
 
-# Add labels and grid
 plt.xlabel("X")
 plt.ylabel("Y")
 plt.title("Nodes and Goto Points")
 plt.grid(True)
 plt.show()
-
-#convert everything to meter. talk to them about metrics
-#make a function that does formula calculation
 
 
     
