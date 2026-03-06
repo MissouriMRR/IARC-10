@@ -14,6 +14,9 @@ droneAddress = ''
 baudRate = 10
 
 def take_image(camera: Picamera2, drone: dronekit.Vehicle):
+    # create a directory to put the pictures and the metadata in
+    os.makedirs("./captures",exist_ok=True)
+    os.makedirs("./metadata",exist_ok=True)
     # create the filepath where we'll save the image and metadata
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"image_{timestamp}.jpg"

@@ -55,6 +55,7 @@ def main():
 def detect(camera: Picamera2, drone: dronekit.Vehicle,imx500: IMX500):
     # make a directory to throw the detection images in
     os.makedirs("./captures/detections",exist_ok=True)
+    os.makedirs("./metadata",exist_ok=True)
 
     # create filepaths
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -99,6 +100,9 @@ def detect(camera: Picamera2, drone: dronekit.Vehicle,imx500: IMX500):
 
 
 def take_image(camera: Picamera2, drone: dronekit.Vehicle):
+    # create a directory to put the pictures and the metadata in
+    os.makedirs("./captures",exist_ok=True)
+    os.makedirs("./metadata",exist_ok=True)
     # create the filepath where we'll save the image and metadata
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"image_{timestamp}.jpg"
