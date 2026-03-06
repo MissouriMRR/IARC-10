@@ -63,10 +63,7 @@ def intersect_ground(ray_world, altitude):
     t = altitude / -ray_world[2]
     return ray_world * t
 
-
-# ============================================================
 # Main conversion
-# ============================================================
 
 def pixel_to_geocoord_gimbal(
     px, py,
@@ -84,8 +81,8 @@ def pixel_to_geocoord_gimbal(
     x = (px - image_width / 2) / (image_width / 2)
     y = -(py - image_height / 2) / (image_height / 2)
 
-    h_fov = 1.41372
-    v_fov = 0.797528202
+    h_fov = radians(h_fov)
+    v_fov = radians(v_fov)
 
     ray_camera = np.array([
         x * tan(h_fov / 2),
@@ -112,26 +109,25 @@ def pixel_to_geocoord_gimbal(
 
     ray_world = R_camera_world @ ray_camera
 
-    # ---- Ray-ground intersection ----
+    #Ray and ground intersection
     ground_point = intersect_ground(ray_world, drone.altitude)
     if ground_point is None:
         return None
 
     dx, dy = ground_point[1], ground_point[0]
     dlat, dlon = meters_to_latlon(dx, dy, drone.lat)
-
     return drone.lat + dlat, drone.lon + dlon  #Returns the latitude and longitude of pixel. Drone position plus the change in lat and lon
 
 # Example usage
 
 if __name__ == "__main__":
     drone_pose = DronePose(
-        lat=37.9487475,
-        lon=-91.784163,
+        lat=37.9485877,
+        lon=91.7840758,
         altitude=26.882,
-        yaw=-8.839487389857933,      # drone turning about z-axis
-        pitch=-94.27803780815711,     # drone pitching forward
-        roll=-141.86456851876127       # drone banking
+        yaw=-4.4222704380350475,      # drone turning about z-axis
+        pitch=-99.38076702084126,     # drone pitching forward
+        roll=140.02309214544962       # drone banking
     )
 
     # Gimbal stabilizes roll & pitch, points slightly forward
@@ -142,8 +138,8 @@ if __name__ == "__main__":
     )
 
     pixel_to_latlon = pixel_to_geocoord_gimbal(     #px,py,image_width, and image_height may be subject to change once the hardware is studied
-        px=640,
-        py=360,
+        px=900,
+        py=30,
         image_width=1280,
         image_height=720,
         h_fov=1.41372,
