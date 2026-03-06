@@ -533,8 +533,9 @@ class Mine:
     mines = []
     radius = None
     def __init__(self,centerX,centerY,radius,color:str='',name:str=''):
-        if radius == None:
-            Mine.radius = radius
+        
+        Mine.radius = radius
+            
         Mine.numMines += 1
         self.number=Mine.numMines
         if len(name) > 0:
@@ -557,7 +558,7 @@ class Mine:
     def getPos(self):
         return self.x,self.y
     def getRadius(self):
-        return self.radius
+        return Mine.radius
     def getNodes(self):
         return self.nodes    
 

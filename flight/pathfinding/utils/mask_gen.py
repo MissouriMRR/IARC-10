@@ -1,6 +1,7 @@
 import flight.pathfinding.node_generation as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
+import math
 
 class PolygonMask:
     # Function for generating polygon masks based on node to node connections on differing mines
@@ -57,4 +58,25 @@ class PolygonMask:
 
     # Here is where a future Arc/Pie slice shaped mask function will go
     def __init__(self, node1:nodeg.Node, node2:nodeg.Node, pie:bool):
-        pass
+        if(node1.parentMine!=node2.parentMine):
+            raise ValueError("must have same parrent")
+        x1 = node1.x-node1.parentMine.x
+        y1 = node1.y-node1.parentMine.y
+        x2 = node2.x-node2.parentMine.x
+        y2 = node2.y-node2.parentMine.y
+        
+        radius=int(math.hypot(x1,y1))
+       
+       
+        angle1 = math.degrees(math.atan2(y1,x1))
+        angle2 = math.degrees(math.atan2(y2,x2))
+
+        if abs(angle1-angle2)>180:
+            angle3=angle1
+            angle1=angle2
+            angle2=angle3
+
+        img =  Image.new("RGBA", (2*radius, 2*radius), (0,0,0,0))
+        draw = ImageDraw.Draw(img)
+        draw.pieslice((0, 0 , 2*radius, 2*radius), angle1, angle2,(255, 255, 255, 255))
+        self.body = np.array(img)

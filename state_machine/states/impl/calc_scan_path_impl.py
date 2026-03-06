@@ -62,7 +62,7 @@ async def run(self: CalcScanPath) -> State:
         pruned_goto = seen_by_drone.remove_extra_coords(self.drone.seen_tracker, divied_goto, divied_seg, self.drone.get_cam_size())
         self.drone.updateTasks(pruned_goto)
         # Add CalcScanPath code here
-
+        
         return AppShare(self.drone, self.flight_settings)
     except asyncio.CancelledError as ex:
         logging.error("CalcScanPath state canceled")
