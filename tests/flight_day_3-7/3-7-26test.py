@@ -10,8 +10,8 @@ import json
 #-----------------------------------------------------------------------------------------------------------
 pathToPics = './captures'
 pathToMetadata = './metadata'
-droneAddress = ''
-baudRate = 10
+droneAddress = "/dev/ttyUSB0"
+baudRate = 921600
 
 def take_image(camera: Picamera2, drone: dronekit.Vehicle):
     # create a directory to put the pictures and the metadata in
@@ -24,11 +24,11 @@ def take_image(camera: Picamera2, drone: dronekit.Vehicle):
     filename = f"metadata_{timestamp}.json"
     metadataPath = os.path.join(pathToMetadata, filename)
     # get drone info
-    location = drone.location.global_relative_frame
+    location = [drone.location.global_frame.lat,drone.location.global_frame.lon, drone.location.global_frame.alt]
     pitch = drone.attitude.pitch
     yaw = drone.attitude.yaw
     roll = drone.attitude.roll
-    output_dict = {"pitch":pitch, "yaw":yaw, "roll":roll, "location":location}
+    output_dict = {"pitch":pitch, "yaw":yaw, "roll":roll, "location(lat,lon,alt)":location}
     # dump the drone info and save it to a json
     with open(metadataPath, "w") as f:
         json.dump(output_dict, f)

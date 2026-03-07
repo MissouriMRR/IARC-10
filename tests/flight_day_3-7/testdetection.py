@@ -14,8 +14,8 @@ pathToPics = './captures'
 pathToDetections = './captures/detections'
 pathToMetadata = './metadata'
 modelPath = '../../vision/models/2-16-2026/v11s_2-16.rpk'
-droneAddress = ''
-baudRate = 10
+droneAddress = '/dev/ttyUSB0'
+baudRate = 921600
 confTresh = 0.65
 
 def main():
