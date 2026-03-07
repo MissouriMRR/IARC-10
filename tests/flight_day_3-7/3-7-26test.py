@@ -24,9 +24,11 @@ def take_image(camera: Picamera2, drone: dronekit.Vehicle):
     filename = f"metadata_{timestamp}.json"
     metadataPath = os.path.join(pathToMetadata, filename)
     # get drone info
-    location: dronekit.LocationGlobalRelative = drone.location.global_relative_frame
-    attitude: dronekit.Attitude = drone.attitude
-    output_dict = {"attitude":attitude,"location":location}
+    location = drone.location.global_relative_frame
+    pitch = drone.attitude.pitch
+    yaw = drone.attitude.yaw
+    roll = drone.attitude.roll
+    output_dict = {"pitch":pitch, "yaw":yaw, "roll":roll, "location":location}
     # dump the drone info and save it to a json
     with open(metadataPath, "w") as f:
         json.dump(output_dict, f)
