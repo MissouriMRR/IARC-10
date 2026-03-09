@@ -1,3 +1,7 @@
+#!/bin/bash
+
+echo "Starting image script..."
+
 set -euo pipefail
 
 # GitHub repo that contains the startup script (run at every boot).
