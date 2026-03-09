@@ -17,6 +17,7 @@ PI_VERSION_FILE="${PI_VERSION_FILE:-/etc/drone-version}"
 
 # If there is already a version file, this script already ran, so exit
 if [ -f "$PI_VERSION_FILE" ]; then
+    echo "Pi version file already exists, exiting"
     exit 0
 fi
 
@@ -40,6 +41,7 @@ apt-get install -y -qq \
     net-tools \
     batctl
 
+echo "Packages installed"
 
 # Install uv
 if ! command -v uv &>/dev/null; then
@@ -50,6 +52,8 @@ if ! command -v uv &>/dev/null; then
     chmod 644 /etc/profile.d/uv.sh
 fi
 
+echo "uv installed"
+
 # Fetch startup script from GitHub
 # Clone (or update) the startup repo so the script is available at boot.
 mkdir -p "$(dirname "$STARTUP_INSTALL_DIR")"
@@ -59,6 +63,8 @@ else
     git clone -q -b "$STARTUP_BRANCH" --depth 1 "$STARTUP_REPO" "$STARTUP_INSTALL_DIR"
 fi
 chmod +x "$STARTUP_INSTALL_DIR/$STARTUP_SCRIPT_PATH" 2>/dev/null || true
+
+echo "Startup script fetched"
 
 # Boot process: systemd service
 # Runner executed by systemd: cd to repo, pull latest, run startup script.
@@ -73,6 +79,8 @@ git pull -q || true
 exec ./$STARTUP_SCRIPT_PATH
 RUNNER
 chmod +x "$RUNNER_SCRIPT"
+
+echo "Runner script created"
 
 # Install systemd unit so the startup script runs every boot (after network)
 SERVICE_NAME="drone-startup.service"
@@ -97,9 +105,13 @@ UNIT
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 
+echo "Service enabled"
+
 # Persist Pi version for other scripts to read/update
 echo "$PI_VERSION" > "$PI_VERSION_FILE"
 chmod 644 "$PI_VERSION_FILE"
+
+echo "Pi version stored"
 
 # Done
 echo "Image setup complete. Startup script: $STARTUP_INSTALL_DIR/$STARTUP_SCRIPT_PATH (runs at boot via $SERVICE_NAME). Pi version: $PI_VERSION (stored in $PI_VERSION_FILE)."
