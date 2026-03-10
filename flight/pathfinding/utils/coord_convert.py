@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class SimToLatLonTransformer:
     def __init__(self, corner_coords:tuple[tuple[float,float]], sim_side_lengths:tuple[int,int]):
@@ -15,6 +16,9 @@ class SimToLatLonTransformer:
         self.corner_coord_2 = corner_coords[1]
         self.corner_coord_3 = corner_coords[2]
         self.corner_coord_4 = corner_coords[3]
+
+        self.origin = self.corner_coord_3 = corner_coords[2]
+        angle = math.acos((np.subtract(self.corner_coord_4, self.corner_coord_3)@np.subtract(self.corner_coord_1, self.corner_coord_3)))
     
     def sim_to_real_convert(self, sim_coord:tuple[int,int]):
         segment_size_12 = [(self.corner_coord_2[0] - self.corner_coord_1[0])/self.sim_sides[0], (self.corner_coord_2[1] - self.corner_coord_1[1])/self.sim_sides[0]]
@@ -36,6 +40,10 @@ class SimToLatLonTransformer:
         final_lat = (((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4)) / ((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4)))
 
         return final_lon, final_lat
+    
+    def latlon_to_local(self, lat, lon):
+
+    
 
 
 '''
