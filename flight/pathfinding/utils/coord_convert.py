@@ -17,7 +17,9 @@ class SimToLatLonTransformer:
         self.corner_coord_3 = corner_coords[2]
         self.corner_coord_4 = corner_coords[3]
 
+        self.scale = 1 # sim to real
         self.origin = self.corner_coord_3 = corner_coords[2]
+        self.offset_angle = 0 # Real to Actual CCW
         angle = math.acos((np.subtract(self.corner_coord_4, self.corner_coord_3)@np.subtract(self.corner_coord_1, self.corner_coord_3)))
     
     def sim_to_real_convert(self, sim_coord:tuple[int,int]):
@@ -42,7 +44,21 @@ class SimToLatLonTransformer:
         return final_lon, final_lat
     
     def latlon_to_local(self, lat, lon):
-
+        translated_point = (lat-self.origin[0],lon-self.origin[1])
+        rot_mat = [[math.cos(self.offset_angle), -math.sin(self.offset_angle)],
+                   [math.sin(self.offset_angle), math.cos(self.offset_angle)]]
+        rotated_point = np.multiply(rot_mat, translated_point)
+        scaled_point = (rotated_point[0]*self.scale, rotated_point[1]*self.scale)
+        return scaled_point
+    
+    def local_to_latlon(self, x, y):
+        scaled_point = (x/self.scale, y/self.scale)
+        rot_mat = [[math.cos(self.offset_angle), math.sin(self.offset_angle)],
+                   [-math.sin(self.offset_angle), math.cos(self.offset_angle)]]
+        rotated_point = np.multiply(rot_mat, scaled_point)
+        translated_point = (rotated_point[0]+self.origin[0], rotated_point[1]+self.origin[1])
+        return translated_point
+    
     
 
 
