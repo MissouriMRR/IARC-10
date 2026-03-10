@@ -17,10 +17,18 @@ class SimToLatLonTransformer:
         self.corner_coord_3 = corner_coords[2]
         self.corner_coord_4 = corner_coords[3]
 
-        self.scale = 1 # sim to real
-        self.origin = self.corner_coord_3 = corner_coords[2]
-        self.offset_angle = 0 # Real to Actual CCW
+        self.scale = 1000 # sim to real
+        self.origin = self.corner_coord_3
+        self.offset_angle = -math.atan2(self.corner_coord_4[1]-self.corner_coord_3[1], self.corner_coord_4[0]-self.corner_coord_3[0]) # Real to sim CCW
         angle = math.acos((np.subtract(self.corner_coord_4, self.corner_coord_3)@np.subtract(self.corner_coord_1, self.corner_coord_3)))
+        if angle > math.pi/2:
+            one_three_side_length = math.sqrt((self.corner_coord_1[0]-self.corner_coord_3[0])**2 + (self.corner_coord_1[0]-self.corner_coord_3[0])**2)
+            three_four_side_length = math.sqrt((self.corner_coord_4[0]-self.corner_coord_3[0])**2 + (self.corner_coord_4[0]-self.corner_coord_3[0])**2)
+            offset_length = one_three_side_length*math.cos(angle)
+            origin_transform_vector = (-offset_length*(self.corner_coord_4[0]-self.corner_coord_3[0])/three_four_side_length,-offset_length*(self.corner_coord_4[0]-self.corner_coord_3[0])/three_four_side_length)
+            self.origin = (self.origin[0]+origin_transform_vector[0],self.origin[1]+origin_transform_vector[1])
+
+        print(angle)
     
     def sim_to_real_convert(self, sim_coord:tuple[int,int]):
         segment_size_12 = [(self.corner_coord_2[0] - self.corner_coord_1[0])/self.sim_sides[0], (self.corner_coord_2[1] - self.corner_coord_1[1])/self.sim_sides[0]]
@@ -47,7 +55,7 @@ class SimToLatLonTransformer:
         translated_point = (lat-self.origin[0],lon-self.origin[1])
         rot_mat = [[math.cos(self.offset_angle), -math.sin(self.offset_angle)],
                    [math.sin(self.offset_angle), math.cos(self.offset_angle)]]
-        rotated_point = np.multiply(rot_mat, translated_point)
+        rotated_point = np.matmul(rot_mat, translated_point)
         scaled_point = (rotated_point[0]*self.scale, rotated_point[1]*self.scale)
         return scaled_point
     
@@ -55,7 +63,7 @@ class SimToLatLonTransformer:
         scaled_point = (x/self.scale, y/self.scale)
         rot_mat = [[math.cos(self.offset_angle), math.sin(self.offset_angle)],
                    [-math.sin(self.offset_angle), math.cos(self.offset_angle)]]
-        rotated_point = np.multiply(rot_mat, scaled_point)
+        rotated_point = np.matmul(rot_mat, scaled_point)
         translated_point = (rotated_point[0]+self.origin[0], rotated_point[1]+self.origin[1])
         return translated_point
     
@@ -95,6 +103,12 @@ def run_tests():
     x = 100 # $$
     y = 100 # $$
 
-    final_lon, final_lat = coord_converter.sim_to_real_convert([x,y])
+    final_lat, final_lon = coord_converter.local_to_latlon(x,y)
+    final_lon2, final_lat2 = coord_converter.sim_to_real_convert((x,y))
+    x1, y1 = coord_converter.latlon_to_local(final_lat,final_lon)
     print(final_lat)
     print(final_lon)
+    print(x1, y1)
+
+if __name__ == "__main__":
+    run_tests()
