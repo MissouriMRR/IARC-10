@@ -131,7 +131,7 @@ def log_data(
     # Print results summary
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"Logs/From_{jsonConfigData.get_self_id()}_To_{speedResults[0].data['targetId']}"
+    folder_name = f"Logs/Speed_Test/From_{jsonConfigData.get_self_id()}_To_{speedResults[0].data['targetId']}"
     os.makedirs(folder_name, exist_ok=True)
 
     file_path = f"{folder_name}/test-results-{testNumber}.txt"
