@@ -69,3 +69,34 @@ class NetworkingInterface:
             return result
         except concurrent.futures.TimeoutError:
             return None
+
+    # Used to empty all queues (used for testing purposes)
+    def empty_queues(self, timeout: float | None = 1.0) -> tuple[int, int, int]:
+        future = asyncio.run_coroutine_threadsafe(self._empty_queues_async(), self.loop)
+        return future.result(timeout=timeout)
+
+    async def _empty_queues_async(self) -> tuple[int, int, int]:
+        # Drop any in-flight pending get futures
+        if self._clientOutFuture is not None and not self._clientOutFuture.done():
+            self._clientOutFuture.cancel()
+        self._clientOutFuture = None
+
+        if self._serverOutFuture is not None and not self._serverOutFuture.done():
+            self._serverOutFuture.cancel()
+        self._serverOutFuture = None
+
+        def drain(q: AsyncQueue[Message]) -> int:
+            n = 0
+            while True:
+                try:
+                    q.get_nowait()
+                    n += 1
+                except asyncio.QueueEmpty:
+                    break
+            return n
+
+        return (
+            drain(self.clientIn),
+            drain(self.clientOut),
+            drain(self.serverOut),
+        )
