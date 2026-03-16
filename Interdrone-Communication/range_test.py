@@ -102,15 +102,25 @@ async def main():
         help="Batman location: 1 for pi network card, 2 for wifi adapter",
         type=parse_batman_location,
     )
+    parser.add_argument(
+        "-cont",
+        "--continuousTesting",
+        help="If True this disables needing to press the enter key when running a range test",
+        type=parse_bool_flag,
+        default=False,
+    )
+
     args = parser.parse_args()
     # Load config
     jsonConfigData = JsonConfigReader()
 
     # Declare flag variables
     droneId: int
+    numDrones: int
     dronesToSendData: list[int]
     getPerf: bool
     uwbEnabled: bool
+    continuousTesting: bool
 
     # Get drone ID
     if args.id is not None:
@@ -126,6 +136,7 @@ async def main():
             parser.error(
                 "--numDrones must match the number of values passed to --targets"
             )
+        numDrones = len(dronesToSendData)
     elif args.numDrones is not None:
         numDrones = args.numDrones
         dronesToSendData = []
@@ -136,9 +147,11 @@ async def main():
             dronesToSendData.append(drone_id)
     else:
         dronesToSendData = []
+        numDrones = 3  # Needed for edge case later on
 
     getPerf = args.perf
     uwbEnabled = args.uwb
+    continuousTesting = args.continuousTesting
 
     if args.batmanLocation is not None:
         batmanLocation = args.batmanLocation
@@ -196,8 +209,10 @@ async def main():
 
     speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
     numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
+    testsFinishedPerTarget: list[bool] = [False, False, False, False, False]
     numQueriesPerTest = 100
     networking.queue_client_message(message=speedTestMessage)
+    testFinished = False
 
     print("Starting range test")
     while True:
@@ -222,8 +237,6 @@ async def main():
                         numTestsPerTarget[targetId] += 1
 
                         # Run logging in a separate thread
-                        # TODO create seperate JSON logging (probably not async)
-
                         task: Task[None] = asyncio.create_task(
                             asyncio.to_thread(
                                 log_data,
@@ -234,6 +247,7 @@ async def main():
                                 fileName,
                             )
                         )
+                        testsFinishedPerTarget[targetId] = True
 
                         # Add to set to prevent garbage collection
                         backgroundTasks.add(task)
@@ -244,15 +258,32 @@ async def main():
                         print(
                             f"Test {current_test_num} completed from {jsonConfigData.get_self_id()} -> {targetId}"
                         )
+                        # If all drones in range tests tests have finished
+                        if sum(testsFinishedPerTarget) >= numDrones:
+                            testFinished = True
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
                     # print(f"Client Data: {clientMsg}")
+            if testFinished:
+                # Wait for logging tasks to finish
+                while len(backgroundTasks) != 0:
+                    await asyncio.sleep(0.05)
+                _ = (
+                    networking.empty_queues()
+                )  # flush out old data to ensure next test is clean
+                if not continuousTesting:
+                    print("Individual test finished and data has been logged.")
+                    _ = input(
+                        "Please press enter when you wish to start another one or press ctrl + c to exit"
+                    )
+                    print("Next test is running!")
+                testsFinishedPerTarget = [False, False, False, False, False]
+                testFinished = False
             # If previous message has been sent, add new one to queue
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
-
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
