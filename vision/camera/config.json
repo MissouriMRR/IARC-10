@@ -1,0 +1,15 @@
+{
+   "mainRes": [2028, 1520],
+   "loresRes": [507, 380],
+   "color": [0, 255, 0, 0],
+   "confThreshold": 0.65,
+   "modelPath": "../../vision/models/2-16-2026/v11s_2-16.rpk",
+   "useLores": false,
+   "printDetections": true,
+   "pathToPics": "./captures",
+   "pathToDetections": "./captures/detections",
+   "pathToMetadata": "./metadata",
+   "droneAddress": "/dev/ttyUSB0",
+   "baudRate": 921600,
+   "confTresh": 0.65
+}
