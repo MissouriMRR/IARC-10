@@ -13,6 +13,7 @@ import traceback
 import os
 from pathlib import Path
 import json
+import subprocess
 
 from networking_interface import NetworkingInterface
 
@@ -245,6 +246,7 @@ async def main():
                                 current_test_num,
                                 logTitle,
                                 fileName,
+                                getPerf,
                             )
                         )
                         testsFinishedPerTarget[targetId] = True
@@ -296,6 +298,7 @@ def log_data(
     testNumber: int,
     logTitle: str,
     fileName: str,
+    getPerf: bool,
 ):
     # Sanitize directory name (remove >) and create path structure
     folderName = "Logs/Range_Test"
@@ -322,7 +325,7 @@ def log_data(
                 "maxDownloadRtt": [],
                 "uwbRange": [],
                 "cpuLoad": [],
-                "memoryLoad": [],
+                "memoryUsage": [],
             },
         }  # Leave unused keys blank and filter out later
         jsonPath.parent.mkdir(
@@ -378,8 +381,40 @@ def log_data(
         uwbRange = 0  # TODO SET THIS UP
 
         # Get processing specs from PI
-        cpuLoad = 0  # TODO SET THIS UP
-        memoryLoad = 0  # TODO SET THIS UP
+        cpuLoad = 0
+        totalMemory = 0
+        availableMemory = 0
+        memoryUsage = 0
+        if getPerf:
+            try:
+                result = subprocess.run(
+                    ["free", "-m"], capture_output=True, text=True, check=True
+                )
+
+                for line in result.stdout.splitlines():
+                    if line.startswith("Mem:"):
+                        parts = line.split()
+                        totalMemory = int(parts[1])
+                        availableMemory = int(parts[6])
+                        break
+
+                print(f"Total memory (bytes): {totalMemory}mb")
+                print(f"Available memory (bytes): {availableMemory}mb")
+                memoryUsage = ((totalMemory - availableMemory) / totalMemory) * 100
+                print(f"Memory Usage {memoryUsage}%")
+
+                # Get processor usage (takes 2 seconds to run due to delay from top)
+                result = subprocess.run(
+                    ["top", "-bn 2"], capture_output=True, text=True, check=True
+                )  # Note: top can be inaccurate. If the CPU is under heavy load it can produce inaccurate results
+
+                for line in result.stdout.splitlines():
+                    if line.startswith("%Cpu(s):"):
+                        parts = line.split()
+                        cpuLoad = parts[1]
+                print(f"CPU Usage: {cpuLoad}")
+            except Exception as e:  # Exceptions are likely due to code running powershell and not a linux based cli
+                print(e)
 
         # log_print(f"Target: {speedResults[0].data['target']}")
         jsonData["data"]["targetDrone"].append(targetDrone)
@@ -397,7 +432,7 @@ def log_data(
         jsonData["data"]["maxDownloadRtt"].append(maxDownloadRtt)
         jsonData["data"]["uwbRange"].append(uwbRange)
         jsonData["data"]["cpuLoad"].append(cpuLoad)
-        jsonData["data"]["memoryLoad"].append(memoryLoad)
+        jsonData["data"]["memoryUsage"].append(memoryUsage)
 
         print(jsonData)
         with jsonPath.open("w", encoding="utf-8") as f:

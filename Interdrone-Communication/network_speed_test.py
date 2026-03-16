@@ -124,11 +124,9 @@ async def main():
             break
 
 
-# Do async function call to this
 def log_data(
     speedResults: list[Message], jsonConfigData: JsonConfigReader, testNumber: int
 ):
-    # Print results summary
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
     folder_name = f"Logs/Speed_Test/From_{jsonConfigData.get_self_id()}_To_{speedResults[0].data['targetId']}"
