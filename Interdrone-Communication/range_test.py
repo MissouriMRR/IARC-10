@@ -1,8 +1,377 @@
+from asyncio import Task
+
+
+from message_types import Message, MessageType
+from json_config_reader import JsonConfigReader
+from networking_thread import NetworkingThread
+
+import asyncio
+import argparse
+import queue
+import threading
+import traceback
+import os
+from pathlib import Path
+import json
+
+from networking_interface import NetworkingInterface
+
 """
 General Functionality:
 Prompt user for test type
-Set up spreadsheet logger with test type
+Create test name
+Create json file based on that (or append)
 Runs one iteration of a network speed test
-Logs on spreadsheet with data from speed test.
+Logs on json with data from speed test.
 Waits for user to prompt for next one
+
+(spreadsheet can be created from JSON in a separate file)
 """
+
+
+def parse_bool_flag(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(
+        f"Invalid boolean value '{value}'. Use one of: 0/1, true/false, yes/no"
+    )
+
+
+def parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected an integer") from exc
+
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("Value must be greater than 0")
+    return parsed
+
+
+def parse_batman_location(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "Expected 1 (pi network card) or 2 (wifi adapter)"
+        ) from exc
+
+    if parsed not in (1, 2):
+        raise argparse.ArgumentTypeError(
+            "Expected 1 (pi network card) or 2 (wifi adapter)"
+        )
+    return parsed
+
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    parser.add_argument(
+        "-nd",
+        "--numDrones",
+        help="Number of target drones (not including host)",
+        type=parse_positive_int,
+    )  # else ask during input section
+    parser.add_argument(
+        "-perf",
+        "--perf",
+        help="Include performance in logs (0/1, true/false, yes/no)",
+        type=parse_bool_flag,
+        default=False,
+    )
+    parser.add_argument(
+        "-uwb",
+        "--uwb",
+        help="Include range in logs (0/1, true/false, yes/no)",
+        type=parse_bool_flag,
+        default=False,
+    )
+    parser.add_argument(
+        "-t",
+        "--targets",
+        help="Optional explicit target drone IDs (space-separated)",
+        nargs="+",
+        type=int,
+    )
+    parser.add_argument(
+        "-b",
+        "--batmanLocation",
+        help="Batman location: 1 for pi network card, 2 for wifi adapter",
+        type=parse_batman_location,
+    )
+    args = parser.parse_args()
+    # Load config
+    jsonConfigData = JsonConfigReader()
+
+    # Declare flag variables
+    droneId: int
+    dronesToSendData: list[int]
+    getPerf: bool
+    uwbEnabled: bool
+
+    # Get drone ID
+    if args.id is not None:
+        droneId = args.id
+        jsonConfigData.set_self_id(droneId)
+    else:
+        droneId = int(jsonConfigData.get_self_id())
+
+    # TODO decide how I want to set up num drones / other drones
+    if args.targets is not None:
+        dronesToSendData = args.targets
+        if args.numDrones is not None and len(dronesToSendData) != args.numDrones:
+            parser.error(
+                "--numDrones must match the number of values passed to --targets"
+            )
+    elif args.numDrones is not None:
+        numDrones = args.numDrones
+        dronesToSendData = []
+        for i in range(numDrones):
+            drone_id = int(
+                input(f"Input ID of drone {i + 1} you are talking to in test: ")
+            )
+            dronesToSendData.append(drone_id)
+    else:
+        dronesToSendData = []
+
+    getPerf = args.perf
+    uwbEnabled = args.uwb
+
+    if args.batmanLocation is not None:
+        batmanLocation = args.batmanLocation
+    else:
+        batmanLocation = parse_batman_location(
+            input(
+                "Is batman running on the pi's network card or the wifi adapter (1 or 2): "
+            )
+        )
+
+    # Setup JSON logging file
+    batmanLocationStr = ""
+    if batmanLocation == 1:
+        batmanLocationStr = "PI Network Card"
+    else:
+        batmanLocationStr = "Wifi Adapter"
+    logTitle = f"Range Test from {droneId} to {dronesToSendData} on {batmanLocationStr}. GetPerf: {getPerf}, UWB: {uwbEnabled} "
+    fileName = (
+        f"RT_{droneId}_{str(dronesToSendData)}_Perf({getPerf})_UWB({uwbEnabled}))"
+    )
+
+    # Start networking thread
+    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
+    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    networkingThread = threading.Thread(
+        target=networkingThreadClassInstance.run_networking_thread,
+        args=(resourcesReady, jsonConfigData),
+        daemon=True,
+    )
+    networkingThread.start()
+    backgroundTasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
+
+    # Wait for networking to be ready
+    networking: NetworkingInterface = resourcesReady.get()
+    print("Networking interface ready")
+
+    speedTestMessage: Message = Message.create(
+        id=MessageType.SPEED_TEST_REQUEST,
+        dronesToSendData=tuple(
+            dronesToSendData
+        ),  # Modify this for selective speed test
+        data={
+            "initialUploadTime": 0.0,  # Set when queued to send
+            "finalUploadTime": 0.0,
+            "initialDownloadTime": 0.0,
+            "finalDownloadTime": 0.0,
+            "senderId": droneId,
+            "payloadSize": jsonConfigData.get_speed_test_data_size() * 1024,
+            "payload": "X"
+            * (
+                jsonConfigData.get_speed_test_data_size() * 1024
+            ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
+        },
+    )
+
+    speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
+    numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
+    numQueriesPerTest = 100
+    networking.queue_client_message(message=speedTestMessage)
+
+    print("Starting range test")
+    while True:
+        try:
+            # Check for client responses
+            clientMsg = networking.try_get_client_response(timeout=0.02)
+            if clientMsg is not None:
+                # Print speed test results
+                try:  # Append client Message to dict list
+                    targetId: int = clientMsg.data["targetId"]
+                    # print(targetId)
+                    if targetId not in speedResults:
+                        speedResults[targetId] = []
+                    speedResults[targetId].append(clientMsg)
+                    if len(speedResults[targetId]) >= numQueriesPerTest:
+                        # Copy data and clear original list so we can keep receiving immediately
+                        results_to_log = list(speedResults[targetId])
+                        speedResults[targetId].clear()
+
+                        # Increment test counter
+                        current_test_num = numTestsPerTarget[targetId]
+                        numTestsPerTarget[targetId] += 1
+
+                        # Run logging in a separate thread
+                        # TODO create seperate JSON logging (probably not async)
+
+                        task: Task[None] = asyncio.create_task(
+                            asyncio.to_thread(
+                                log_data,
+                                results_to_log,
+                                jsonConfigData,
+                                current_test_num,
+                                logTitle,
+                                fileName,
+                            )
+                        )
+
+                        # Add to set to prevent garbage collection
+                        backgroundTasks.add(task)
+
+                        # Remove from set when done
+                        task.add_done_callback(backgroundTasks.discard)
+
+                        print(
+                            f"Test {current_test_num} completed from {jsonConfigData.get_self_id()} -> {targetId}"
+                        )
+                except Exception:
+                    # print(f"Error processing result: {e}")
+                    traceback.print_exc()
+
+                    # print(f"Client Data: {clientMsg}")
+            # If previous message has been sent, add new one to queue
+            if networking.is_client_in_empty():
+                networking.queue_client_message(message=speedTestMessage)
+
+            await asyncio.sleep(0.1)  # Adjust sleep time as needed
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("Shutting down...")
+            break
+
+
+def log_data(
+    speedResults: list[Message],
+    jsonConfigData: JsonConfigReader,
+    testNumber: int,
+    logTitle: str,
+    fileName: str,
+):
+    # Sanitize directory name (remove >) and create path structure
+    folderName = "Logs/Range_Test"
+    os.makedirs(folderName, exist_ok=True)
+
+    jsonPath = Path(f"{folderName}/{fileName}.json")
+
+    if not jsonPath.exists():
+        initialData = {
+            "title": logTitle,
+            "data": {
+                "targetDrone": [],  # Contains ID for drone getting sent data
+                "avgUploadThroughputMbps": [],
+                "avgUploadRttMs": [],
+                "minUploadThroughput": [],
+                "maxUploadThroughput": [],
+                "minUploadRtt": [],
+                "maxUploadRtt": [],
+                "avgDownloadThroughputMbps": [],
+                "avgDownloadRttMs": [],
+                "minDownloadThroughput": [],
+                "maxDownloadThroughput": [],
+                "minDownloadRtt": [],
+                "maxDownloadRtt": [],
+                "uwbRange": [],
+                "cpuLoad": [],
+                "memoryLoad": [],
+            },
+        }  # Leave unused keys blank and filter out later
+        jsonPath.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # safe if parent folder already exists
+        jsonPath.write_text(json.dumps(initialData, indent=2), encoding="utf-8")
+        print("wrote text")
+
+    # If json file does not exist, set it up then append
+
+    with jsonPath.open("r", encoding="utf-8") as f:
+        jsonData = json.load(f)
+
+    if jsonData is None:
+        print("Failed to read json data :(")
+        return
+
+    if speedResults:
+        targetDrone = speedResults[0].data["targetId"]
+        uploadThroughputs = [
+            float(r.data["uploadThroughputKbps"]) for r in speedResults
+        ]
+        uploadRttms = [float(r.data["uploadRttMs"]) for r in speedResults]
+        downloadThroughputs = [
+            float(r.data["downloadThroughputKbps"]) for r in speedResults
+        ]
+        downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
+        for i in range(len(downloadRttMs)):
+            if downloadRttMs[i] > 1:
+                pass
+                # log_print(
+                #     f"Download rttms was {downloadRttMs[i]} ms at index {i}"
+                # )
+        # Calculate upload statistics
+        avgUploadThroughputKbps = sum(uploadThroughputs) / len(uploadThroughputs)
+        avgUploadThroughputMbps = avgUploadThroughputKbps / 1000
+        avgUploadRttMs = sum(uploadRttms) / len(uploadRttms)
+        minUploadThroughput = min(uploadThroughputs) / 1000
+        maxUploadThroughput = max(uploadThroughputs) / 1000
+        minUploadRtt = min(uploadRttms)
+        maxUploadRtt = max(uploadRttms)
+
+        # Calculate download statistics
+        avgDownloadThroughputKbps = sum(downloadThroughputs) / len(downloadThroughputs)
+        avgDownloadThroughputMbps = avgDownloadThroughputKbps / 1000
+        avgDownloadRttMs = sum(downloadRttMs) / len(downloadRttMs)
+        minDownloadThroughput = min(downloadThroughputs) / 1000
+        maxDownloadThroughput = max(downloadThroughputs) / 1000
+        minDownloadRtt = min(downloadRttMs)
+        maxDownloadRtt = max(downloadRttMs)
+
+        # Calculate range from UWB
+        uwbRange = 0  # TODO SET THIS UP
+
+        # Get processing specs from PI
+        cpuLoad = 0  # TODO SET THIS UP
+        memoryLoad = 0  # TODO SET THIS UP
+
+        # log_print(f"Target: {speedResults[0].data['target']}")
+        jsonData["data"]["targetDrone"].append(targetDrone)
+        jsonData["data"]["avgUploadThroughputMbps"].append(avgUploadThroughputMbps)
+        jsonData["data"]["avgUploadRttMs"].append(avgUploadRttMs)
+        jsonData["data"]["minUploadThroughput"].append(minUploadThroughput)
+        jsonData["data"]["maxUploadThroughput"].append(maxUploadThroughput)
+        jsonData["data"]["minUploadRtt"].append(minUploadRtt)
+        jsonData["data"]["maxUploadRtt"].append(maxUploadRtt)
+        jsonData["data"]["avgDownloadThroughputMbps"].append(avgDownloadThroughputMbps)
+        jsonData["data"]["avgDownloadRttMs"].append(avgDownloadRttMs)
+        jsonData["data"]["minDownloadThroughput"].append(minDownloadThroughput)
+        jsonData["data"]["maxDownloadThroughput"].append(maxDownloadThroughput)
+        jsonData["data"]["minDownloadRtt"].append(minDownloadRtt)
+        jsonData["data"]["maxDownloadRtt"].append(maxDownloadRtt)
+        jsonData["data"]["uwbRange"].append(uwbRange)
+        jsonData["data"]["cpuLoad"].append(cpuLoad)
+        jsonData["data"]["memoryLoad"].append(memoryLoad)
+
+        print(jsonData)
+        with jsonPath.open("w", encoding="utf-8") as f:
+            json.dump(jsonData, f, indent=2)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
