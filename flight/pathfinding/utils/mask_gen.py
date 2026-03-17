@@ -70,13 +70,65 @@ class PolygonMask:
        
         angle1 = math.degrees(math.atan2(y1,x1))
         angle2 = math.degrees(math.atan2(y2,x2))
+        if angle1<0:
+            angle1+=360
+        if angle2<0:
+            angle2+=360
+
 
         if abs(angle1-angle2)>180:
             angle3=angle1
             angle1=angle2
             angle2=angle3
 
+        angle1*=-1
+        angle2*=-1
+
+        if angle1>angle2:
+            angle3=angle1
+            angle1=angle2
+            angle2=angle3
+
+        if angle1<-270 and angle2>-90:
+            angle3=angle1
+            angle1=angle2
+            angle2=angle3
+
+        if angle1<90 and angle2>90:
+            self.top_y=node1.ParentMine.y+(2*radius)
+        else:
+            self.top_y=max(node1.ParentMine.y,max(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
+
+        if angle1<270 and angle2>270:
+            self.bottom_y.ParentMine.y-(2*radius)
+        else:
+            self.bottom_y=min(node1.ParentMine.y,min(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
+
+
+
+
+           
+
+
+        if angle1<180 and angle2>180:
+            self.bottom_x=node1.ParentMine.y-(2*radius)
+        else:
+            self.bottom_x=min(node1.ParentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
+
+        if angle1>=270 and angle2<=90:
+            self.top_x=node1.ParentMine.x+(2*radius)
+        else:
+            self.top_x=min(node1.ParentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
+
+     
+
         img =  Image.new("RGBA", (2*radius, 2*radius), (0,0,0,0))
         draw = ImageDraw.Draw(img)
         draw.pieslice((0, 0 , 2*radius, 2*radius), angle1, angle2,(255, 255, 255, 255))
+
+
+
+        
+
+
         self.body = np.array(img)
