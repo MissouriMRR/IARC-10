@@ -9,7 +9,7 @@ import json
 class Camera():
    def __init__(s, config):
       s.config = config
-      s.imx500 = IMX500(MODEL_PATH)
+      s.imx500 = IMX500(config["modelPath"])
       s.LABELS = s.imx500.network_intrinsics.labels
 
    # this must be run before doing camera things
@@ -35,15 +35,18 @@ class Camera():
       return last_detections
 
    def _save_image(path, detections) -> None:
-      s.picam2.capture_file(f"{path}.png")
-      with Image.open(f"{path}.png") as im:
+      image_name = f"image_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+      s.picam2.capture_file(f"{path}/{image_name}.png")
+      with Image.open(f"{path}/{image_name}.png") as im:
          draw = ImageDraw.Draw(im)
          for box in detections:
             draw.rectangle(box, outline = s.config["color"])
+      print("Image saved")
 
-   def _save_to_json(detections) -> None:
+   def _save_detections_to_json(path, detections) -> None:
+      file_name = f"detections_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
       for detection in detections:
-         with open("captures.json", "w") as f:
+         with open(f"{path}/{file_name}.json", "w") as f:
             data = {
                "path": path,
                "x": detection.box[0],
@@ -54,14 +57,29 @@ class Camera():
                "confidence": detection.confidence
             }
             json.dump(data, f)
+      print("Detections saved")
+   
+   def _save_metadata_to_json(path, drone):
+      file_name = f"metadata_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+      with open(f"{path}/{file_name}.json", "w") as f:
+         data = {
+            "pitch": drone.attitude.pitch,
+            "yaw": drone.attitude.yaw,
+            "roll": drone.attitude.roll,
+            "location (lat, lon, alt)": [drone.location.global_frame.lat,drone.location.global_frame.lon, drone.location.global_frame.alt]
+         }
+         json.dump(data, f)
+      print("Metadata saved")
 
    # returns all detections in image as list of Detection objects
    # with bonus data saving parameters!
-   def capture(s, save_image: bool, save_to_json: bool) -> list[Detection]:
-      path = ''.join(d for d in str(datetime.now()) if d.isdigit()) if (save_image or save_to_json) else None # EVIL code because i'm EVIL
+   def capture(s, save_image: bool, save_data: bool, drone) -> list[Detection]:
+      # path = ''.join(d for d in str(datetime.now()) if d.isdigit()) if (save_image or save_to_json) else None # EVIL code because i'm EVIL
       metadata = picam2.capture_metadata()
       detections = _parse_detections(metadata)
       if detections is None: return None
-      if save_image: _save_image(path, detections)
-      if save_to_json: _save_to_json(detections)
+      if save_image: _save_image(s.config["pathToPics"], detections)
+      if save_data:
+         _save_metadata_to_json(s.config["pathToMetadata"], drone)
+         _save_detections_to_json(s.config["pathToDetections"], detections)
       return detections

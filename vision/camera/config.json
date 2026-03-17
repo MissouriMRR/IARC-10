@@ -10,6 +10,5 @@
    "pathToDetections": "./captures/detections",
    "pathToMetadata": "./metadata",
    "droneAddress": "/dev/ttyUSB0",
-   "baudRate": 921600,
-   "confTresh": 0.65
+   "baudRate": 921600
 }
