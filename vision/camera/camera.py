@@ -1,40 +1,46 @@
-from picamera2 import Picamera2
+from picamera2 import Picamera2, Preview
+from picamera2.devices import IMX500
+from picamera2.devices.imx500 import (NetworkIntrinsics, postprocess_nanodet_detection)
 from typing import Tuple
 from detection import Detection
 from datetime import datetime
 from PIL import Image, ImageDraw
 import time
 import json
+import os
 
 class Camera():
    def __init__(s, config):
       s.config = config
       s.imx500 = IMX500(config["modelPath"])
-      s.LABELS = s.imx500.network_intrinsics.labels
+      #s.LABELS = s.imx500.network_intrinsics.labels
 
    # this must be run before doing camera things
    # why is it not in __init__?
    # i hate you
    def start_camera(s) -> None:
       s.picam2: Picamera2 = Picamera2()
-      s.camera_config = picam2.create_preview_configuration(
+      s.camera_config = s.picam2.create_preview_configuration(
         main = {"size": s.config["mainRes"]},
         lores = {"size": s.config["loresRes"], "format": "YUV420"}
       )
       s.picam2.configure(s.camera_config)
+      s.picam2.set_controls({"ExposureTime": s.config["shutterSpeed"]}) # in microseconds
+      s.picam2.start_preview(Preview.QTGL)
       s.picam2.start()
       time.sleep(2) # startup time
 
    # performs magic to turn camera tensors into useable data
-   def _parse_detections(metadata) -> list[Detection]:
-      network_outputs = s.imx500.get_outputs(metadata, add_batch = True) # output tensors, batch allows multiple detections at once
-      if network_outputs is None:
+   def _parse_detections(s, metadata) -> list[Detection]:
+      s.network_outputs = s.imx500.get_outputs(metadata, add_batch = True) # output tensors, batch allows multiple detections at once
+      if s.network_outputs is None:
          return None
       s.boxes, s.scores, s.classes = s.network_outputs[0][0], s.network_outputs[1][0], s.network_outputs[2][0]
-      last_detections = [Detection(box, category, score, metadata) for box, score, category in zip(boxes, scores, classes) if score > CONF_THRESHOLD]
+      last_detections = [Detection(box, category, score, metadata, s.picam2) for box, score, category in zip(s.boxes, s.scores, s.classes) if score > s.config["confThreshold"]]
       return last_detections
 
-   def _save_image(path, detections) -> None:
+   def _save_image(s, path, detections) -> None:
+      os.makedirs(s.config["pathToPics"], exist_ok = True)
       image_name = f"image_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
       s.picam2.capture_file(f"{path}/{image_name}.png")
       with Image.open(f"{path}/{image_name}.png") as im:
@@ -43,7 +49,7 @@ class Camera():
             draw.rectangle(box, outline = s.config["color"])
       print("Image saved")
 
-   def _save_detections_to_json(path, detections) -> None:
+   def _save_detections_to_json(s, path, detections) -> None:
       file_name = f"detections_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
       for detection in detections:
          with open(f"{path}/{file_name}.json", "w") as f:
@@ -75,11 +81,11 @@ class Camera():
    # with bonus data saving parameters!
    def capture(s, save_image: bool, save_data: bool, drone) -> list[Detection]:
       # path = ''.join(d for d in str(datetime.now()) if d.isdigit()) if (save_image or save_to_json) else None # EVIL code because i'm EVIL
-      metadata = picam2.capture_metadata()
-      detections = _parse_detections(metadata)
+      metadata = s.picam2.capture_metadata()
+      detections = s._parse_detections(metadata)
       if detections is None: return None
-      if save_image: _save_image(s.config["pathToPics"], detections)
+      if save_image: s._save_image(s.config["pathToPics"], detections)
       if save_data:
-         _save_metadata_to_json(s.config["pathToMetadata"], drone)
-         _save_detections_to_json(s.config["pathToDetections"], detections)
+         #_save_metadata_to_json(s.config["pathToMetadata"], drone)
+         s._save_detections_to_json(s.config["pathToDetections"], detections)
       return detections
