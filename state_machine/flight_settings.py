@@ -79,8 +79,16 @@ class FlightSettings:
     def __init__(
         self,
         simple_takeoff: bool = False,
+        app_opperable: bool = False,
         title: str = DEFAULT_RUN_TITLE,
         description: str = DEFAULT_RUN_DESCRIPTION,
+        drone_ID: int = 1,
+        app_IP: int = 0,
+        total_drones: int = 1,
+        other_drone_info: tuple[dict] = [],
+        mission_corners: tuple[dict, dict, dict, dict] = [],
+        max_height: float = 10,
+        start_coord: dict = {},
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
     ) -> None:
@@ -103,6 +111,14 @@ class FlightSettings:
         self.__simple_takeoff: bool = simple_takeoff
         self.__run_title: str = title
         self.__run_description: str = description
+        self.__app_opperable: bool = app_opperable
+        self.__app_IP: int = app_IP
+        self.__current_drone_ID = drone_ID
+        self.__number_of_total_drones: int = total_drones
+        self.__other_drone_info: tuple[dict] = other_drone_info
+        self.__mission_field_corners: tuple[dict, dict, dict, dict] = mission_corners
+        self.__max_flight_height: float = max_height
+        self.__start_coord: dict = start_coord
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
         self.__yolo_status: Event = Event()
@@ -171,6 +187,30 @@ class FlightSettings:
             Flag for vertical takeoff
         """
         self.__simple_takeoff = simple_takeoff
+    
+    @property
+    def app_opperable(self) -> bool:
+        """
+        Gets app_opperable as a private member variable
+
+        Returns
+        -------
+        app_opperable : bool
+            Flag for if app is active
+        """
+        return self.__app_opperable
+
+    @app_opperable.setter
+    def simple_takeoff(self, app_opperable: bool) -> None:
+        """
+        Sets the flag for if app is opperational
+
+        Parameters
+        ----------
+        app_opperable : bool
+            Flag for if app is active
+        """
+        self.__app_opperable = app_opperable
 
     # ----- Flight Initialization Settings ----- #
     @property
@@ -220,6 +260,174 @@ class FlightSettings:
             New description for the current flight
         """
         self.__run_description = new_description
+
+    @property
+    def current_drone_ID(self) -> int:
+        """
+        Returns this drone's ID integer
+
+        Returns
+        -------
+        current_drone_ID : int
+            Integer ID for the current drone
+        """
+        return self.__current_drone_ID
+
+    @current_drone_ID.setter
+    def current_drone_ID(self, drone_ID: str) -> None:
+        """
+        Sets a new ID for this drone
+
+        Parameters
+        ----------
+        current_drone_ID : int
+            New ID for the current drone
+        """
+        self.__current_drone_ID = drone_ID
+
+    @property
+    def app_IP(self) -> int:
+        """
+        Returns the apps IP address
+
+        Returns
+        -------
+        app_IP : int
+            IP for the app that the drone tries to connect to
+        """
+        return self.__app_IP
+
+    @app_IP.setter
+    def app_IP(self, app_IP: str) -> None:
+        """
+        Sets a new IP address the app
+
+        Parameters
+        ----------
+        app_IP : int
+            New IP for the app that the drone tries to connect to
+        """
+        self.__app_IP = app_IP
+
+    @property
+    def number_of_total_drones(self) -> int:
+        """
+        Returns the 
+
+        Returns
+        -------
+        number_of_total_drones : int
+            
+        """
+        return self.__number_of_total_drones
+
+    @number_of_total_drones.setter
+    def number_of_total_drones(self, total_drones: int) -> None:
+        """
+        Sets a new 
+
+        Parameters
+        ----------
+        number_of_total_drones : int
+            New 
+        """
+        self.__number_of_total_drones = total_drones
+
+    @property
+    def other_drone_info(self) -> tuple[dict]:
+        """
+        Returns 
+
+        Returns
+        -------
+         : 
+            
+        """
+        return self.__other_drone_info
+
+    @other_drone_info.setter
+    def other_drone_info(self, other_info: tuple[dict]) -> None:
+        """
+        Sets a new 
+
+        Parameters
+        ----------
+         : 
+            New 
+        """
+        self.__other_drone_info = other_info
+
+    @property
+    def mission_field_corners(self) -> tuple[dict, dict, dict, dict]:
+        """
+        Returns 
+
+        Returns
+        -------
+         : 
+            
+        """
+        return self.__mission_field_corners
+
+    @mission_field_corners.setter
+    def mission_field_corners(self, field_corners: tuple[dict, dict, dict, dict]) -> None:
+        """
+        Sets a new 
+
+        Parameters
+        ----------
+         : 
+            New 
+        """
+        self.__mission_field_corners = field_corners
+    
+    @property
+    def start_coord(self) -> dict:
+        """
+        Returns 
+
+        Returns
+        -------
+         : 
+            
+        """
+        return self.__start_coord
+
+    @start_coord.setter
+    def start_coord(self, start_coord: dict) -> None:
+        """
+        Sets a new 
+
+        Parameters
+        ----------
+         : 
+            New 
+        """
+        self.__start_coord = start_coord
+
+    @property
+    def max_flight_height(self) -> dict:
+        """
+        Returns 
+
+        Returns
+        -------
+         : 
+            
+        """
+        return self.__max_flight_height
+
+    @max_flight_height.setter
+    def max_flight_height(self, max_height: dict) -> None:
+        """
+        Sets a new 
+
+        Parameters
+        ----------
+         : 
+            New 
+        """
+        self.__max_flight_height = max_height
 
     @property
     def sim_mode(self) -> SimMode:

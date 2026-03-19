@@ -13,7 +13,7 @@
     "simple_takeoff": false,
     "app_opperable": false,
     "current_drone_ID": 1,
-    "app_IP": 1234,
+    "app_IP": 0,
     "number_of_total_drones": 4,
     "other_drone_info": [
         {"id": 2, "IP": 1234},
