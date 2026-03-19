@@ -5,14 +5,14 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from flight.pathfinding.node_generation import Node, Mine, Field, Connection
+from flight.pathfinding.node_generation import Node, Mine, Field, Connection, seg
 from flight.pathfinding.path_calculation import Graph
 #purpose: takes in list of nodes outputted from dijkstras algorthm, and creates goto points between each node (arc/line) 
 #with hardcoded lengths (arclength/step) between each point, outputting a final path of points for drone to follow.
 #hello
 
-#todo: Order the nodes along an arc so that when connecting points it doesnt go around from 5* to 40* to 20*
-  
+#todo: Modify goto point generation to take the photo size and change the width between goto points as needed. 
+
 '''
 #make-shift mines for testing. radius = 3 feet
 mine1 = Mine(rand.randrange(200), rand.randrange(200), 3)
@@ -34,25 +34,30 @@ class path:
         self.total_distance = 0 #linear distance
         self.total_arc_length = 0
         self.total_path_length = self.total_distance + self.total_arc_length
-        
-    def generate_goto_points(self, nodeList: Node, step: int = 10): #distance between points is 10 feet, subject to change. NOTE: has to be int.
+    
+    #def generate_goto_points(self, nodeList: Node, step: int = 10):
+    def generate_goto_points(self, nodeList: Node, overlap: float, photoWidth: float): #overlap is percent
+        step = photoWidth * (1-overlap) # distance between goto points (FEET)
         finalGotoList = []   
         segmentedList = []
         isArc = False
         for i in range(len(nodeList) - 1):
             n1 = nodeList[i] #first node
             n2 = nodeList[i + 1] #second node in each iteration
-
+            
+            connect = Connection(n1,n2)
             # linear gotos or floating points
-            if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
+            #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
+            if connect.connectionType == seg.LINE:
                 segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
-                
+                '''
                 dx = n2.x - n1.x
                 dy = n2.y - n1.y
                 distance = m.sqrt(dx**2 + dy**2)
-                self.total_distance += distance
+                '''
+                self.total_distance += connect.distance
                 
-                numPoints = max(1, int(distance / step)) # 1 is the min num of points --> subject to change.
+                numPoints = max(1, int(connect.distance / step)) # 1 is the min num of points --> subject to change.
                 x_vals = np.linspace(n1.x, n2.x, numPoints)
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
 
@@ -60,7 +65,8 @@ class path:
                     finalGotoList.append((float(x), float(y)))
             
             #arc gotos
-            elif n1.parentMine==n2.parentMine :
+            #elif n1.parentMine==n2.parentMine :
+            elif connect.connectionType == seg.ARC:
                 isArc = True
                 segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
                 
@@ -81,10 +87,10 @@ class path:
                     delta_theta += 2*m.pi
                 
                 #determine number of points based on arc length
-                arc_length = abs(delta_theta) * r 
-                self.total_arc_length += arc_length
+                #arc_length = abs(delta_theta) * r 
+                self.total_arc_length += connect.distance #arc_length
                 
-                numPoints = max(1, int(arc_length / step)) # 3 is the min num of points --> subject to change. #note to self: If I had done delta_theta/(pre-determined radian value), it would uniformly space number of points based on angle, but as radius changes, distance between generated points would vary. 
+                numPoints = max(1, int(connect.distance/ step)) # 3 is the min num of points --> subject to change. #note to self: If I had done delta_theta/(pre-determined radian value), it would uniformly space number of points based on angle, but as radius changes, distance between generated points would vary. 
                 
                 # Generate arc points
                 angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
@@ -94,7 +100,8 @@ class path:
                     finalGotoList.append((float(x), float(y)))
                     
       
-        #print("segment List:", segmentList)                    
+        #print("segment List:", segmentList)  
+        print(step)                  
         return finalGotoList, segmentedList 
     
     
@@ -104,7 +111,7 @@ class path:
         score = ((150000 * W) / ((1 + minesMissed) * L * (1 + 7 * flightMin + (100 * N))))
 
 
-#use node connections
+#set up 
 field = Field(0, 200, 0, 200)
 
 field.addMine(80, 30, 20) 
@@ -119,7 +126,6 @@ nodeList = []
 start=field.placeStartNode(180,0)
 end=field.placeEndNodes(190,2)
 
-
 newGraph=Graph(field.nodeGraph)
 nodeList=newGraph.shortest_path(start,end)
 field.plotField()
@@ -128,16 +134,17 @@ for mine in field.mines:
     nodeList.extend(mine.getNodes()) # gives all the nodes generated by adding the mines. 
 """
 
+#Function Calls
 pathObj = path()
-finalPath, segmentedList = pathObj.generate_goto_points(nodeList)  
-
+finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
 
 W = Mine.getRadius()
-N = 0 #ounces over 1 pound weight limit
-flightMin = 4
+N = 1 #ounces over 1 pound weight limit
+flightMin = 7  #worst case scenario
+minesMissed = 0
 L = pathObj.total_path_length
-score = pathObj.numScorePoints(flightMin, 0, L, W, N)
-print("This is the score: " + score)
+score = pathObj.numScorePoints(flightMin, minesMissed, L, W, N)
+print("This is the score: ", score)
 
 
 print("This is all the points:")
@@ -150,6 +157,7 @@ goto_y = [coord[1] for coord in finalPath]
 
 print(segmentedList)
 
+#Display
 fig, ax = plt.subplots()
 ax.set_aspect('equal')
 
