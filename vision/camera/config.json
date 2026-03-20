@@ -1,7 +1,6 @@
 {
    "mainRes": [2028, 1520],
    "loresRes": [507, 380],
-   "color": [0, 255, 0, 0],
    "confThreshold": 0.65,
    "modelPath": "/usr/share/imx500-models/imx500_network_ssd_mobilenetv2_fpnlite_320x320_pp.rpk",
    "useLores": false,
@@ -11,5 +10,5 @@
    "pathToMetadata": "./metadata",
    "droneAddress": "/dev/ttyUSB0",
    "baudRate": 921600,
-   "shutterSpeed": 1000
+   "shutterSpeed": 5000
 }
