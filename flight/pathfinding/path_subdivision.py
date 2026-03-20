@@ -110,6 +110,7 @@ class path:
         if (flightMin > 7): 
             score = 0
         score = ((150000 * W) / ((1 + minesMissed) * L * (1 + 7 * flightMin + (100 * N))))
+        return score
 
 
 #set up 
