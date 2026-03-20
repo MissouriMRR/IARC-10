@@ -14,7 +14,7 @@ radius = 32
 
 # NOTE: for some reason, running either one takes really long.
 # I have not altered the path_calculation file personally. - Jack
-pathFindingType = "none"  # dijkstra OR A* OR both OR none 
+pathFindingType = "A*"  # dijkstra OR A* OR both OR none 
 
 stepDebug = False # True if you want to step through mines being added, 
                   # closing the generated window moves onto to the next step.
@@ -51,18 +51,24 @@ for num in range(numMines):
     field.addMine(position[0],position[1],radius)
     
     print("added a mine")
-    print("done adding mines\n")
-    start = field.placeStartNode(0,yMin + (radius*1.5))
-    endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
-    
     if stepDebug:
         print("\nStep " + str(step))
         field.plotField()
     else:
         continue
+print("done adding mines\n")
+start = field.placeStartNode(0,yMin + (radius*1.5))
+endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
+
+
+print("Connecting nodes on same mine (PLEASE DON'T REMOVE AGAIN I BEG)")
+for mine in field.mines:
+    mine.connectMineNodes()
 if not stepDebug:
     field.plotField()
 
+dijkstraPathLength = 0
+aStarPathLength = 0
 if pathFindingType == "dijkstra" or pathFindingType == "both":
         print("Calculating dijkstra's")
         pathSolve = Graph(field.nodeGraph)
@@ -74,6 +80,9 @@ if pathFindingType == "dijkstra" or pathFindingType == "both":
         dijkstraPathLength = 0
         for i in range(len(path)-1):
             dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+
+        print(f"Dijkstra path length {dijkstraPathLength}")
+        print(f"Dijkstra path time {dijkstraTime}")
 if pathFindingType == "A*" or pathFindingType == "both":
     print("Calculating A*")
     def yMax(node):
@@ -83,16 +92,20 @@ if pathFindingType == "A*" or pathFindingType == "both":
     temp = time.time()
     aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
     aStarTime = time.time()-temp
-    print("A* path:",path)
+    print("A* path:",aStarPath)
 
 
     aStarPathLength = 0
     for i in range(len(aStarPath)-1):
         aStarPathLength += math.hypot((aStarPath[i].x-aStarPath[i+1].x),(aStarPath[i].y-aStarPath[i+1].y))
-    print(f" Best Path Length: {dijkstraPathLength} \n A* Path Length: {aStarPathLength} \n difference: {(aStarPathLength-dijkstraPathLength)}")
+    print(f"A* path length {aStarPathLength}")
+    print(f"A* path time {aStarTime}")
+    
+if pathFindingType=="both":
+    print(f" Best Path Length Difference: {(aStarPathLength-dijkstraPathLength)}")
     print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
     print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
     print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
-
+    
 field.increaseRadius(100)
 field.plotField()
