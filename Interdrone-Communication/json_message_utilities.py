@@ -9,9 +9,10 @@ class JsonMessageUtilities:
     @staticmethod
     def message_from_json(payload: str) -> Message:
         data = json.loads(payload)
-        message_id_value = data.get("messageId", data.get("id"))
+        messageIdValue = data.get("messageId", data.get("id"))
+
         return Message.create(
-            id=MessageType(message_id_value),
+            id=MessageType(messageIdValue),
             dronesToSendData=tuple(data.get("dronesToSendData", ())),
             data=data.get("data", {}),
         )
@@ -20,7 +21,7 @@ class JsonMessageUtilities:
     def message_to_json(message: Message) -> str:
         return json.dumps(
             {
-                "messageId": message.id.value,  # or "id" if your server expects that
+                "messageId": message.id.value,
                 "dronesToSendData": message.dronesToSendData,
                 "data": message.data,
             }
