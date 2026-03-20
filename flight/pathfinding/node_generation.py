@@ -441,6 +441,7 @@ class Field:
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
 
+    
     # Purely for debugging  
     def plotField(self,labeled:bool=False):
         plt = pyplot
@@ -576,8 +577,9 @@ class Mine:
     def removeNode(self,node):
         self.nodes.remove(node)
     def connectMineNodes(self):
-
+        
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
+        
         if len(sortedNodes)==0:
             return 0
 
@@ -751,7 +753,7 @@ class MineNode(Node):
                     self.x = (self.parentMine.radius) * np.cos(self.angle-np.pi) + self.parentMine.x
                     self.y = (self.parentMine.radius) * np.sin(self.angle) + self.parentMine.y
             
-            self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
+            
 
             self.x = round(self.x,3)
             self.y = round(self.y,3)
@@ -780,7 +782,8 @@ class MineNode(Node):
                 self.angle=internalAngle-(offsetAngle)
                 self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
-
+        
+        self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
         self.x = round(self.x,3)
         self.y = round(self.y,3)
 

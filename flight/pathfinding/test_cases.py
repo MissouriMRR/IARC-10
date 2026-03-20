@@ -59,7 +59,9 @@ for num in range(numMines):
 print("done adding mines\n")
 start = field.placeStartNode(0,yMin + (radius*1.5))
 endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
-
+#CONNECTS FLOATING NODES TOGETHER, DONT REMOVE
+for node in endPoints:
+    node.connectNode(start)
 
 print("Connecting nodes on same mine (PLEASE DON'T REMOVE AGAIN I BEG)")
 for mine in field.mines:
