@@ -59,6 +59,10 @@ class Server:
             # If message was read in, begin processing
             if message:
                 # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MessageType.SPEED_TEST_REQUEST FOR AN EXAMPLE
+
+                # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
+                messageSent = False
+
                 responseMessage: Message = self.serverDefaultResponseMessage
                 # Check for messageId and perform required operations
                 match message.id:
@@ -73,14 +77,13 @@ class Server:
                             newPort=int(message.data["Port"])
                         )
                     case MessageType.APP_DEBUG:
-                        responseMessage: Message = (
-                            JsonMessageUtilities.message_from_json(
-                                message.data["embeddedDebugMessage"]
-                            )
+                        print(message.data["embeddedDebugMessage"])
+                        writer.write(
+                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
                         )
-                        print(
-                            f"Created a debug message from sent message.\nOriginal Message: {message}\n\nDebug Message Created: {responseMessage}"
-                        )
+                        await writer.drain()
+                        messageSent = True
+
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:
@@ -95,13 +98,15 @@ class Server:
                         responseMessage = message
                     case _:
                         pass
-                # Convert responseMessage to string and send over
-                writer.write(
-                    (
-                        JsonMessageUtilities.message_to_json(responseMessage) + "\n"
-                    ).encode()
-                )
-                await writer.drain()
+                # Convert responseMessage to string and send over if message hasn't already been sent
+                if not messageSent:
+                    writer.write(
+                        (
+                            JsonMessageUtilities.message_to_json(responseMessage) + "\n"
+                        ).encode()
+                    )
+                    await writer.drain()
+
         except asyncio.TimeoutError:
             print("Client timeout - no data received")
         except asyncio.IncompleteReadError:
