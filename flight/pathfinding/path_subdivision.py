@@ -1,6 +1,6 @@
 import sys, os
-sys.path.append(os.path.abspath(".."))
-
+#sys.path.append(os.path.abspath(".."))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 import math as m
 import numpy as np
 import random as rand
@@ -33,7 +33,7 @@ class path:
     def __init__(self):
         self.total_distance = 0 #linear distance
         self.total_arc_length = 0
-        self.total_path_length = self.total_distance + self.total_arc_length
+        self.total_path_length = 0
     
     #def generate_goto_points(self, nodeList: Node, step: int = 10):
     def generate_goto_points(self, nodeList: Node, overlap: float, photoWidth: float): #overlap is percent
@@ -101,7 +101,8 @@ class path:
                     
       
         #print("segment List:", segmentList)  
-        print(step)                  
+        print(step)    
+        self.total_path_length = self.total_distance + self.total_arc_length       
         return finalGotoList, segmentedList 
     
     
@@ -119,12 +120,14 @@ field.addMine(70, 90, 20)
 field.addMine(140, 30, 20) 
 field.addMine(170, 100, 20)
 
+start=field.placeStartNode(180,0)
+end=field.placeEndNodes(190,2)
+
 for mine in field.mines:
     print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
     mine.connectMineNodes()
 nodeList = []
-start=field.placeStartNode(180,0)
-end=field.placeEndNodes(190,2)
+
 
 newGraph=Graph(field.nodeGraph)
 nodeList=newGraph.shortest_path(start,end)
@@ -138,7 +141,8 @@ for mine in field.mines:
 pathObj = path()
 finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
 
-W = Mine.getRadius()
+W = Mine.getRadius(Mine)
+print("radius", W)
 N = 1 #ounces over 1 pound weight limit
 flightMin = 7  #worst case scenario
 minesMissed = 0
@@ -147,15 +151,12 @@ score = pathObj.numScorePoints(flightMin, minesMissed, L, W, N)
 print("This is the score: ", score)
 
 
-print("This is all the points:")
-print(finalPath)
-
-print("goto x and goto y")
+#print("goto x and goto y")
 # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
 goto_x = [coord[0] for coord in finalPath]
 goto_y = [coord[1] for coord in finalPath]
+#print(segmentedList)
 
-print(segmentedList)
 
 #Display
 fig, ax = plt.subplots()
