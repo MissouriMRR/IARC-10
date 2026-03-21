@@ -9,7 +9,7 @@ from message_types import Message, MessageType
 from json_message_utilities import JsonMessageUtilities
 
 
-# Used by _connectionPool to store TCP connections to other servers.
+# Used by connectionPool to store TCP connections to other servers.
 @dataclass
 class PersistentConnection:
     reader: StreamReader
@@ -41,9 +41,12 @@ class Client:
         ] = ()  # Needs to be a tuple to align with dronesToSendData in Message class
 
         # Variables used
-        self._connectionPool: dict[tuple[str, int], PersistentConnection] = {}
-        self._connectionIdleTimeoutSec: float = 30.0
-        self._lastCleanupTime: float = time.monotonic()
+        self.connectionPool: dict[tuple[str, int], PersistentConnection] = {}
+        self.connectionIdleTimeoutSec: float = 30.0
+        self.lastCleanupTime: float = time.monotonic()
+
+        # Cap concurrent per message handlers to avoid unbounded task buildup (buildup kills performance).
+        self.maxInFlightMessageTasks: int = 6
 
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
@@ -78,6 +81,19 @@ class Client:
                 handledMessage = True
                 # Get new message from clientInData
                 message: Message = await self.clientInData.get()
+
+                # If too many messages tasks are currently running, wait for one to finish before adding next one
+                while len(clientMessageTasks) >= self.maxInFlightMessageTasks:
+                    done, _ = await asyncio.wait(
+                        clientMessageTasks,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    # Consume task exceptions so they do not get logged as un-retrieved.
+                    for finishedTask in done:
+                        try:
+                            finishedTask.result()
+                        except Exception:
+                            pass
                 # Create a background task to handle this message (allows for asynchronous messaging)
                 clientMessageTask = asyncio.create_task(self.handle_message(message))
                 clientMessageTasks.add(clientMessageTask)
@@ -269,7 +285,7 @@ class Client:
         self, serverIP: str, serverPort: int
     ) -> PersistentConnection:
         key = (serverIP, serverPort)
-        conn = self._connectionPool.get(key)
+        conn = self.connectionPool.get(key)
 
         # If connection already exists, return it
         if conn is not None and not conn.writer.is_closing():
@@ -286,13 +302,13 @@ class Client:
             lock=asyncio.Lock(),
             lastUsed=time.monotonic(),
         )
-        self._connectionPool[key] = conn
+        self.connectionPool[key] = conn
         return conn  # Return new connections
 
     # Used to kill a TCP connection to a specific ip and port
     async def _drop_connection(self, serverIP: str, serverPort: int) -> None:
         key = (serverIP, serverPort)
-        conn = self._connectionPool.pop(key, None)
+        conn = self.connectionPool.pop(key, None)
         if conn is None:
             return
         conn.writer.close()
@@ -303,16 +319,16 @@ class Client:
         now = time.monotonic()
 
         # Only perform cleanup every 5 seconds (saves performance)
-        if now - self._lastCleanupTime < 5.0:
+        if now - self.lastCleanupTime < 5.0:
             return
-        self._lastCleanupTime = now
+        self.lastCleanupTime = now
 
         keysToClose: list[tuple[str, int]] = []
-        for key, conn in self._connectionPool.items():
+        for key, conn in self.connectionPool.items():
             # If connection is closing or is over idle time, flag connection to be closed
             if (
                 conn.writer.is_closing()
-                or (now - conn.lastUsed) > self._connectionIdleTimeoutSec
+                or (now - conn.lastUsed) > self.connectionIdleTimeoutSec
             ):
                 keysToClose.append(key)
 
@@ -323,7 +339,7 @@ class Client:
     # Called when program ends to close all connections
     # TODO INTEGRATE THIS WHEN WE CREATE A SHUTDOWN STATE!!!
     async def close_all_connections(self) -> None:
-        keys = list(self._connectionPool.keys())
+        keys = list(self.connectionPool.keys())
         for serverIP, serverPort in keys:
             await self._drop_connection(serverIP, serverPort)
 
