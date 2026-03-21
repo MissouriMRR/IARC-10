@@ -49,29 +49,32 @@ class Server:
     # Handle individual client connections
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
-            # Read all data from client until end of data char (\n)
-            byteMessage = await reader.readuntil(b"\n")
-            # Convert Message to json
-            message: Message = JsonMessageUtilities.message_from_json(
-                byteMessage.decode()
-            )
+            while True:
+                try:
+                    byteMessage = await reader.readuntil(b"\n")
+                except asyncio.IncompleteReadError:
+                    break
+                except EOFError:
+                    break
 
-            # If message was read in, begin processing
-            if message:
+                message: Message = JsonMessageUtilities.message_from_json(
+                    byteMessage.decode()
+                )
+
+                # If message was read in, begin processing
+                if not message:
+                    continue
+
                 # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MessageType.SPEED_TEST_REQUEST FOR AN EXAMPLE
+                responseMessage: Message = self.serverDefaultResponseMessage
 
                 # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
                 messageSent = False
 
-                responseMessage: Message = self.serverDefaultResponseMessage
-                # Check for messageId and perform required operations
                 match message.id:
-                    # App test message
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
-                    # App config message
                     case MessageType.APP_CONFIG:
-                        # Set json config app fields based on received data here
                         self.jsonConfigData.set_app_ip(newIP=str(message.data["IP"]))
                         self.jsonConfigData.set_app_port(
                             newPort=int(message.data["Port"])
@@ -87,14 +90,8 @@ class Server:
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:
-                        # Set final upload time when server receives
-                        # Note: We use perf_counter for high precision. While this value is local to the server, the client will use (initialDownloadTime - finalUploadTime) to calculate server processing time.
                         message.data["finalUploadTime"] = time.perf_counter()
-
-                        # Set initial download time when server sends response
                         message.data["initialDownloadTime"] = time.perf_counter()
-
-                        # Echo back the message with timing data
                         responseMessage = message
                     case _:
                         pass
@@ -114,7 +111,6 @@ class Server:
         except Exception as e:
             print(f"Error handling client: {e}")
         finally:
-            # Close the connection
             writer.close()
             await writer.wait_closed()
 

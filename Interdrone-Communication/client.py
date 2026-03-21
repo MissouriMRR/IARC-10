@@ -1,10 +1,21 @@
 from asyncio.queues import Queue
 from json_config_reader import JsonConfigReader
+from asyncio import StreamReader, StreamWriter
+from dataclasses import dataclass
 
 import time
 import asyncio
 from message_types import Message, MessageType
 from json_message_utilities import JsonMessageUtilities
+
+
+# Used by _connectionPool to store TCP connections to other servers.
+@dataclass
+class PersistentConnection:
+    reader: StreamReader
+    writer: StreamWriter
+    lock: asyncio.Lock
+    lastUsed: float
 
 
 class Client:
@@ -28,6 +39,11 @@ class Client:
         self.otherDronesIds: tuple[
             int, ...
         ] = ()  # Needs to be a tuple to align with dronesToSendData in Message class
+
+        # Variables used
+        self._connectionPool: dict[tuple[str, int], PersistentConnection] = {}
+        self._connectionIdleTimeoutSec: float = 30.0
+        self._lastCleanupTime: float = time.monotonic()
 
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
@@ -56,8 +72,10 @@ class Client:
         # Keep track of background clientMessageTasks
         clientMessageTasks: set[asyncio.Task[None]] = set()
         while True:
+            handledMessage = False
             # Check for new message from clientInData
             while not self.clientInData.empty():
+                handledMessage = True
                 # Get new message from clientInData
                 message: Message = await self.clientInData.get()
                 # Create a background task to handle this message (allows for asynchronous messaging)
@@ -67,8 +85,12 @@ class Client:
                     clientMessageTasks.discard
                 )  # Clean up completed tasks
 
-            # Wait 0.05 second before checking for next message
-            await asyncio.sleep(0.001)
+            # Remove any idle TCP connections
+            await self._cleanup_idle_connections()
+
+            # If no message was handled, pause briefly to avoid busy-waiting.
+            if not handledMessage:
+                await asyncio.sleep(0.001)
 
     # Create messageTasks to send data to all other drones
     async def handle_message(self, message: Message):
@@ -130,48 +152,44 @@ class Client:
         self, serverIP: str, serverPort: int, clientMessageDump: str
     ) -> str:
         try:
-            # Open async connection with timeout
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(serverIP, serverPort), timeout=1.0
-            )
+            # Get the connection passed in ip and port
+            conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            # Send data with end of data char (\n)
-            writer.write((clientMessageDump + "\n").encode())
-            await writer.drain()
+            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+                conn.writer.write((clientMessageDump + "\n").encode())
+                await conn.writer.drain()
 
-            # Receive response and decode
-            serverResponseBytes = await asyncio.wait_for(
-                reader.readuntil(b"\n"), timeout=2.0
-            )
+                serverResponseBytes = await asyncio.wait_for(
+                    conn.reader.readuntil(b"\n"), timeout=2.0
+                )
+                conn.lastUsed = time.monotonic()  # Needed for dropping idle connections
+
             serverResponseDump: str = serverResponseBytes.decode()
-
-            # Close connection
-            writer.close()
-            await writer.wait_closed()
-
-            # Call process_client_data
             await self.process_client_data(
                 clientMessageDump, serverResponseDump, serverIP, serverPort
             )
+            return serverResponseDump
 
-            return serverResponseBytes.decode()
-
-        except asyncio.TimeoutError:
-            # NOTE: In the future if you need the client to resend a message after a timeout view commit history,
-            # 671f673486ea4c57ad2320c1506bafef70aa5e15 to see how we did it for the deprecated startup message
-            # print(f"Timeout error! {e}")
-            # TODO add resend functionality here for app as needed
+        except (
+            asyncio.TimeoutError,
+            asyncio.IncompleteReadError,
+            ConnectionResetError,
+            BrokenPipeError,
+        ):
+            await self._drop_connection(serverIP, serverPort)
             if self.rangeTestEnabled:
                 print(
                     f"Timeout error sending data from drone #{self.jsonConfigData.get_self_id()} to #{serverPort - 5000}"
                 )
-            return "timeout"  # NOTE could be bad
-            # raise Exception(f"Timeout connecting to {serverIP}:{serverPort}")
+            return "timeout"
+
         except ConnectionRefusedError as e:
+            await self._drop_connection(serverIP, serverPort)
             print(f"ConnectionRefusedError: {e}")
-            return str(e)  # NOTE could be bad
-            # raise Exception(f"Connection refused by {serverIP}:{serverPort}")
+            return str(e)
+
         except Exception as e:
+            await self._drop_connection(serverIP, serverPort)
             raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
 
     async def process_client_data(
@@ -245,6 +263,69 @@ class Client:
             case _:
                 # If no message ID, return server response data
                 await self.clientOutData.put(item=serverResponse)
+
+    # Used to get or create a TCP connection to a specific ip and port
+    async def _get_or_create_connection(
+        self, serverIP: str, serverPort: int
+    ) -> PersistentConnection:
+        key = (serverIP, serverPort)
+        conn = self._connectionPool.get(key)
+
+        # If connection already exists, return it
+        if conn is not None and not conn.writer.is_closing():
+            conn.lastUsed = time.monotonic()
+            return conn
+
+        # Else, establish a new connection
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(serverIP, serverPort), timeout=1.0
+        )
+        conn = PersistentConnection(
+            reader=reader,
+            writer=writer,
+            lock=asyncio.Lock(),
+            lastUsed=time.monotonic(),
+        )
+        self._connectionPool[key] = conn
+        return conn  # Return new connections
+
+    # Used to kill a TCP connection to a specific ip and port
+    async def _drop_connection(self, serverIP: str, serverPort: int) -> None:
+        key = (serverIP, serverPort)
+        conn = self._connectionPool.pop(key, None)
+        if conn is None:
+            return
+        conn.writer.close()
+        await conn.writer.wait_closed()
+
+    # Drops connections that are closing or have been idle > 30s
+    async def _cleanup_idle_connections(self) -> None:
+        now = time.monotonic()
+
+        # Only perform cleanup every 5 seconds (saves performance)
+        if now - self._lastCleanupTime < 5.0:
+            return
+        self._lastCleanupTime = now
+
+        keysToClose: list[tuple[str, int]] = []
+        for key, conn in self._connectionPool.items():
+            # If connection is closing or is over idle time, flag connection to be closed
+            if (
+                conn.writer.is_closing()
+                or (now - conn.lastUsed) > self._connectionIdleTimeoutSec
+            ):
+                keysToClose.append(key)
+
+        # Close all connections flagged above
+        for serverIP, serverPort in keysToClose:
+            await self._drop_connection(serverIP, serverPort)
+
+    # Called when program ends to close all connections
+    # TODO INTEGRATE THIS WHEN WE CREATE A SHUTDOWN STATE!!!
+    async def close_all_connections(self) -> None:
+        keys = list(self._connectionPool.keys())
+        for serverIP, serverPort in keys:
+            await self._drop_connection(serverIP, serverPort)
 
     # Helper method to run the async client
     def run(self):
