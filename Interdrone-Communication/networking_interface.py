@@ -3,7 +3,6 @@ from asyncio.queues import Queue
 from asyncio.queues import Queue as AsyncQueue
 import asyncio
 import concurrent.futures
-from typing import Any
 
 from message_types import Message
 
@@ -33,16 +32,7 @@ class NetworkingInterface:
 
     # Check if client input queue is empty
     def is_client_in_empty(self) -> bool:
-        future = asyncio.run_coroutine_threadsafe(
-            self.check_queue_empty(self.clientIn), self.loop
-        )
-        return future.result(
-            timeout=1.0
-        )  # May be better to use a enum value here for timeout
-
-    # Used in is_client_in_empty
-    async def check_queue_empty(self, q: AsyncQueue[Any]) -> bool:
-        return q.empty()
+        return self.clientIn.empty()
 
     # Try to get a response from client
     def try_get_client_response(self, timeout: float = 0.0) -> Message | None:
