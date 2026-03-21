@@ -405,7 +405,7 @@ def log_data(
 
                 # Get processor usage (takes 2 seconds to run due to delay from top)
                 result = subprocess.run(
-                    ["top", "-bn 2"], capture_output=True, text=True, check=True
+                    ["top", "-b", "-n", "2"], capture_output=True, text=True, check=True
                 )  # Note: top can be inaccurate. If the CPU is under heavy load it can produce inaccurate results
 
                 for line in result.stdout.splitlines():
