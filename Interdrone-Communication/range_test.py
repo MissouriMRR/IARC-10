@@ -412,7 +412,7 @@ def log_data(
                     if line.startswith("%Cpu(s):"):
                         parts = line.split()
                         cpuLoad = parts[1]
-                print(f"CPU Usage: {cpuLoad}")
+                print(f"CPU Usage: {cpuLoad}%")
             except Exception as e:  # Exceptions are likely due to code running powershell and not a linux based cli
                 print(e)
 

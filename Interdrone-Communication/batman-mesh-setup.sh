@@ -2,6 +2,17 @@
 # B.A.T.M.A.N. Mesh Network Setup Script
 # Finds USB WiFi adapter and configures it for ad-hoc mesh networking
 
+
+# Extract Pi number from hostname (mrrdt-#)
+HOSTNAME=$(hostname)
+PI_NUMBER=$(echo "$HOSTNAME" | grep -oP 'mrrdt-\K\d+')
+
+# Add user's local bin to PATH
+export PATH="/root/.local/bin:/home/${HOSTNAME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Move to Interdrone-Communication Directory
+cd "/home/${HOSTNAME}/IARC-10/Interdrone-Communication/" || exit 1
+
 # Log file for debugging
 LOG_FILE="/var/log/batman-mesh-setup.log"
 
@@ -101,7 +112,7 @@ ip link set "$UAIN" up
 sleep 2
 
 log_message "Joining ad-hoc mesh network..."
-iw dev "$UAIN" ibss join my-batman-mesh 5200 HT20 fixed-freq 02:ca:fe:ca:ca:40
+iw dev "$UAIN" ibss join my-batman-mesh 5200 02:ca:fe:ca:ca:40
 
 # Small delay before adding to batman
 sleep 2
@@ -112,9 +123,7 @@ batctl if add "$UAIN"
 log_message "Bringing bat0 interface up..."
 ip link set bat0 up
 
-# Extract Pi number from hostname (mrrdt-#)
-HOSTNAME=$(hostname)
-PI_NUMBER=$(echo "$HOSTNAME" | grep -oP 'mrrdt-\K\d+')
+
 
 if [ -z "$PI_NUMBER" ]; then
     log_message "WARNING: Could not extract Pi number from hostname '$HOSTNAME'"
