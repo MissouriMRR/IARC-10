@@ -8,7 +8,7 @@ Use this file for getting the node graph.
 This will generate 10 (or however many you want) mines that are placed. 
 The output will be at the bottom.
 """
-seed(2020) # make random or not
+# seed(2020) # make random or not
 numMines = 3
 radius = 32
 
@@ -20,7 +20,7 @@ stepDebug = False # True if you want to step through mines being added,
                   # closing the generated window moves onto to the next step.
                   # NOTE:In order to fully end the program you need to run ctrl+C in the terminal
                   # or fully iterate through numMines times
-labeled = True
+labeled = False
 if numMines >= 20:
     xMin = -numMines*radius
     xMax = numMines*radius
