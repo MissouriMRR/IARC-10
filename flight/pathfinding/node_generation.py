@@ -511,6 +511,7 @@ class Field:
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
 
+    
     # Purely for debugging  
     def plotField(self,labeled:bool=False,title:str="Mines and Potential Paths",xlabel:str="") -> None:
         plt = pyplot
@@ -581,7 +582,7 @@ class Field:
 
     def increaseRadius(self,step): 
         shallowCopy=self.nodeGraph.copy()
-        # Check if any of the other node connections pass through the newly created mine.
+        #Delete all arc connections
         for node1 in shallowCopy.keys():
            deepCopy=shallowCopy[node1].copy()
            for node2 in deepCopy:
@@ -591,14 +592,14 @@ class Field:
         
         for mine in self.mines:
             mine.radius+=step
-
+        Mine.radius+=step
 
         shallowCopy=self.nodeGraph.copy()
         for node1 in shallowCopy:
             if(node1.parentMine!=None):
-                print("this worked")
-                node1.refreshLocation()
-        # Check all other nodes Excluding newly created nodes if they intersect newly created Mine
+                
+                node1.calculateAndAssignPosition()
+        #Delete all invalid connections
         for node1 in shallowCopy:
            deepCopy=shallowCopy[node1].copy()
            for node2 in deepCopy:
@@ -606,6 +607,10 @@ class Field:
                 if(not(oldConnection.validPath())):
                     print(f"deleting {oldConnection}")
                     oldConnection.deleteConnection()
+
+        for mine in self.mines:
+            mine.connectMineNodes()
+        
 
 """MATH STUFF"""
 # Mine class keeps track of mine position and radii      
@@ -652,8 +657,9 @@ class Mine:
     def removeNode(self,node):
         self.nodes.remove(node)
     def connectMineNodes(self):
-
+        
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
+        
         if len(sortedNodes)==0:
             return 0
 
@@ -760,94 +766,7 @@ class MineNode(Node):
         self.connectedToFloating = connectedToFloating
         self.floatingNode = floatingNode
 
-        if not connectedToFloating:  # MineNode will have slightly different variables depending on this
-
-            # categorize nodes
-            if internal and primary:
-                self.type = 'internal primary'
-            elif internal and not primary:
-                self.type = 'internal secondary'
-            elif not internal and primary:
-                self.type = 'external primary'
-            elif not internal and not primary:
-                self.type = 'external secondary'
-
-            d = np.sqrt((parentMine.x-targetMine.x)**2+(parentMine.y-targetMine.y)**2) # Algabraic Distance Formula
-
-            self.internal = internal
-            self.primary= primary # Primary node is the first node where it is placed 
-                                # (typically towards the top of the circle)
-            # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
-            # Formula is: arccos(x1-x2)/d+pi
-        
-            if parentMine.y > targetMine.y:
-                offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-            elif parentMine.y < targetMine.y:
-                offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-            elif parentMine.y == targetMine.y:
-                if parentMine.x < targetMine.x:
-                    offsetAngle =  np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-                elif parentMine.x > targetMine.x:
-                    offsetAngle = -np.arccos(np.clip((parentMine.x-targetMine.x)/d,-1,1))+np.pi
-            
-            # Offset Angle is the same for internal and external bitangents
-            if internal:
-                # Create internal angle
-                internalArccosParameter = ((parentMine.radius)+(targetMine.radius))/d
-                internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
-                
-                if primary:
-                    self.angle=internalAngle+offsetAngle
-                    self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
-                    self.y = ((parentMine.radius) * np.sin(self.angle)) + parentMine.y
-                else:
-                    self.angle=internalAngle-(offsetAngle)
-                    self.x = (parentMine.radius) * np.cos(self.angle) + parentMine.x
-                    self.y = (parentMine.radius) * np.sin(self.angle+np.pi) + parentMine.y               
-            else:
-                # Create external angle
-                externalArccosParameter = (parentMine.radius-targetMine.radius)/d
-                externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
-
-                if primary:
-                    self.angle=externalAngle+offsetAngle
-                    self.x = ((parentMine.radius) * np.cos(self.angle)) + parentMine.x
-                    self.y = ((parentMine.radius) * np.sin(self.angle)) + parentMine.y
-                else:
-                    self.angle=externalAngle-offsetAngle+np.pi
-                    self.x = (parentMine.radius) * np.cos(self.angle-np.pi) + parentMine.x
-                    self.y = (parentMine.radius) * np.sin(self.angle) + parentMine.y
-            
-            self.angle=np.atan2(self.y-parentMine.y,self.x-parentMine.x)
-
-            self.x = round(self.x,3)
-            self.y = round(self.y,3)
-
-        else: # This assumes there is no targetMine, only a parentMine,primary, and floatingNode
-            d = np.sqrt((self.parentMine.x-self.floatingNode.x)**2+(self.parentMine.y-self.floatingNode.y)**2) # Algabraic Distance Formula
-            internalArccosParameter = ((self.parentMine.radius))/d
-            internalAngle = np.arccos(np.clip(internalArccosParameter,-1,1))
-            
-            
-            if self.parentMine.y > self.floatingNode.y:
-                offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.floatingNode.x)/d,-1,1))+np.pi
-            elif self.parentMine.y < self.floatingNode.y:
-                offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.floatingNode.x)/d,-1,1))+np.pi
-            elif self.parentMine.y == self.floatingNode.y:
-                if self.parentMine.x < self.floatingNode.x:
-                    offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.floatingNode.x)/d,-1,1))+np.pi
-                elif self.parentMine.x > self.floatingNode.x:
-                    offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.floatingNode.x)/d,-1,1))+np.pi
-
-            if primary:
-                self.angle=internalAngle+offsetAngle
-                self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
-                self.y = ((parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
-            else:
-                self.angle=internalAngle-(offsetAngle)
-                self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
-                self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
-
+        self.calculateAndAssignPosition()
         
         super().__init__(self.x,self.y,False,angle=self.angle,name=self.name)
         self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
@@ -856,12 +775,24 @@ class MineNode(Node):
         else:
             self.name = name
     
-    # Very near duplicate of _init_
-    def refreshLocation(self):
-        if not self.connectedToFloating:
+    def calculateAndAssignPosition(self):
+        
+        if not self.connectedToFloating:  # MineNode will have slightly different variables depending on this
+
+            # categorize nodes
+            if self.internal and self.primary:
+                self.type = 'internal primary'
+            elif self.internal and not self.primary:
+                self.type = 'internal secondary'
+            elif not self.internal and self.primary:
+                self.type = 'external primary'
+            elif not self.internal and not self.primary:
+                self.type = 'external secondary'
+
             d = np.sqrt((self.parentMine.x-self.targetMine.x)**2+(self.parentMine.y-self.targetMine.y)**2) # Algabraic Distance Formula
 
-
+            # Primary node is the first node where it is placed 
+             # (typically towards the top of the circle)
             # Create Angle Offset(relative to target mine). It changes slightly depending on mines' positions
             # Formula is: arccos(x1-x2)/d+pi
         
@@ -874,7 +805,7 @@ class MineNode(Node):
                     offsetAngle =  np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
                 elif self.parentMine.x > self.targetMine.x:
                     offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
-
+            
             # Offset Angle is the same for internal and external bitangents
             if self.internal:
                 # Create internal angle
@@ -888,23 +819,25 @@ class MineNode(Node):
                 else:
                     self.angle=internalAngle-(offsetAngle)
                     self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
-                    self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
-                
+                    self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y               
             else:
                 # Create external angle
-                externalArccosParameter = self.parentMine.radius-self.targetMine.radius/d
+                externalArccosParameter = (self.parentMine.radius-self.targetMine.radius)/d
                 externalAngle = np.arccos(np.clip(np.abs(externalArccosParameter),-1,1))
 
                 if self.primary:
                     self.angle=externalAngle+offsetAngle
-                    self.x = ((self.parentMine.radius) * np.cos(self.angle)) + self.parentMine.x
+                    self.x = ((self.parentMine.radius) * np.cos(self.angle)) +self.parentMine.x
                     self.y = ((self.parentMine.radius) * np.sin(self.angle)) + self.parentMine.y
                 else:
                     self.angle=externalAngle-offsetAngle+np.pi
                     self.x = (self.parentMine.radius) * np.cos(self.angle-np.pi) + self.parentMine.x
-                    self.y = (self.parentMine.radius) * np.sin(self.angle) +self.parentMine.y
+                    self.y = (self.parentMine.radius) * np.sin(self.angle) + self.parentMine.y
             
-            self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
+            
+
+            self.x = round(self.x,3)
+            self.y = round(self.y,3)
 
         else: # This assumes there is no targetMine, only a parentMine,primary, and floatingNode
             d = np.sqrt((self.parentMine.x-self.floatingNode.x)**2+(self.parentMine.y-self.floatingNode.y)**2) # Algabraic Distance Formula
@@ -930,7 +863,8 @@ class MineNode(Node):
                 self.angle=internalAngle-(offsetAngle)
                 self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
-
+        
+        self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
         self.x = round(self.x,3)
         self.y = round(self.y,3)
 

@@ -10,5 +10,25 @@
     "airsim_mode_config": {
         "mission_data_path": "flight/data/golf_data.json"
     },
-    "simple_takeoff": false
+    "simple_takeoff": false,
+    "app_opperable": false,
+    "current_drone_ID": 1,
+    "app_IP": 0,
+    "number_of_total_drones": 4,
+    "other_drone_info": [
+        {"id": 2, "IP": 1234},
+        {"id": 3, "IP": 1234},
+        {"id": 4, "IP": 1234}
+    ],
+    "mission_field_corners": [
+        {"lat": 36.021683, "lon": -95.941831},
+        {"lat": 36.020694, "lon": -95.941856},
+        {"lat": 36.021694, "lon": -95.942372},
+        {"lat": 36.020703, "lon": -95.942397}
+    ],
+    "start_coord": {
+        "lat": 36.021683,
+        "lon": -95.941831
+    },
+    "max_flight_height": 10
 }

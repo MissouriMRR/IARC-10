@@ -43,6 +43,13 @@ class MissionConfig(TypedDict):
     sim_mode_config: SimModeConfig
     airsim_mode_config: SimModeConfig
     simple_takeoff: bool
+    app_opperable: bool
+    current_drone_ID: int
+    other_drone_info: tuple[dict[int, int], dict[int, int], dict[int, int]]
+    mission_field_corners: tuple[dict[float, float], dict[float, float], dict[float, float], dict[float, float]]
+    start_coord: dict[float, float]
+    max_flight_height: float
+
 
 
 def get_mission_config() -> MissionConfig:
