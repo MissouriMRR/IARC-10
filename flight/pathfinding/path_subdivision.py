@@ -121,7 +121,7 @@ field.addMine(70, 90, 20)
 field.addMine(140, 30, 20) 
 field.addMine(170, 100, 20)
 
-start=field.placeStartNode(180,0)
+start=field.placeStartNode(110,0)
 end=field.placeEndNodes(190,2)
 
 for node in end:
