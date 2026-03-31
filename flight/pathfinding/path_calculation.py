@@ -98,8 +98,6 @@ class Graph:
             path.append(current_node)
             current_node = predecessors[current_node]
             
-           
-
         # reversing path and returning it
         path.reverse()
 
