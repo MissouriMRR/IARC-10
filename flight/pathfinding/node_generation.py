@@ -235,6 +235,11 @@ class Connection:
                     #     Field.debugPoints.append(midPoint)
                     # Checking for hugging edges
                     validEdge = self.validHuggingEdge(midPoints,intersectionPoints,mine)
+                    
+                    if self.arcDirection != None:
+                        print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
+                        print("Direction:",self.arcDirection)
+
                     return validEdge
         
         return True
@@ -303,7 +308,7 @@ class Connection:
             midpointY = midpoint[1]
             if (node1.y != node2.y): # Compare y-values so long as they are not the same
                 if cross > 0: # Clockwise
-                    print(node1.getPos(),"\n",midpoint)
+                    # print(node1.getPos(),"\n",midpoint)
                     # Check if midpoint itself is in the target mine radius.
                     if np.sqrt((midpoint[0]-targetMine.x)**2 + (midpoint[1]-targetMine.y)**2) < Mine.radius:
                         return False
@@ -311,13 +316,22 @@ class Connection:
                     # Check each intersection point, there should only be 2, so the loop only runs twice.
                     for intersect in intersectionPoints:
                         intersectX = intersect[0]
-                        intersectY = intersect[1]
                         
-                        # Check if midpoint is between node1 to midpoint, and midpoint to node2
-                        if (midpointY <= intersectY <= node2.y) or (node1.y <= intersectY <= midpointY):
-                            return False
-                    self.arcDirection = "clockwise"
+                        intersectY = intersect[1]
 
+                        # Constrict midpoint bounds to between left/right most node and the furthest edge of mine
+                        if midpointX < mine.x:
+                            xLowBound = mine.x - Mine.radius
+                            xUpperBound = max(node1.x,node2.x)
+                        elif midpointX > mine.x:
+                            xLowBound = min(node1.x,node2.x)
+                            xUpperBound = mine.x + Mine.radius
+
+                        # Check if midpoint is between node1 to midpoint, and midpoint to node2
+                        if (xLowBound <= midpointX <= xUpperBound):
+                            if (midpointY <= intersectY <= node2.y) or (node1.y <= intersectY <= midpointY):
+                                return False
+                    self.arcDirection = "clockwise"
                     return True
                 elif cross < 0: # Counterclockwise
                     pass
@@ -336,23 +350,16 @@ class Connection:
                 else:
                     # This should never happen
                     pass
-            print("cross",cross)
-            print("node1 at", node1.getPos())
-            print("|")
-            print("v")
-            print("midpoint at", (float(midpoint[0]),float(midpoint[1])))
-            print("|")
-            print("v")
-            print("node2 at", node2.getPos(),"\n")
+            
         for point in midPoints:
             Field.debugPoints.append(point)
         node1.labeled = True
         node2.labeled = True
         # for point in intersectionPoints:
         #     Field.debugPoints.append(point)
-
-        print(node1, "at", node1.getPos(), "->" , node2, "at", node2.getPos())
-        print("Direction:",self.arcDirection)
+        # if self.arcDirection != None:
+        #     print(node1, "at", node1.getPos(), "->" , node2, "at", node2.getPos())
+        #     print("Direction:",self.arcDirection)
         return True
     """Generating the points where mines intersect"""
     @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
