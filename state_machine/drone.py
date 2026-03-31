@@ -198,13 +198,14 @@ class Drone:
             Altitude to reach in meters
         """
         logging.info("Using takeoff altitude of %f m", takeoff_alt)
-        self.vehicle.simple_takeoff(takeoff_alt + 1.5)  # Add 5ft for margin of error
+        self.vehicle.simple_takeoff(takeoff_alt + 1.5)  # Add 5ft for margin of error (Alt is measured in meters by drone kit tho?)
 
         # Verify vehicle reaches target altitude
         while self.vehicle.location.global_relative_frame.alt < takeoff_alt:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5) # ALTITUDE IS IN METERS
         logging.info("Reached target altitude (%f m).", takeoff_alt)
 
+    # See the recall function at the bottom, we might remove this function as its specific to SAUS
     async def return_to_launch(self) -> None:
         """
         Method to move vehicle above home location, then descend vertically.
@@ -229,7 +230,7 @@ class Drone:
         self.vehicle.mode = dronekit.VehicleMode("RTL")
         logging.info("Descending...")
         while (
-            self.vehicle.location.global_relative_frame.alt > 0.2
+            self.vehicle.location.global_relative_frame.alt > 0.2 # ALTITUDE IS IN METERS
         ):  # Ensure drone gets within 8in above ground
             await asyncio.sleep(0.5)
         logging.info("Reached ground.")
@@ -273,7 +274,7 @@ class Drone:
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
 
-    def goto(self, coords: tuple[int, int]):
+    def convert_goto(self, coords: tuple[int, int]):
         pass
 
     def setFieldSize(self, xMin, xMax, yMin, yMax):
@@ -281,16 +282,13 @@ class Drone:
 
     def completeTasks(self):
         for i in range(len(self.tasks)):
-            self.goto(self.tasks[i])
+            self.convert_goto(self.tasks[i])
             photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
             self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
     
     #Smart landing sequence, Should be usable in final product!!
-    def recall(self):
+    async def recall(self):
         if (self.field_size[0] - self.x < self.field_size[1] - self.y):
-            self.goto(self, [self.field_size[0]*round(self.x / self.field_size[0]), self.y])
-            # Land
+            self.convert_goto(self, [self.field_size[0]*round(self.x / self.field_size[0]), self.y], 23)
         else:
-            self.goto(self, [self.x, self.field_size[1]*round(self.y / self.field_size[1])])
-            # Land
-
+            self.convert_goto(self, [self.x, self.field_size[1]*round(self.y / self.field_size[1])], 23)
