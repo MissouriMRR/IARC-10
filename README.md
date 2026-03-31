@@ -9,13 +9,14 @@
 
 "real_mode_config": {
 ___"mission_data_path": **[String path to the mission data json file]** *not sure the exact function of this file but its important*
-},
+}
 "sim_mode_config": {
 ___"mission_data_path": **[String path to the mission data json file]** *same as the above*
-},
+}
+
 "airsim_mode_config": {
 ___"mission_data_path": **[String path to the mission data json file]** *same as the above*
-},
+}
 
 "simple_takeoff": **bool** *What type of take off should be used*
 
@@ -30,7 +31,7 @@ ___"mission_data_path": **[String path to the mission data json file]** *same as
 "other_drone_info": [
 ___{"id": **int** *The "other" drone's ID int*, "IP": **int IP of the target drone** *What's the IP of the Drone associated with this ID*} 
 ___*Copy the above format for each drone and add to this list of objects*
-],
+]
 
 "mission_field_corners": [
 ___{"lat": **float** *take a wild guess*, "lon": **float** *take a wild guess*}, **1**
@@ -43,7 +44,7 @@ ___**|         |**
 ___**|         |**
 ___**3--start--4**
 ___*ALSO CHECK THE COORDS IN GOOGLE EARTH BEFORE IMPLEMENTATION*
-],
+]
 
 "start_coord": {
 ___"lat": **float** *take a wild guess*,
