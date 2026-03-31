@@ -53,9 +53,13 @@
 ---**IMPORTANT** *The order the points go in needs to match the following:*
 
 ---**1---end---2**
----**|//#########|**
----**|//#########|**
+
+---**|         |**
+
+---**|         |**
+
 ---**3--start--4**
+
 ---*ALSO CHECK THE COORDS IN GOOGLE EARTH BEFORE IMPLEMENTATION*
 
 ]
