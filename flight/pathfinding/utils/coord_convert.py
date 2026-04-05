@@ -2,72 +2,108 @@ import numpy as np
 import math
 
 class SimToLatLonTransformer:
-    def __init__(self, corner_coords:tuple[tuple[float,float]], sim_side_lengths:tuple[int,int]):
-        self.sim_sides = sim_side_lengths
+    def __init__(self, corner_coords:tuple[tuple[float,float]], sim_width:float):
+
+
 
         '''
+        If angle 134 is acute, the local origin is placed at point 3, otherwise it is put on the projected line that comes from 34 and is directly below point 1. This ensures that the entire minefield is in the first quadrant
         1----------2
         |          |
         |          |
-        3----------4
+        o3---------4
         '''
 
-        self.corner_coord_1 = corner_coords[0]
-        self.corner_coord_2 = corner_coords[1]
-        self.corner_coord_3 = corner_coords[2]
-        self.corner_coord_4 = corner_coords[3]
+        '''
+        1-------------2
+        |\\            |
+        | \\           |
+        o--3----------4
+        '''
 
-        self.scale = 1000 # sim to real
-        self.origin = self.corner_coord_3
-        self.offset_angle = -math.atan2(self.corner_coord_4[1]-self.corner_coord_3[1], self.corner_coord_4[0]-self.corner_coord_3[0]) # Real to sim CCW
-        angle = math.acos((np.subtract(self.corner_coord_4, self.corner_coord_3)@np.subtract(self.corner_coord_1, self.corner_coord_3)))
-        if angle > math.pi/2:
-            one_three_side_length = math.sqrt((self.corner_coord_1[0]-self.corner_coord_3[0])**2 + (self.corner_coord_1[0]-self.corner_coord_3[0])**2)
-            three_four_side_length = math.sqrt((self.corner_coord_4[0]-self.corner_coord_3[0])**2 + (self.corner_coord_4[0]-self.corner_coord_3[0])**2)
-            offset_length = one_three_side_length*math.cos(angle)
-            origin_transform_vector = (-offset_length*(self.corner_coord_4[0]-self.corner_coord_3[0])/three_four_side_length,-offset_length*(self.corner_coord_4[0]-self.corner_coord_3[0])/three_four_side_length)
-            self.origin = (self.origin[0]+origin_transform_vector[0],self.origin[1]+origin_transform_vector[1])
+        '''
+           1-------------2
+          /              |
+         /               |
+        o3---------------4
+        '''
 
-        print(angle)
-    
-    def sim_to_real_convert(self, sim_coord:tuple[int,int]):
-        segment_size_12 = [(self.corner_coord_2[0] - self.corner_coord_1[0])/self.sim_sides[0], (self.corner_coord_2[1] - self.corner_coord_1[1])/self.sim_sides[0]]
-        segment_size_34 = [(self.corner_coord_4[0] - self.corner_coord_3[0])/self.sim_sides[0], (self.corner_coord_4[1] - self.corner_coord_3[1])/self.sim_sides[0]]
-        segment_size_31 = [(self.corner_coord_1[0] - self.corner_coord_3[0])/self.sim_sides[1], (self.corner_coord_1[1] - self.corner_coord_3[1])/self.sim_sides[1]]
-        segment_size_42 = [(self.corner_coord_2[0] - self.corner_coord_4[0])/self.sim_sides[1], (self.corner_coord_2[1] - self.corner_coord_4[1])/self.sim_sides[1]]
+        # Using corner 3 as origin (0,0) in sim
+        self.origin_lat, self.origin_lon = corner_coords[2]
+        self.sim_w = sim_width
 
-        slider_point12 = [(self.corner_coord_1[0] + sim_coord[0]*segment_size_12[0]),(self.corner_coord_1[1] + sim_coord[0]*segment_size_12[1])]
-        slider_point34 = [(self.corner_coord_3[0] + sim_coord[0]*segment_size_34[0]),(self.corner_coord_3[1] + sim_coord[0]*segment_size_34[1])]
-        slider_point31 = [(self.corner_coord_3[0] + sim_coord[1]*segment_size_31[0]),(self.corner_coord_3[1] + sim_coord[1]*segment_size_31[1])]
-        slider_point42 = [(self.corner_coord_4[0] + sim_coord[1]*segment_size_42[0]),(self.corner_coord_4[1] + sim_coord[1]*segment_size_42[1])]
+        # Meters per degree at corner 3 latitude and longitude
+        self.m_per_lat = 111320.0
+        self.m_per_lon = 111320.0 * math.cos(math.radians(self.origin_lat))
 
-        x1,y1 = slider_point31
-        x2,y2 = slider_point42
-        x3,y3 = slider_point34
-        x4,y4 = slider_point12
+        # Convert 1-3 and 3-4 to meters from degrees
+        c1_lat, c1_lon = corner_coords[0]
+        c4_lat, c4_lon = corner_coords[3]
 
-        final_lon = (((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4)) / ((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4)))
-        final_lat = (((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4)) / ((x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4)))
+        # Vector components from point 3 to point 4
+        base_x = (c4_lon - self.origin_lon) * self.m_per_lon
+        base_y = (c4_lat - self.origin_lat) * self.m_per_lat
 
-        return final_lon, final_lat
-    
+        # Vector components from point 3 to point 1
+        dx13 = (c1_lon - self.origin_lon) * self.m_per_lon
+        dy13 = (c1_lat - self.origin_lat) * self.m_per_lat
+
+        # Find angle 134
+        self.angle_134 = math.acos(np.dot([base_x, base_y], [dx13, dy13])/(math.sqrt(base_x**2+base_y**2)*math.sqrt(dx13**2+dy13**2)))
+
+        # Move origin if angle 134 is obtuse
+        if self.angle_134 > math.pi/2:
+            one_three_side_length = math.sqrt(dx13**2 + dy13**2)
+            three_four_side_length = math.sqrt(base_x**2 + base_y**2)
+            offset_length = one_three_side_length*math.cos(self.angle_134)
+
+            # Project vector from 3 to 1 onto base
+            origin_transform_vector = (offset_length*(base_x)/three_four_side_length,offset_length*(base_y)/three_four_side_length)
+
+            # Move origin
+            self.origin_lat = self.origin_lat + (origin_transform_vector[1] / self.m_per_lat)
+            self.origin_lon = self.origin_lon + (origin_transform_vector[0] / self.m_per_lon)
+
+            # Update global coords relative to moved origin
+            base_x = (c4_lon - self.origin_lon) * self.m_per_lon
+            base_y = (c4_lat - self.origin_lat) * self.m_per_lat
+            dx13 = (c1_lon - self.origin_lon) * self.m_per_lon
+            dy13 = (c1_lat - self.origin_lat) * self.m_per_lat
+        
+        # Angle of the bottom edge (3-4) relative to East
+        self.offset_angle = math.atan2(base_y, base_x)
+        
+        # Scale: pixels/units per meter
+        real_dist = math.sqrt(base_x**2 + base_y**2)
+        self.scale = self.sim_w / real_dist
+
     def latlon_to_local(self, lat, lon):
-        translated_point = (lat-self.origin[0],lon-self.origin[1])
-        rot_mat = [[math.cos(self.offset_angle), -math.sin(self.offset_angle)],
-                   [math.sin(self.offset_angle), math.cos(self.offset_angle)]]
-        rotated_point = np.matmul(rot_mat, translated_point)
-        scaled_point = (rotated_point[0]*self.scale, rotated_point[1]*self.scale)
-        return scaled_point
-    
+        # 1. Convert to relative meters
+        dy = (lat - self.origin_lat) * self.m_per_lat
+        dx = (lon - self.origin_lon) * self.m_per_lon
+        
+        # 2. Rotate to align with sim axes
+        # We rotate by -offset_angle to bring the "3-4 edge" to the X-axis
+        c, s = math.cos(-self.offset_angle), math.sin(-self.offset_angle)
+        rx = dx * c - dy * s
+        ry = dx * s + dy * c
+        
+        # 3. Scale to sim units
+        return [rx * self.scale, ry * self.scale]
+
     def local_to_latlon(self, x, y):
-        scaled_point = (x/self.scale, y/self.scale)
-        rot_mat = [[math.cos(self.offset_angle), math.sin(self.offset_angle)],
-                   [-math.sin(self.offset_angle), math.cos(self.offset_angle)]]
-        rotated_point = np.matmul(rot_mat, scaled_point)
-        translated_point = (rotated_point[0]+self.origin[0], rotated_point[1]+self.origin[1])
-        return translated_point
-    
-    
+        # 1. Unscale
+        ux, uy = x / self.scale, y / self.scale
+        
+        # 2. Inverse Rotate
+        c, s = math.cos(self.offset_angle), math.sin(self.offset_angle)
+        dx = ux * c - uy * s
+        dy = ux * s + uy * c
+        
+        # 3. Convert meters back to Lat/Lon
+        lat = self.origin_lat + (dy / self.m_per_lat)
+        lon = self.origin_lon + (dx / self.m_per_lon)
+        return [lat, lon]
 
 
 '''
@@ -91,24 +127,40 @@ import flight.pathfinding.utils.coord_convert as cc
 cc.run_tests()
 '''
 def run_tests():
-    lat_lon1 = [-95.941831, 36.021683] # *
-    lat_lon2 = [-95.941856, 36.020694] # **
-    lat_lon3 = [-95.942372, 36.021694] # ***
-    lat_lon4 = [-95.942397, 36.020703] # ****
+    lat_lon1 = [36.021683, -95.941831] # *
+    lat_lon1_alt = [36.021695, -95.941831] # *
+    lat_lon2 = [36.020694, -95.941856] # **
+    lat_lon3 = [36.021694, -95.942372] # ***
+    lat_lon4 = [36.020703, -95.942397] # ****
+
+    test_point = [36.021411, -95.942039]
 
     sim_sides = [360, 160] # $
 
-    coord_converter = SimToLatLonTransformer([lat_lon1, lat_lon2, lat_lon3, lat_lon4], sim_sides)
+    print("Test 1: origin at point 134")
+    coord_converter = SimToLatLonTransformer([lat_lon1, lat_lon2, lat_lon3, lat_lon4], sim_sides[0])
 
-    x = 100 # $$
-    y = 100 # $$
+    print(coord_converter.angle_134 - math.pi/2) # If positive, origin is not at point 134
+    print(coord_converter.latlon_to_local(*test_point)) # Should be close to (100,100)
+    print(coord_converter.latlon_to_local(*lat_lon1)) # Should be close to (0, 160)
+    print(coord_converter.latlon_to_local(*lat_lon2)) # Should be close to (360, 160)
+    print(coord_converter.latlon_to_local(*lat_lon3)) # Should be close to (0, 0)
+    print(coord_converter.latlon_to_local(*lat_lon4)) # Should be close to (360, 0)
+    print(test_point)
+    print(coord_converter.local_to_latlon(*coord_converter.latlon_to_local(*test_point))) # Should match line above
+    print()
 
-    final_lat, final_lon = coord_converter.local_to_latlon(x,y)
-    final_lon2, final_lat2 = coord_converter.sim_to_real_convert((x,y))
-    x1, y1 = coord_converter.latlon_to_local(final_lat,final_lon)
-    print(final_lat)
-    print(final_lon)
-    print(x1, y1)
+    print("Test 2: moved origin (These values will be farther from ideal values, because point 1 has been moved to make angle 134 obtuse)")
+    coord_converter2 = SimToLatLonTransformer([lat_lon1_alt, lat_lon2, lat_lon3, lat_lon4], sim_sides[0])
+
+    print(coord_converter2.angle_134 - math.pi/2) # If positive, origin is not at point 134
+    print(coord_converter2.latlon_to_local(*test_point)) # Should be close to (100,100)
+    print(coord_converter2.latlon_to_local(*lat_lon1_alt)) # Should be close to (0, 160)
+    print(coord_converter2.latlon_to_local(*lat_lon2)) # Should be close to (360, 160)
+    print(coord_converter2.latlon_to_local(*lat_lon3)) # Should be close to (0, 0), x coordinate should be positive
+    print(coord_converter2.latlon_to_local(*lat_lon4)) # Should be close to (360, 0)
+    print(test_point)
+    print(coord_converter2.local_to_latlon(*coord_converter2.latlon_to_local(*test_point))) # Should match line above
 
 if __name__ == "__main__":
     run_tests()
