@@ -48,7 +48,7 @@ async def run(self: Takeoff) -> State:
         )
         await self.drone.takeoff(takeoff_altitude)
 
-        return Land(self.drone, self.flight_settings)
+        return InitialCalcScanPath(self.drone, self.flight_settings)
     except asyncio.CancelledError as ex:
         logging.error("Takeoff state canceled")
         raise ex
