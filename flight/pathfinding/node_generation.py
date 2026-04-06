@@ -100,6 +100,7 @@ class Connection:
             self.connectionType=seg.ARC
 
         if node1.parentMine and node2.parentMine:
+            
             if(node1.parentMine != node2.parentMine):
                 self.connectionType=seg.LINE
             else:
@@ -223,73 +224,143 @@ class Connection:
                         return False
         elif self.connectionType == seg.ARC:
             parentMine = self.node1.parentMine
+            print(parentMine.overlappingMines)
+            validEdge=True
             for mine in parentMine.overlappingMines:
                 # Other than being None, there should only be 2 values
                 midPoints = self.generateMidpoints(self.node1,self.node2)
-                intersectionPoints = self.generateIntersectionPoints(parentMine,mine)
-
+                intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
+                
                 if midPoints != None and intersectionPoints != None:
                     # for point in intersectionPoints:
                     #     Field.debugPoints.append(point)
                     # for midPoint in midPoints:
                     #     Field.debugPoints.append(midPoint)
                     # Checking for hugging edges
-                    validEdge = self.validHuggingEdge(midPoints,intersectionPoints,mine)
+                    validEdge = validEdge and self.validHuggingEdge(midPoints,intersectionPoints,mine,intersectionAngle,offsetAngle)
                     
-                    if self.arcDirection != None:
-                        print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
-                        print("Direction:",self.arcDirection)
+                    #if self.arcDirection != None:
+                    print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
+                    print("Direction:",self.arcDirection)
 
-                    return validEdge
+            
+                else:
+                    print("huh")
+            return validEdge
         
         return True
 
     #checks if a path collides with a specific mine
     def mineCollision(self,mine) -> bool:
+        if(self.node1==self.node2):
+            return True
+        
         x1 = float(self.node1.x)
         y1 = float(self.node1.y)
         x2 = float(self.node2.x)
         y2 = float(self.node2.y)
-        x3 = mine.x
-        y3 = mine.y
-        
-        # Fraction of segment between nodes that the mine lands perpendicular to segment
-        uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
-        uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
-        if uDenominator == 0:
-            u = 0
-        else:
-            u = np.clip(uNumerator/uDenominator,0,1) # Restrict to the constraints of a segment
-
-        # Adjust accordingly, determines how close a mine can be to a node before the node terminates
-        uMin = 0.03
-        uMax = 0.98
-        if uMin <= u <= uMax:
-            # Point on segment that is tangent and perpendicular to mine
-            tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
+        if self.connectionType == seg.LINE:
             
-            distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
-            if distanceFromMine < mine.radius:
-                return True
-        
-        # Check if either node is in mine
-        n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
-        n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+            x3 = mine.x
+            y3 = mine.y
 
-        if self.node1.parentMine != mine:
-            if n1distance <= mine.radius:
-                return True
-        if self.node2.parentMine != mine:
-            if n2distance <= mine.radius:
-                return True
+            # Fraction of segment between nodes that the mine lands perpendicular to segment
+            uNumerator = ((x3 - x1)*(x2 - x1)) + ((y3 - y1)*(y2 - y1))
+            uDenominator = ((x1-x2)**2) + ((y1-y2)**2)
+            if uDenominator == 0:
+                u = 0
+            else:
+                u = np.clip(uNumerator/uDenominator,0,1) # Restrict to the constraints of a segment
+
+            # Adjust accordingly, determines how close a mine can be to a node before the node terminates
+            uMin = 0.03
+            uMax = 0.98
+            
+            if uMin <= u <= uMax:
+                # Point on segment that is tangent and perpendicular to mine
+                tangePoint = (x1 + (u*(x2-x1)),y1 + (u*(y2-y1)))
+                
+                distanceFromMine = np.sqrt((mine.x - tangePoint[0])**2+(mine.y - tangePoint[1])**2)
+                if distanceFromMine < mine.radius:
+                    return True
+
+            
+            # Check if node is in mine
+            n1distance = np.sqrt(((x1-x3)**2) + ((y1-y3)**2))
+            n2distance = np.sqrt(((x2-x3)**2) + ((y2-y3)**2))
+
+            if self.node1.parentMine != mine:
+                if n1distance <= mine.radius:
+                    return True
+            if self.node2.parentMine != mine:
+                if n2distance <= mine.radius:
+                    return True
+        elif self.connectionType == seg.ARC:
+            parentMine = self.node1.parentMine
+            
+            # Other than being None, there should only be 2 values
+            midPoints = self.generateMidpoints(self.node1,self.node2)
+            intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
+
+            if midPoints != None and intersectionPoints != None:
+                # for point in intersectionPoints:
+                #     Field.debugPoints.append(point)
+                # for midPoint in midPoints:
+                #     Field.debugPoints.append(midPoint)
+                # Checking for hugging edges
+                validEdge = self.validHuggingEdge(midPoints,intersectionPoints,mine,intersectionAngle,offsetAngle)
+                
+               
+                print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
+                print("Direction:",self.arcDirection)
+
+                return not(validEdge)
         
         return False
     
-    def validHuggingEdge(self,midPoints:list[list[float]],intersectionPoints:list[list[float]],mine:"Mine") -> bool:
+    def validHuggingEdge(self,midPoints:list[list[float]],intersectionPoints:list[list[float]],mine:"Mine",intersectionAngle,offsetAngle) -> bool:
         node1 = self.node1
         node2 = self.node2
+        firstNodeAngle=node1.angle
+        secondNodeAngle=node2.angle
         targetMine = mine
+        #WE WILL ALWAYS ASSUME WE ARE MOVING COUNTER CLOCKWISE with node1 first and node2 second
+        #^^^^^^^^^^^^^^^^^^^^^^
+        
+        
+            
+        
+        intersectionPointAngle1,intersectionPointAngle2= intersectionAngle+offsetAngle,intersectionAngle-offsetAngle
+
+        intersectionPointAngle1%=np.pi*2
+        intersectionPointAngle2%=np.pi*2
+
+        if(intersectionPointAngle1<0):
+            intersectionPointAngle1+=np.pi*2
+        if(intersectionPointAngle2<0):
+            intersectionPointAngle2+=np.pi*2
+
+        print(f"interscetion angle {intersectionAngle}")
+        print(f"offset angle {offsetAngle}")
+        print(f"firstNode ANgle {firstNodeAngle}")
+        print(f"second node ANgle {secondNodeAngle}")
+        #First if handles case where the hugging edge travels over angle=0.
+        if(firstNodeAngle>secondNodeAngle):
+            if(intersectionPointAngle1>firstNodeAngle and intersectionPointAngle1<secondNodeAngle+np.pi*2):
+                return False
+            elif(intersectionPointAngle1<secondNodeAngle and intersectionPointAngle1>firstNodeAngle-np.pi*2):
+            
+                return False
+        else:
+            if(firstNodeAngle<intersectionPointAngle1<secondNodeAngle):
+                return False
+            if(firstNodeAngle<intersectionPointAngle2<secondNodeAngle):
+                return False
+        node1.labeled = True
+        node2.labeled = True
+        return True
         """Keep in mind connections will be read relative to bottom -> top of the field"""
+        """
         # node1 will always be the lower y-value or right most x-value if y-values are equal
         if node1.y != node2.y:
             if node1.y > node2.y:
@@ -301,6 +372,7 @@ class Connection:
                 temp = node1
                 node1 = node2
                 node2 = temp
+        """
         
         for midpoint in midPoints:
             cross = ((midpoint[1] - node1.x)*(node2.x-node1.x)) - ((midpoint[0] - node1.x)*(node2.y - midpoint[1]))
@@ -332,7 +404,7 @@ class Connection:
                             if (midpointY <= intersectY <= node2.y) or (node1.y <= intersectY <= midpointY):
                                 return False
                     self.arcDirection = "clockwise"
-                    return True
+                    
                 elif cross < 0: # Counterclockwise
                     pass
                 elif cross == 0: # In-line, this should never happen
@@ -351,8 +423,8 @@ class Connection:
                     # This should never happen
                     pass
             
-        for point in midPoints:
-            Field.debugPoints.append(point)
+        #for point in midPoints:
+            #Field.debugPoints.append(point)
         node1.labeled = True
         node2.labeled = True
         # for point in intersectionPoints:
@@ -366,12 +438,15 @@ class Connection:
     def generateIntersectionPoints(mine1:"Mine",mine2:"Mine") -> list[float]:
         distance : float = np.sqrt((mine1.x-mine2.x)**2 + (mine1.y-mine2.y)**2)
         # Fraction of the area of each mine that is not overlapping
-        intersectionPortion: float = ((mine1.radius - mine2.radius + distance))/(2*mine1.radius)
+        radicalLineDistance: float = ((mine1.radius**2 - mine2.radius**2 + distance**2))/(2*distance)
         
-        if intersectionPortion >= 1:
-            return None
+       
         # Plus and minus this angle to get the angle at which the circles overlap
-        intersectionAngle = np.arccos(intersectionPortion)
+        offsetAngle = np.arccos(radicalLineDistance/mine1.radius)
+        intersectionAngle=np.atan2(mine2.y-mine1.y,mine2.x-mine1.x)
+        if(intersectionAngle<0):
+            intersectionAngle+=np.pi*2
+        """
         if (mine1.y == mine2.y):
             offsetAngle = 0
         elif (mine1.x == mine2.x):
@@ -386,10 +461,11 @@ class Connection:
                 offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
             elif mine1.x > mine2.x:
                 offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
+        """
         
         intersectP1 = [mine1.radius * np.cos(intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(intersectionAngle + offsetAngle) + mine1.y]
         intersectP2 = [mine1.radius * np.cos(-intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(-intersectionAngle + offsetAngle) + mine1.y]
-        return (intersectP1,intersectP2)
+        return (intersectP1,intersectP2),intersectionAngle,offsetAngle
 
     """generate midpoints of the minor and major arcs between parentMine's nodes"""
     @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
@@ -498,8 +574,8 @@ class Field:
 
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
-            mine.connectMineNodes()
-            target.connectMineNodes()
+            #mine.connectMineNodes()
+            #target.connectMineNodes()
 
             # Add to each mines' overlapping mines list if they do overlap
             if target not in mine.overlappingMines and mine not in target.overlappingMines:
@@ -552,7 +628,8 @@ class Field:
                 for connectedNode in self.nodeGraph[node].keys():
                     # If it is an arc connection, same parent mines, then draw a curve
                     if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
-                        pass
+                        plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
+                        #pass
                         # arcColor = plt.cm.tab10(random.randint(0,20)%15)
                         # arc = patches.Arc((node.parentMine.x,node.parentMine.y), width=node.parentMine.radius*2, height=node.parentMine.radius*2, angle=0, theta1=min(int(node.angle*180/np.pi),int(connectedNode.angle*180/np.pi)), theta2=max(int(connectedNode.angle*180/np.pi),int(node.angle*180/np.pi)),color=arcColor)
                         # ax.add_patch(arc)
@@ -561,14 +638,17 @@ class Field:
                     else:
                         # Otherwise, draw a line
                         # pass
+                        """
                         try:
                             
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
+                        """
         if len(Field.debugPoints) > 0: # Points that are plotted for debugging only
             print("Plotting debug points")
             for point in Field.debugPoints:
+                print("here?")
                 plt.plot(point[0],point[1],"o",color=(0,0,0))
         
         print("Done plotting")
@@ -666,7 +746,7 @@ class Mine:
     def connectMineNodes(self):
         
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
-        
+        print(f"sortedNodes: {sortedNodes}")
         if len(sortedNodes)==0:
             return 0
 
@@ -871,7 +951,9 @@ class MineNode(Node):
                 self.x = (self.parentMine.radius) * np.cos(self.angle) + self.parentMine.x
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
         
-        self.angle=np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)
+        self.angle=(np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)+2*np.pi)%(2*np.pi)
+        print(self)
+        print(self.angle)
         self.x = round(self.x,3)
         self.y = round(self.y,3)
 
