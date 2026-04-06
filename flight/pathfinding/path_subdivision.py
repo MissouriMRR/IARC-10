@@ -105,11 +105,12 @@ class path:
         self.total_path_length = self.total_distance + self.total_arc_length       
         return finalGotoList, segmentedList 
     
-    
-    def numScorePoints(self, flightMin: int, minesMissed: int, L: float, W: float, N: float ): 
+    #optimumPath: path center-line length in feet
+    #pathWidth: narrowest width of path in feet
+    def numScorePoints(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
         if (flightMin > 7): 
             score = 0
-        score = ((150000 * W) / ((1 + minesMissed) * L * (1 + 7 * flightMin + (100 * N))))
+        score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
         return score
 
 
@@ -147,13 +148,13 @@ for mine in field.mines:
 pathObj = path()
 finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
 
-W = Mine.getRadius(Mine)
+pathWidth = Mine.getRadius(Mine)
 print("radius", W)
-N = 1 #ounces over 1 pound weight limit
+droneWeight = 1 #ounces over 1 pound weight limit
 flightMin = 7  #worst case scenario
 minesMissed = 0
-L = pathObj.total_path_length
-score = pathObj.numScorePoints(flightMin, minesMissed, L, W, N)
+optimumPath = pathObj.total_path_length
+score = pathObj.numScorePoints(flightMin, minesMissed, optimumPath, pathWidth, droneWeight)
 print("This is the score: ", score)
 
 
