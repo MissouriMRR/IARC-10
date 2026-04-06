@@ -133,6 +133,15 @@ def run_tests():
     lat_lon3 = [36.021694, -95.942372] # ***
     lat_lon4 = [36.020703, -95.942397] # ****
 
+    prop_lat_lon1 = [36.021492, -95.942263]
+    prop_lat_lon2 = [36.021144, -95.942249]
+    prop_lat_lon3 = [36.020903, -95.941913]
+
+    # Approximate, can't directly select chosen points as measurement points, can only click as near to the point as possible, so should be close but may be slightly off
+    act_len_12 = 38.57
+    act_len_23 = 40.47
+    act_len_13 = 72.57
+
     test_point = [36.021411, -95.942039]
 
     sim_sides = [360, 160] # $
@@ -161,6 +170,36 @@ def run_tests():
     print(coord_converter2.latlon_to_local(*lat_lon4)) # Should be close to (360, 0)
     print(test_point)
     print(coord_converter2.local_to_latlon(*coord_converter2.latlon_to_local(*test_point))) # Should match line above
+    print()
+
+
+    print("Test 3: Proportion test points unmoved origin")
+    test_3_point1 = coord_converter.latlon_to_local(*prop_lat_lon1)
+    test_3_point2 = coord_converter.latlon_to_local(*prop_lat_lon2)
+    test_3_point3 = coord_converter.latlon_to_local(*prop_lat_lon3)
+    test_3_local_dist12 = math.sqrt((test_3_point1[0]-test_3_point2[0])**2 + (test_3_point1[1]-test_3_point2[1])**2)
+    test_3_local_dist23 = math.sqrt((test_3_point2[0]-test_3_point3[0])**2 + (test_3_point2[1]-test_3_point3[1])**2)
+    test_3_local_dist13 = math.sqrt((test_3_point1[0]-test_3_point3[0])**2 + (test_3_point1[1]-test_3_point3[1])**2)
+
+    #Each of these should be almost exactly the same
+    print(act_len_12 / test_3_local_dist12)
+    print(act_len_23 / test_3_local_dist23)
+    print(act_len_13 / test_3_local_dist13)
+    print()
+
+    print("Test 4: Proportion test points moved origin")
+    test_4_point1 = coord_converter2.latlon_to_local(*prop_lat_lon1)
+    test_4_point2 = coord_converter2.latlon_to_local(*prop_lat_lon2)
+    test_4_point3 = coord_converter2.latlon_to_local(*prop_lat_lon3)
+    test_4_local_dist12 = math.sqrt((test_4_point1[0]-test_4_point2[0])**2 + (test_4_point1[1]-test_4_point2[1])**2)
+    test_4_local_dist23 = math.sqrt((test_4_point2[0]-test_4_point3[0])**2 + (test_4_point2[1]-test_4_point3[1])**2)
+    test_4_local_dist13 = math.sqrt((test_4_point1[0]-test_4_point3[0])**2 + (test_4_point1[1]-test_4_point3[1])**2)
+
+    #Each of these should be almost exactly the same
+    print(act_len_12 / test_4_local_dist12)
+    print(act_len_23 / test_4_local_dist23)
+    print(act_len_13 / test_4_local_dist13)
+
 
 if __name__ == "__main__":
     run_tests()
