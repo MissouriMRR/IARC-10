@@ -458,7 +458,7 @@ class Field:
 
     
     # Purely for debugging  
-    def plotField(self,labeled:bool=False,path=None,title:str="Mines and Potential Paths",xlabel:str="") -> None:
+    def plotField(self,labeled:bool=False,path=[],title:str="Mines and Potential Paths",xlabel:str="") -> None:
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
@@ -491,12 +491,6 @@ class Field:
                     # If it is an arc connection, same parent mines, then draw a curve
                     if(connectedNode.parentMine==node.parentMine and node.parentMine!=None):
                         plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
-                        #pass
-                        # arcColor = plt.cm.tab10(random.randint(0,20)%15)
-                        # arc = patches.Arc((node.parentMine.x,node.parentMine.y), width=node.parentMine.radius*2, height=node.parentMine.radius*2, angle=0, theta1=min(int(node.angle*180/np.pi),int(connectedNode.angle*180/np.pi)), theta2=max(int(connectedNode.angle*180/np.pi),int(node.angle*180/np.pi)),color=arcColor)
-                        # ax.add_patch(arc)
-                        # plt.plot([node.x],[node.y],"x",color=arcColor)
-                        # plt.plot([connectedNode.x],[connectedNode.y],"x",color=arcColor)
                     else:
                         # Otherwise, draw a line
                         # pass
@@ -505,16 +499,24 @@ class Field:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
-                    
+        
+        # If a path is passed in, display the path as a black line
+        if len(path) > 0:
+            if len(xlabel) <= 0:
+                xlabel += "Black = A* path"
+            for i, node in enumerate(path):
+                if (i < len(path)-1):
+                    nextNode = path[i+1]
+                    plt.plot([node.x,nextNode.x],[node.y,nextNode.y],color=(0,0,0))
                         
         if len(Field.debugPoints) > 0: # Points that are plotted for debugging only
             print("Plotting debug points")
             for point in Field.debugPoints:
-                print("here?")
                 plt.plot(point[0],point[1],"o",color=(0,0,0))
         
         print("Done plotting")
         print("Displaying field...")
+        
         plt.title(title)
         plt.xlabel(xlabel)
         plt.show()
