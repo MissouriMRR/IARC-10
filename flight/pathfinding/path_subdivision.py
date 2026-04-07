@@ -36,7 +36,7 @@ class path:
         self.total_path_length = 0
     
     #def generate_goto_points(self, nodeList: Node, step: int = 10):
-    def generate_goto_points(self, nodeList: Node, overlap: float, photoWidth: float): #overlap is percent
+    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, photoWidth: float): #overlap is percent
         step = photoWidth * (1-overlap) # distance between goto points (FEET)
         finalGotoList = []   
         segmentedList = []
@@ -49,7 +49,7 @@ class path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-                segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                segmentedList.append([n1, n2, isArc])
                 '''
                 dx = n2.x - n1.x
                 dy = n2.y - n1.y
@@ -62,13 +62,13 @@ class path:
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
 
                 for x, y in zip(x_vals, y_vals):
-                    finalGotoList.append((float(x), float(y)))
+                    finalGotoList.append([float(x), float(y)])
             
             #arc gotos
             #elif n1.parentMine==n2.parentMine :
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                segmentedList.append([n1, n2, isArc])
                 
                 #get center coords
                 mine = n1.parentMine
@@ -97,7 +97,7 @@ class path:
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
-                    finalGotoList.append((float(x), float(y)))
+                    finalGotoList.append([float(x), float(y)])
                     
       
         #print("segment List:", segmentList)  
