@@ -44,7 +44,7 @@ class Path:
 
     
     #def generate_goto_points(self, nodeList: Node, step: int = 10):
-    def generate_goto_points(self, nodeList: Node, overlap: float, photoWidth: float): #overlap is percent
+    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, photoWidth: float): #overlap is percent
         step = photoWidth * (1-overlap) # distance between goto points (FEET)
         #finalGotoList = []   
         #segmentedList = []
@@ -57,7 +57,11 @@ class Path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
+<<<<<<< HEAD
                 self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+=======
+                segmentedList.append([n1, n2, isArc])
+>>>>>>> 2b191b0fe97c20329bcabbdd096ffa6609d2c1ba
                 '''
                 dx = n2.x - n1.x
                 dy = n2.y - n1.y
@@ -70,13 +74,21 @@ class Path:
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
 
                 for x, y in zip(x_vals, y_vals):
+<<<<<<< HEAD
                     self.finalGotoList.append((float(x), float(y)))
+=======
+                    finalGotoList.append([float(x), float(y)])
+>>>>>>> 2b191b0fe97c20329bcabbdd096ffa6609d2c1ba
             
             #arc gotos
             #elif n1.parentMine==n2.parentMine :
             elif connect.connectionType == seg.ARC:
                 isArc = True
+<<<<<<< HEAD
                 self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+=======
+                segmentedList.append([n1, n2, isArc])
+>>>>>>> 2b191b0fe97c20329bcabbdd096ffa6609d2c1ba
                 
                 #get center coords
                 mine = n1.parentMine
@@ -105,7 +117,11 @@ class Path:
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
+<<<<<<< HEAD
                     self.finalGotoList.append((float(x), float(y)))
+=======
+                    finalGotoList.append([float(x), float(y)])
+>>>>>>> 2b191b0fe97c20329bcabbdd096ffa6609d2c1ba
                     
       
         #print("segment List:", segmentList)  
@@ -118,7 +134,8 @@ class Path:
     def numScorePoints(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
         if (flightMin > 7): 
             score = 0
-        score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
+        else:
+            score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
         return score
 
 
