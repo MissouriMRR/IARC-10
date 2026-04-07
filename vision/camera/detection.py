@@ -1,9 +1,9 @@
-from picamera2.devices import IMX500
+# from picamera2.devices import IMX500
 
 class Detection:
-	def __init__(self, coords, category, conf, metadata):
+	def __init__(self, coords, category, conf, metadata, picam2, imx500):
 		self.category = category # detected object type
 		self.confidence = conf
-		self.box = imx500.convert_inference_coords(coords, metadata, picam2)
-		if category is not None and PRINT_DETECTIONS:
-			print(f"{LABELS[int(category)]}? - {conf * 100:.2f}%")
+		self.box = imx500.convert_inference_coords(coords = coords, metadata = metadata, picam2 = picam2)
+		# if category is not None and PRINT_DETECTIONS:
+		# 	print(f"{LABELS[int(category)]}? - {conf * 100:.2f}%")
