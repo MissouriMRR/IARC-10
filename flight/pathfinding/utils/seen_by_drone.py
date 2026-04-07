@@ -8,7 +8,7 @@ import random
 class SightTracker:
     # Initializes the field as a greyscale image with pixel size equating to the field's size and the
     # stored int value equating to the "confidence"/"known" value
-    def __init__(self, fieldSize:tuple[int, int]):
+    def __init__(self, fieldSize:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]):
         self.fieldSize = fieldSize
         self.map = np.array(Image.new("L", fieldSize, 0))
     
