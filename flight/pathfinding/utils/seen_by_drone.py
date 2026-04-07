@@ -29,16 +29,16 @@ class SightTracker:
         return result
 
 # Removes coords that are redundant to check
-def remove_extra_coords(seen:SightTracker, goto_points:tuple[tuple[float,float]], data_sup:tuple[tuple[bool,pathSub.Node,pathSub.Node]], cam_size:tuple[float,float]):
+def remove_extra_coords(seen:SightTracker, goto_points:tuple[tuple[float,float]], data_sup:tuple[tuple[pathSub.Node,pathSub.Node,bool]], cam_size:tuple[float,float]):
     updated_goto_points:tuple[tuple[float,float]]
     for i in range(len(goto_points)):
-        if (data_sup[i][0] == True):
-            seg_mask = maskGen.PolygonMask(data_sup[i][1],data_sup[i][2],True)
-            tan_angle = np.arctan((goto_points[i][1] - data_sup[i][1].parentMine.y) / (goto_points[i][0] - data_sup[i][1].parentMine.x)) + (np.pi/2)
+        if (data_sup[i][2] == True):
+            seg_mask = maskGen.PolygonMask(data_sup[i][0],data_sup[i][1],True)
+            tan_angle = np.arctan((goto_points[i][1] - data_sup[i][0].parentMine.y) / (goto_points[i][0] - data_sup[i][0].parentMine.x)) + (np.pi/2)
             proto_photo = maskGen.PolygonMask(goto_points[i], tan_angle, cam_size)
         else:
-            seg_mask = maskGen.PolygonMask(data_sup[i][1],data_sup[i][2])
-            tan_angle = np.arctan((data_sup[i][1].y - data_sup[i][2].y) / (data_sup[i][1].x - data_sup[i][2].x))
+            seg_mask = maskGen.PolygonMask(data_sup[i][0],data_sup[i][1])
+            tan_angle = np.arctan((data_sup[i][0].y - data_sup[i][1].y) / (data_sup[i][0].x - data_sup[i][1].x))
             proto_photo = maskGen.PolygonMask(goto_points[i], tan_angle, cam_size)
         
         if (seen.check_holes(proto_photo, seg_mask)):
