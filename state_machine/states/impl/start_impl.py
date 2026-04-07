@@ -4,9 +4,9 @@ import asyncio
 import logging
 
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
 from state_machine.states.start import Start
 from state_machine.states.state import State
@@ -42,7 +42,7 @@ async def run(self: Start) -> State:
         await self.drone.arm()
 
         logging.info("Start state complete")
-        return Takeoff(self.drone, self.flight_settings)
+        return Takeoff(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("Start state canceled")
         raise ex
