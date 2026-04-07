@@ -109,10 +109,6 @@ class Connection:
             self.connectionType = seg.LINE
         self.distance=self.updateDistance()
 
-        self.arcDirection = None # Either None, clockwise, or counterclockwise
-                                 # None is when the arc isn't valid or the connection isn't an arc
-                                 # All relative if reading the field from bottom -> top
-
         #checking for a valid path and updating the graph must be done manually
         
         # DISTANCE
@@ -129,7 +125,6 @@ class Connection:
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
             distance=float(distance)
-            # print(distance)
         return distance
     
 
@@ -224,28 +219,16 @@ class Connection:
                         return False
         elif self.connectionType == seg.ARC:
             parentMine = self.node1.parentMine
-            print(parentMine.overlappingMines)
             validEdge=True
             for mine in parentMine.overlappingMines:
                 # Other than being None, there should only be 2 values
-                midPoints = self.generateMidpoints(self.node1,self.node2)
                 intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
                 
-                if midPoints != None and intersectionPoints != None:
-                    # for point in intersectionPoints:
-                    #     Field.debugPoints.append(point)
-                    # for midPoint in midPoints:
-                    #     Field.debugPoints.append(midPoint)
-                    # Checking for hugging edges
-                    validEdge = validEdge and self.validHuggingEdge(midPoints,intersectionPoints,mine,intersectionAngle,offsetAngle)
-                    
-                    #if self.arcDirection != None:
-                    print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
-                    print("Direction:",self.arcDirection)
-
-            
+                if intersectionPoints != None:
+                    validEdge = validEdge and self.validHuggingEdge(intersectionAngle,offsetAngle)
+                
                 else:
-                    print("huh")
+                    print("Something went really wrong with midpoint & intersectionpoints")
             return validEdge
         
         return True
@@ -299,36 +282,21 @@ class Connection:
             parentMine = self.node1.parentMine
             
             # Other than being None, there should only be 2 values
-            midPoints = self.generateMidpoints(self.node1,self.node2)
             intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
 
-            if midPoints != None and intersectionPoints != None:
-                # for point in intersectionPoints:
-                #     Field.debugPoints.append(point)
-                # for midPoint in midPoints:
-                #     Field.debugPoints.append(midPoint)
-                # Checking for hugging edges
-                validEdge = self.validHuggingEdge(midPoints,intersectionPoints,mine,intersectionAngle,offsetAngle)
-                
-               
-                print(self.node1, "at", self.node1.getPos(), "->" , self.node2, "at", self.node2.getPos())
-                print("Direction:",self.arcDirection)
-
+            if intersectionPoints != None:
+                validEdge = self.validHuggingEdge(intersectionAngle,offsetAngle)
                 return not(validEdge)
         
         return False
     
-    def validHuggingEdge(self,midPoints:list[list[float]],intersectionPoints:list[list[float]],mine:"Mine",intersectionAngle,offsetAngle) -> bool:
+    def validHuggingEdge(self,intersectionAngle,offsetAngle) -> bool:
         node1 = self.node1
         node2 = self.node2
         firstNodeAngle=node1.angle
         secondNodeAngle=node2.angle
-        targetMine = mine
         #WE WILL ALWAYS ASSUME WE ARE MOVING COUNTER CLOCKWISE with node1 first and node2 second
         #^^^^^^^^^^^^^^^^^^^^^^
-        
-        
-            
         
         intersectionPointAngle1,intersectionPointAngle2= intersectionAngle+offsetAngle,intersectionAngle-offsetAngle
 
@@ -340,10 +308,11 @@ class Connection:
         if(intersectionPointAngle2<0):
             intersectionPointAngle2+=np.pi*2
 
-        print(f"interscetion angle {intersectionAngle}")
-        print(f"offset angle {offsetAngle}")
-        print(f"firstNode ANgle {firstNodeAngle}")
-        print(f"second node ANgle {secondNodeAngle}")
+        # print(f"interscetion angle {intersectionAngle}")
+        # print(f"offset angle {offsetAngle}")
+        # print(f"firstNode ANgle {firstNodeAngle}")
+        # print(f"second node ANgle {secondNodeAngle}")
+
         #First if handles case where the hugging edge travels over angle=0.
         if(firstNodeAngle>secondNodeAngle):
             if(intersectionPointAngle1>firstNodeAngle and intersectionPointAngle1<secondNodeAngle+np.pi*2):
@@ -356,83 +325,8 @@ class Connection:
                 return False
             if(firstNodeAngle<intersectionPointAngle2<secondNodeAngle):
                 return False
-        node1.labeled = True
-        node2.labeled = True
         return True
-        """Keep in mind connections will be read relative to bottom -> top of the field"""
-        """
-        # node1 will always be the lower y-value or right most x-value if y-values are equal
-        if node1.y != node2.y:
-            if node1.y > node2.y:
-                temp = node1
-                node1 = node2
-                node2 = temp
-        elif node1.y == node2.y:
-            if node1.x < node2.x:
-                temp = node1
-                node1 = node2
-                node2 = temp
-        """
-        
-        for midpoint in midPoints:
-            cross = ((midpoint[1] - node1.x)*(node2.x-node1.x)) - ((midpoint[0] - node1.x)*(node2.y - midpoint[1]))
-            midpointX = midpoint[0]
-            midpointY = midpoint[1]
-            if (node1.y != node2.y): # Compare y-values so long as they are not the same
-                if cross > 0: # Clockwise
-                    # print(node1.getPos(),"\n",midpoint)
-                    # Check if midpoint itself is in the target mine radius.
-                    if np.sqrt((midpoint[0]-targetMine.x)**2 + (midpoint[1]-targetMine.y)**2) < Mine.radius:
-                        return False
-                    
-                    # Check each intersection point, there should only be 2, so the loop only runs twice.
-                    for intersect in intersectionPoints:
-                        intersectX = intersect[0]
-                        
-                        intersectY = intersect[1]
-
-                        # Constrict midpoint bounds to between left/right most node and the furthest edge of mine
-                        if midpointX < mine.x:
-                            xLowBound = mine.x - Mine.radius
-                            xUpperBound = max(node1.x,node2.x)
-                        elif midpointX > mine.x:
-                            xLowBound = min(node1.x,node2.x)
-                            xUpperBound = mine.x + Mine.radius
-
-                        # Check if midpoint is between node1 to midpoint, and midpoint to node2
-                        if (xLowBound <= midpointX <= xUpperBound):
-                            if (midpointY <= intersectY <= node2.y) or (node1.y <= intersectY <= midpointY):
-                                return False
-                    self.arcDirection = "clockwise"
-                    
-                elif cross < 0: # Counterclockwise
-                    pass
-                elif cross == 0: # In-line, this should never happen
-                    return False
-                else:
-                    # This should never happen
-                    pass
-            elif (node1.y == node2.y): # if the y-values are the same, compare the x values
-                if cross > 0: # Clockwise
-                    pass
-                elif cross < 0: # Counterclockwise
-                    pass
-                elif cross == 0: # In-line, this should never happen
-                    pass
-                else:
-                    # This should never happen
-                    pass
-            
-        #for point in midPoints:
-            #Field.debugPoints.append(point)
-        node1.labeled = True
-        node2.labeled = True
-        # for point in intersectionPoints:
-        #     Field.debugPoints.append(point)
-        # if self.arcDirection != None:
-        #     print(node1, "at", node1.getPos(), "->" , node2, "at", node2.getPos())
-        #     print("Direction:",self.arcDirection)
-        return True
+    
     """Generating the points where mines intersect"""
     @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
     def generateIntersectionPoints(mine1:"Mine",mine2:"Mine") -> list[float]:
@@ -446,42 +340,10 @@ class Connection:
         intersectionAngle=np.atan2(mine2.y-mine1.y,mine2.x-mine1.x)
         if(intersectionAngle<0):
             intersectionAngle+=np.pi*2
-        """
-        if (mine1.y == mine2.y):
-            offsetAngle = 0
-        elif (mine1.x == mine2.x):
-            offsetAngle = np.pi/2
-        # Calculate offset angle, same formula from node calculation
-        if mine1.y > mine2.y:
-            offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
-        elif mine1.y < mine2.y:
-            offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
-        elif mine1.y == mine2.y:
-            if mine1.x < mine2.x:
-                offsetAngle =  np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
-            elif mine1.x > mine2.x:
-                offsetAngle = -np.arccos(np.clip((mine1.x-mine2.x)/distance,-1,1))+np.pi
-        """
         
         intersectP1 = [mine1.radius * np.cos(intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(intersectionAngle + offsetAngle) + mine1.y]
         intersectP2 = [mine1.radius * np.cos(-intersectionAngle + offsetAngle) + mine1.x, mine1.radius * np.sin(-intersectionAngle + offsetAngle) + mine1.y]
         return (intersectP1,intersectP2),intersectionAngle,offsetAngle
-
-    """generate midpoints of the minor and major arcs between parentMine's nodes"""
-    @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
-    def generateMidpoints(node1:"MineNode", node2:"MineNode") -> list[float]:
-        
-        if node1.parentMine != None and node2.parentMine != None:
-            mine = node1.parentMine
-            angle = ((node1.angle + node2.angle)/2)
-            midpoint1 = [mine.radius * np.cos(angle) + mine.x, mine.radius * np.sin(angle) + mine.y]
-            midpoint2 = [mine.radius * np.cos(angle+np.pi) + mine.x, mine.radius * np.sin(angle+np.pi) + mine.y]
-            # print("Midpoints between",node1,"and",node2,":")
-            # print("(",float(midpoint1[0]),float(midpoint1[1]),")")
-            # print("(",float(midpoint2[0]),float(midpoint2[1]),")")
-            return (midpoint1,midpoint2)
-        else:
-            return None
 
     def __str__(self):
         return f"{self.node1} <-> {self.node2}"
@@ -596,7 +458,7 @@ class Field:
 
     
     # Purely for debugging  
-    def plotField(self,labeled:bool=False,title:str="Mines and Potential Paths",xlabel:str="") -> None:
+    def plotField(self,labeled:bool=False,path=None,title:str="Mines and Potential Paths",xlabel:str="") -> None:
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
@@ -638,13 +500,13 @@ class Field:
                     else:
                         # Otherwise, draw a line
                         # pass
-                        """
                         try:
                             
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
-                        """
+                    
+                        
         if len(Field.debugPoints) > 0: # Points that are plotted for debugging only
             print("Plotting debug points")
             for point in Field.debugPoints:
@@ -692,7 +554,7 @@ class Field:
            for node2 in deepCopy:
                 oldConnection=Connection(node1,node2)
                 if(not(oldConnection.validPath())):
-                    print(f"deleting {oldConnection}")
+                    # print(f"deleting {oldConnection}")
                     oldConnection.deleteConnection()
 
         for mine in self.mines:
@@ -746,7 +608,6 @@ class Mine:
     def connectMineNodes(self):
         
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
-        print(f"sortedNodes: {sortedNodes}")
         if len(sortedNodes)==0:
             return 0
 
@@ -952,8 +813,8 @@ class MineNode(Node):
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
         
         self.angle=(np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)+2*np.pi)%(2*np.pi)
-        print(self)
-        print(self.angle)
+        # print(self)
+        # print(self.angle)
         self.x = round(self.x,3)
         self.y = round(self.y,3)
 
@@ -1000,5 +861,5 @@ X=Done
  X Generate Floating Nodes
  X Generate tangent mineNodes connecting to floating nodes
  -  Expanding mines
- - Hugging 
+ X Hugging 
 """
