@@ -110,7 +110,8 @@ class path:
     def numScorePoints(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
         if (flightMin > 7): 
             score = 0
-        score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
+        else:
+            score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
         return score
 
 
@@ -149,7 +150,7 @@ pathObj = path()
 finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
 
 pathWidth = Mine.getRadius(Mine)
-print("radius", W)
+print("radius", pathWidth)
 droneWeight = 1 #ounces over 1 pound weight limit
 flightMin = 7  #worst case scenario
 minesMissed = 0
