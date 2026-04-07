@@ -12,7 +12,7 @@ from flight.pathfinding.path_calculation import Graph
 #hello
 
 #todo: Modify goto point generation to take the photo size and change the width between goto points as needed. 
-
+#coordconvert finla path to actual coordinates
 '''
 #make-shift mines for testing. radius = 3 feet
 mine1 = Mine(rand.randrange(200), rand.randrange(200), 3)
@@ -29,17 +29,25 @@ n4 = Node(mine4, mine5)
 nodeCorList = [n1, n2, n3, n4]
 '''
 
-class path: 
+class Path: 
     def __init__(self):
-        self.total_distance = 0 #linear distance
+        self.total_distance = 0  #linear distance
         self.total_arc_length = 0
         self.total_path_length = 0
+        self.finalGotoList = []
+        self.segmentedList = []
+    
+    
+    #create setter functions for these variables
+    #def set
+        
+
     
     #def generate_goto_points(self, nodeList: Node, step: int = 10):
     def generate_goto_points(self, nodeList: Node, overlap: float, photoWidth: float): #overlap is percent
         step = photoWidth * (1-overlap) # distance between goto points (FEET)
-        finalGotoList = []   
-        segmentedList = []
+        #finalGotoList = []   
+        #segmentedList = []
         isArc = False
         for i in range(len(nodeList) - 1):
             n1 = nodeList[i] #first node
@@ -49,7 +57,7 @@ class path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-                segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
                 '''
                 dx = n2.x - n1.x
                 dy = n2.y - n1.y
@@ -62,13 +70,13 @@ class path:
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
 
                 for x, y in zip(x_vals, y_vals):
-                    finalGotoList.append((float(x), float(y)))
+                    self.finalGotoList.append((float(x), float(y)))
             
             #arc gotos
             #elif n1.parentMine==n2.parentMine :
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
                 
                 #get center coords
                 mine = n1.parentMine
@@ -97,13 +105,13 @@ class path:
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
-                    finalGotoList.append((float(x), float(y)))
+                    self.finalGotoList.append((float(x), float(y)))
                     
       
         #print("segment List:", segmentList)  
         print(step)    
         self.total_path_length = self.total_distance + self.total_arc_length       
-        return finalGotoList, segmentedList 
+        return self.finalGotoList, self.segmentedList 
     
     #optimumPath: path center-line length in feet
     #pathWidth: narrowest width of path in feet
@@ -145,11 +153,11 @@ for mine in field.mines:
 """
 
 #Function Calls
-pathObj = path()
+pathObj = Path()
 finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
 
 pathWidth = Mine.getRadius(Mine)
-print("radius", W)
+print("radius", pathWidth)
 droneWeight = 1 #ounces over 1 pound weight limit
 flightMin = 7  #worst case scenario
 minesMissed = 0
