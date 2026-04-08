@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 import json
 import warnings
 
+from typing import cast, get_args, get_origin
+import types
+
 
 class MessageType(Enum):
     UNKNOWN = 0
@@ -15,8 +18,10 @@ class MessageType(Enum):
     SET_SCAN_STATUS = 410
     SET_HOVER_STATUS = 412
     REQUEST_MAP_DATA = 414
+    REQUEST_DRONE_LOCATIONS = 415
     SEND_PATHS_TO_APP = 420
     SEND_APP_SCANNING_ERROR = 421
+    SEND_DRONE_LOCATIONS = 425
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -74,15 +79,20 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.REQUEST_MAP_DATA,
         "dronesToSendData": tuple[int, ...],
     },
-    MessageType.REQUEST_MAP_DATA: {
-        "id": MessageType.REQUEST_MAP_DATA,
-        "dronesToSendData": tuple[int, ...],
-        "string_payload": str,  # will need to update data when decided
+    MessageType.REQUEST_DRONE_LOCATIONS: {
+        "id": MessageType.REQUEST_DRONE_LOCATIONS,
+        "dronesToSendData": tuple[int, ...],  # VERIFY WE DON'T NEED DATA
     },
     MessageType.SEND_PATHS_TO_APP: {
         "id": MessageType.SEND_PATHS_TO_APP,
         "dronesToSendData": tuple[int, ...],
         "MapDataReady": bool,
+    },
+    MessageType.SEND_DRONE_LOCATIONS: {
+        "id": MessageType.SEND_DRONE_LOCATIONS,
+        "dronesToSendData": tuple[int, ...],
+        "drone1Data": dict[str, list[int | float]],  # Contains latLong and xYCoords
+        "drone2Data": dict[str, list[int | float]],
     },
     MessageType.SEND_APP_SCANNING_ERROR: {
         "id": MessageType.SEND_APP_SCANNING_ERROR,
@@ -126,6 +136,66 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "downloadThroughputKbps": float,
     },
 }
+
+
+def _matches_type(value: object, expected_type: object) -> bool:
+    # Treat Any as a wildcard
+    if expected_type is Any:
+        return True
+
+    origin: object | None = get_origin(expected_type)
+    args: tuple[object, ...] = cast(tuple[object, ...], get_args(expected_type))
+
+    # Non-parameterized runtime types (int, str, dict, tuple, etc.)
+    if origin is None:
+        return isinstance(expected_type, type) and isinstance(value, expected_type)
+
+    # PEP 604 unions: X | Y
+    if origin is types.UnionType:
+        return any(_matches_type(value, member_type) for member_type in args)
+
+    # list[T]
+    if origin is list:
+        if not isinstance(value, list):
+            return False
+        items = cast(list[object], value)
+        element_type: object = args[0] if args else object
+        return all(_matches_type(item, element_type) for item in items)
+
+    # dict[K, V]
+    if origin is dict:
+        if not isinstance(value, dict):
+            return False
+        mapping = cast(dict[object, object], value)
+        key_type: object
+        value_type: object
+        if len(args) == 2:
+            key_type, value_type = args
+        else:
+            key_type, value_type = object, object
+        return all(
+            _matches_type(k, key_type) and _matches_type(v, value_type)
+            for k, v in mapping.items()
+        )
+
+    # tuple[T, ...] or tuple[T1, T2, ...]
+    if origin is tuple:
+        if not isinstance(value, tuple):
+            return False
+        items = cast(tuple[object, ...], value)
+
+        if len(args) == 2 and args[1] is Ellipsis:
+            return all(_matches_type(item, args[0]) for item in items)
+
+        if len(args) != len(items):
+            return False
+        return all(_matches_type(item, expected) for item, expected in zip(items, args))
+
+    # Fallback for other generic origins that are normal runtime classes
+    if isinstance(origin, type):
+        return isinstance(value, origin)
+
+    return False
 
 
 @dataclass(frozen=True)
@@ -173,7 +243,7 @@ class Message:
         for key, allowed_types in expected.items():
             if key not in {"id", "dronesToSendData"}:
                 value = self.data[key]
-                if not isinstance(value, allowed_types):
+                if not _matches_type(value, allowed_types):
                     warnings.warn(
                         f"Field '{key}' in '{self.id}' must be one of {allowed_types}, got {type(value).__name__}"
                     )
