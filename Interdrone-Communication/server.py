@@ -70,7 +70,7 @@ class Server:
 
                 # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
                 messageSent = False
-
+                print(message)
                 match message.id:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
@@ -80,13 +80,31 @@ class Server:
                             newPort=int(message.data["Port"])
                         )
                     case MessageType.APP_DEBUG:
-                        print(message.data["embeddedDebugMessage"])
                         writer.write(
                             (str(message.data["embeddedDebugMessage"]) + "\n").encode()
                         )
                         await writer.drain()
                         messageSent = True
-
+                    case MessageType.REQUEST_DRONE_LOCATIONS:
+                        # Send back response message with two drones locations
+                        # NOTE in the future we will need to have state that fetches drone location to fill in the data here
+                        # This is temporary for app testing
+                        responseMessage = Message.create(
+                            id=MessageType.SEND_DRONE_LOCATIONS,
+                            dronesToSendData=(),
+                            # TODO FIGURE OUT PATHFINDINGS COORD SYSTEM (please write docs)
+                            data={
+                                "drone1Data": {
+                                    "latLong": [37.9586040775280, -91.771233861919],
+                                    "xYCoords": [100, 10],
+                                },
+                                "drone2Data": {
+                                    "latLong": [37.9586654649470, -91.772145189968],
+                                    "xYCoords": [10, 250],
+                                },
+                            },
+                        )
+                        print("Sending drone location response to app")
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:

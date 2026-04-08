@@ -67,6 +67,8 @@ def parse_batman_location(value: str) -> int:
     return parsed
 
 
+# Sample Run Command:
+# uv run range_test.py -i 1 -perf true -t 2 3 4 -b 2
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--id", help="Self ID", type=int)
@@ -79,7 +81,7 @@ async def main():
     parser.add_argument(
         "-perf",
         "--perf",
-        help="Include performance in logs (0/1, true/false, yes/no)",
+        help="Include performance in logs (1/0, true/false, yes/no)",
         type=parse_bool_flag,
         default=False,
     )
