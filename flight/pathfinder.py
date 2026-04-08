@@ -21,7 +21,7 @@ import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 simWidth = 100
 
 class Pathfinder:
-    def __init__(self, field_size, mine_radius:float, sim_width:float, corner_coords, total_distance:float, arc_length:float, total_path_length:float, finalGotoList, segmentedList):
+    def __init__(self, field_size, mine_radius:float, sim_width:float, corner_coords, discoveredMines: list[tuple[float,float]]):
         
         self.field_size: tuple[int, int] = field_size
         
@@ -37,6 +37,8 @@ class Pathfinder:
         
         self.field = Field(0,field_size[0],0,field_size[1])
         
+        self.discoveredMines = []
+        
         self.bestPath = Path()
         
         #start path
@@ -47,4 +49,9 @@ class Pathfinder:
         # take latlong position, convert to local, add to field object.
         
         #inputs: list of discovered mines' lat/long position?
+        
+        
+    def addDiscoveredMines(discoveredMines: list[tuple[float,float]]):
+        for (x,y) in discoveredMines:
+            Field.addMine(x, y)
        
