@@ -9,7 +9,7 @@ class JsonMessageUtilities:
     @staticmethod
     def message_from_json(payload: str) -> Message:
         data = json.loads(payload)
-        messageIdValue = data.get("messageId", data.get("id"))
+        messageIdValue = data.get("id", data.get("id"))
 
         return Message.create(
             id=MessageType(messageIdValue),
@@ -21,7 +21,7 @@ class JsonMessageUtilities:
     def message_to_json(message: Message) -> str:
         return json.dumps(
             {
-                "messageId": message.id.value,
+                "id": message.id.value,
                 "dronesToSendData": message.dronesToSendData,
                 "data": message.data,
             }
