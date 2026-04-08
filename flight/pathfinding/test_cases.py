@@ -9,11 +9,26 @@ This will generate 10 (or however many you want) mines that are placed.
 The output will be at the bottom.
 """
 # seed(2020) # make random or not
-numMines = 3
+numMines = 40
 radius = 32
+mineHistory = "["
 
-# NOTE: for some reason, running either one takes really long.
-# I have not altered the path_calculation file personally. - Jack
+# Paste a past list of mine coords as a string, paste the printed mineHistory
+# If wanting to go back to randomized, leave it as empty list
+recordedMineCoords = [(218,-72), (-163,-203), (-304,231), (-318,-86), (-201,155), (252,167), (217,-274), (-314,100), (-120,-79), (-13,231), (278,303), (18,52), (-146,296), (59,-223), (253,76), (105,115), (-37,108), (-78,-6), (301,179), (-44,182), (-10,146), (138,-188), (-40,206), (-195,186), (-294,182), (-27,-178), (193,-26), (-207,58), (-27,178), (20,305), (-112,98), (-287,-121), (-118,3), (-318,13), (-206,41), (-114,-110), (52,-149), (194,314), (-228,-181), (-14,-75)]
+
+
+"""
+Iteration of mine coordinates that a bug has appeared:
+
+Bug in: Hugging Edges
+List of mines coords:
+[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
+"""
+
+if (len(recordedMineCoords) > 0):
+    numMines = len(recordedMineCoords)
+
 pathFindingType = "A*"  # dijkstra OR A* OR both OR none 
 
 stepDebug = False # True if you want to step through mines being added, 
@@ -50,27 +65,38 @@ step = 0
 # Mine generation, do not add floating nodes before this point
 for num in range(numMines):
     step += 1
-    while True: # To make sure generated mines arent clipping off the edges of the field
-        position[0], position[1] = randint(genXMin,genXMax+1),randint(genYMin,genYMax+1)
-        invalidPosition = False
-        for mine in Mine.mines:
-            if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
-                invalidPosition = True
-                break
-        if invalidPosition:
-            continue
-        if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
-            continue
-        break
-    field.addMine(position[0],position[1],radius)
-    
-    print("added a mine")
+    if len(recordedMineCoords) <= 0: # Run normally if no mine cords have been inputted
+        if num != 0 and num != numMines:
+            mineHistory += ", "
+        while True: # To make sure generated mines arent clipping off the edges of the field
+            position[0], position[1] = randint(genXMin,genXMax+1),randint(genYMin,genYMax+1)
+            invalidPosition = False
+            for mine in Mine.mines:
+                if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
+                    invalidPosition = True
+                    break
+            if invalidPosition:
+                continue
+            if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
+                continue
+            break
+        
+        field.addMine(position[0],position[1],radius)
+        mineHistory += "(" + str(position[0]) + "," + str(position[1]) + ")"
+        print("added a mine")
+    else:
+        field.addMine(recordedMineCoords[num][0], recordedMineCoords[num][1], radius)
+        print("added a mine")
     if stepDebug:
         field.plotField(labeled=labeled,xlabel="[ctr+c] in the terminal to force end the program.\n(If it doesn't close initially, focus on the generated window)",title="Mines and Potential Paths:\n" + "Number of Mines: " + str(step) + "/" + str(numMines))
     else:
         continue
 print("done adding mines\n")
-start = field.placeStartNode(0,yMin + (radius*1.5))
+
+if len(recordedMineCoords) <= 0:
+    mineHistory += "]"
+    print(mineHistory)
+start = field.placeStartNode(0,0.5*yMin)
 endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
 #CONNECTS FLOATING NODES TOGETHER, DONT REMOVE
 for node in endPoints:
@@ -79,8 +105,7 @@ for node in endPoints:
 print("Connecting nodes on same mine (PLEASE DON'T REMOVE AGAIN I BEG)")
 for mine in field.mines:
     mine.connectMineNodes()
-if not stepDebug:
-    field.plotField()
+
 
 dijkstraPathLength = 0
 aStarPathLength = 0
@@ -106,6 +131,7 @@ if pathFindingType == "A*" or pathFindingType == "both":
     aStarPathSolve = Graph(field.nodeGraph)
     temp = time.time()
     aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
+
     aStarTime = time.time()-temp
     print("A* path:",aStarPath)
 
@@ -121,6 +147,9 @@ if pathFindingType=="both":
     print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
     print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
     print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
-    
+
+if not stepDebug:
+    field.plotField(path=aStarPath)
+
 field.increaseRadius(100)
 field.plotField()
