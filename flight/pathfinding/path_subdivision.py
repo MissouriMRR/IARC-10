@@ -46,8 +46,8 @@ class Path:
         return 2 * altitude * m.tan(fovRad/2)
         
     
-    #def generate_goto_points(self, nodeList: Node, step: int = 10):
-    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, altitude: float, fovDeg: float): #overlap is percent
+    #overlap is percent
+    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, altitude: float, fovDeg: float): 
         
         imageSize = self.ground_covered_image(altitude, fovDeg)
         step = imageSize * (1-overlap) # distance between goto points (FEET)
