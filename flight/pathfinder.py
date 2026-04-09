@@ -22,7 +22,7 @@ import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 simWidth = 100
 
 class Pathfinder:
-    def __init__(self, field_size: tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]], mine_radius:float, sim_width:float, corner_coords: tuple[tuple[float,float]]): 
+    def __init__(self, field_size: tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]], mine_radius:float, sim_width:float, corner_coords: tuple[tuple[float,float]], overlap: float, altitude: float, fovDeg: float): 
         
         self.field_size: tuple[int, int] = field_size
         
@@ -37,8 +37,15 @@ class Pathfinder:
         self.arbCoord = SimToLatLonTransformer(corner_coords, sim_width)
         
         self.field = Field(0,field_size[0],0,field_size[1])
+        
+        self.bestNodeList = []
+        self.bestWayPointslatlon = [] #stores best path
+        self.bestWayPointslocal = []
                 
         self.bestPath = Path()
+        self.overlap = overlap
+        self.altitude = altitude
+        self.fovDeg = fovDeg
         
     
     def addDiscoveredMine(self, mine_lat:float, mine_lon: float): 
@@ -59,4 +66,25 @@ class Pathfinder:
             local_corners.append(int(y))
             
         self.seen_tracker.note_pic(local_corners) 
+        
+    #returns final goto list    
+    def getWayPointslatlon(self):
+        
+        #what coords do I give here
+        start = self.field.placeStartNode()
+        end = self.field.placeEndNodes()
+        
+        newGraph=Graph(self.field.nodeGraph)        
+        self.bestNodeList = newGraph.shortest_path(start,end)
+        
+        self.bestWayPointslocal = self.bestPath.generate_goto_points(self.bestNodeList, self.overlap, self.altitude, self.fovDeg)
+        
+        for (x, y) in self.bestWayPointslocal:
+            lat, lon = self.arbCoord.local_to_latlon(x, y) 
+            self.bestWayPointslatlon.append((lat, lon)) 
+            
+        return self.bestWayPointslatlon
+        
+    
+        
         
