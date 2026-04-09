@@ -104,7 +104,7 @@ class Path:
                     self.finalGotoList.append((float(x), float(y)))
                 
         print(step)    
-        self.total_path_length = self.total_distance + self.total_arc_length       
+        self.total_path_length = self.total_lin_distance + self.total_arc_length       
         return self.finalGotoList, self.segmentedList 
     
     #optimumPath: path center-line length in feet
@@ -205,3 +205,4 @@ plt.show()
     #ask about overlap with mapping team and if that is being accounted for? 
 # is the given fov horizontal or vertical? I don't think it matter because using distance covered by image for points.
     # imageHeight = 2⋅h⋅tan(fovv​/2) 
+# Is the best path computed everytime new mine is found, or new image taken?

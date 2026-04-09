@@ -16,45 +16,47 @@
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer
 from flight.pathfinding.path_subdivision import Path
 from flight.pathfinding.node_generation import Field
+from flight.pathfinding.path_calculation import Graph
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 
 simWidth = 100
 
 class Pathfinder:
-    
-    
-    def __init__(self, field_size, mine_radius:float, sim_width:float, corner_coords, discoveredMines: list[tuple[float,float]]):
+    def __init__(self, field_size: tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]], mine_radius:float, sim_width:float, corner_coords: tuple[tuple[float,float]]): 
         
         self.field_size: tuple[int, int] = field_size
         
         self.mine_radius = mine_radius
 
-        self.corner_coords: tuple[tuple[float,float]] = corner_coords
+        self.corner_coords = corner_coords
         
         self.sim_width = sim_width 
         
-        self.seen_tracker = seen_by_drone.SightTracker(self.field_size)
+        self.seen_tracker = seen_by_drone.SightTracker(field_size)
         
         self.arbCoord = SimToLatLonTransformer(corner_coords, sim_width)
         
         self.field = Field(0,field_size[0],0,field_size[1])
-        
-        self.discoveredMines = []
-        
+                
         self.bestPath = Path()
         
-        #start path
-        # Adding mines, creating nodelist
+    
+    def addDiscoveredMine(self, mine_lat:float, mine_lon: float): 
+        x, y = self.arbCoord.latlon_to_local(mine_lat, mine_lon)
+        self.field.addMine(x, y, self.mine_radius) 
         
         
+    def addDiscoveredMines(self,discovered_mines_latlon: list[tuple[float, float]]): 
+        for (lat, lon) in discovered_mines_latlon:
+            self.addDiscoveredMines(lat, lon)
         
-        # take latlong position, convert to local, add to field object.
         
-        #inputs: list of discovered mines' lat/long position?
-        
-    #
-    def addDiscoveredMines(self, discoveredMines: list[tuple[float,float]]): 
-        for (lat, lon) in discoveredMines:
+    def acceptCornerCoord(self, corner_coords_latlon: tuple[tuple[float,float]]):
+        local_corners = []
+        for (lat, lon) in corner_coords_latlon:
             x, y = self.arbCoord.latlon_to_local(lat, lon)
-            Field.addMine(x, y)
-       
+            local_corners.append(int(x)) #local coords of image corners
+            local_corners.append(int(y))
+            
+        self.seen_tracker.note_pic(local_corners) 
+        
