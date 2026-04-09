@@ -58,14 +58,17 @@ class Pathfinder:
             self.addDiscoveredMines(lat, lon)
         
         
-    def acceptCornerCoord(self, corner_coords_latlon: tuple[tuple[float,float]]):
+    def acceptFieldCornerCoord(self, corner_coords_latlon:tuple[tuple[float,float]]):
         local_corners = []
         for (lat, lon) in corner_coords_latlon:
             x, y = self.arbCoord.latlon_to_local(lat, lon)
-            local_corners.append(int(x)) #local coords of image corners
-            local_corners.append(int(y))
             
-        self.seen_tracker.note_pic(local_corners) 
+
+    def acceptImageCornerCoord(self, corner_coords_latlon:tuple[tuple[float,float]]):
+        local_corners = []
+        for [lat, lon] in corner_coords_latlon:
+            x, y = self.arbCoord.latlon_to_local(lat, lon)
+            local_corners.append([x, y])
         
     #returns final goto list    
     def getWayPointslatlon(self):
