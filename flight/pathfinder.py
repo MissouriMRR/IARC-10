@@ -65,7 +65,7 @@ class Pathfinder:
             local_corners.append(int(x)) #local coords of image corners
             local_corners.append(int(y))
             
-        self.seen_tracker.note_pic(local_corners) 
+        self.seen_tracker.note_pic(local_corners) # 
         
     #returns final goto list    
     def getWayPointslatlon(self):
