@@ -1,7 +1,7 @@
 import unittest
 from message_types import Message, MessageType
 
-# THIS FILE IS NOT UNDER THE Tests FOLDER BECAUSE PYTHON'S IMPORT SYSTEM IS 
+# THIS FILE IS NOT UNDER THE Tests FOLDER BECAUSE PYTHON'S IMPORT SYSTEM IS
 # HORRIBLE. It can be moved later, but right now it only works here
 
 
@@ -17,10 +17,13 @@ class TestMessages(unittest.TestCase):
         )
         self.assertEqual(message.id, MessageType.HEARTBEAT)
         self.assertEqual(message.dronesToSendData, ())
-        self.assertEqual(message.data, {
-            "senderId": 1,
-            "payload": "Hello, world!",
-        })
+        self.assertEqual(
+            message.data,
+            {
+                "senderId": 1,
+                "payload": "Hello, world!",
+            },
+        )
 
     # This test doesn't work, and isn't really necessary since the MessageType
     # enum will throw an error if it is not a valid MessageType. However,
@@ -69,10 +72,7 @@ class TestMessages(unittest.TestCase):
             message = Message.create(
                 id=MessageType.HEARTBEAT,
                 dronesToSendData=(),
-                data={
-                    "senderId": 1,
-                    "payload": 42
-                },
+                data={"senderId": 1, "payload": 42},
             )
             self.assertEqual(message.data, {})
 
@@ -99,6 +99,7 @@ class TestMessages(unittest.TestCase):
             message.data.setdefault("extra", "extra")
         with self.assertWarns(Warning):
             message.data.update({"extra": "extra"})
+
 
 if __name__ == "__main__":
     unittest.main()
