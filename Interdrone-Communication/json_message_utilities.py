@@ -9,10 +9,16 @@ class JsonMessageUtilities:
     @staticmethod
     def message_from_json(payload: str) -> Message:
         data = json.loads(payload)
-        messageIdValue = data.get("id", data.get("id"))
+        messageIdValue = data.get("id")
+
+        try:
+            message_type = MessageType(messageIdValue)
+        except ValueError:
+            print(f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN")
+            message_type = MessageType.UNKNOWN
 
         return Message.create(
-            id=MessageType(messageIdValue),
+            id=message_type,
             dronesToSendData=tuple(data.get("dronesToSendData", ())),
             data=data.get("data", {}),
         )

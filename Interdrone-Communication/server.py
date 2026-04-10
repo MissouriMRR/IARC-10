@@ -70,7 +70,6 @@ class Server:
 
                 # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
                 messageSent = False
-                print(message)
                 match message.id:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
