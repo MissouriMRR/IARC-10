@@ -135,8 +135,8 @@ fi
 # Set IP address based on Pi number
 NODE_IP="169.254.97.$PI_NUMBER"
 log_message "Setting IP address $NODE_IP on bat0..."
-ip addr add "$NODE_IP/24" dev bat0
-
+ip addr add "$NODE_IP/16" dev bat0
+arping -c 3 -I bat0 "$NODE_IP"
 log_message "B.A.T.M.A.N. mesh setup complete!"
 log_message "Interface: $UAIN, IP: $NODE_IP"
 
