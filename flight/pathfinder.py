@@ -24,11 +24,11 @@ simWidth = 100
 class Pathfinder:
     def __init__(self, real_corner_coords: tuple[tuple[float,float]], altitude: float, fov_deg: float): 
         
-        sim_width:float = 300 # Confirm with nat what this is exactly, this should be an internal constant
+        self.SIM_WIDTH:float = 300 # Confirm with nat what this is exactly, this should be an internal constant
 
         self.OVERLAP = 3 # This will be an internal constant
 
-        self.coord_converter = SimToLatLonTransformer(real_corner_coords, sim_width)
+        self.coord_converter = SimToLatLonTransformer(real_corner_coords, self.SIM_WIDTH)
 
         self.arb_corner_coords = self.coord_converter.get_arb_corners()
 
@@ -36,9 +36,7 @@ class Pathfinder:
         
         self.mine_radius = 3 # Get from the coord converter
 
-        self.real_corner_coords = real_corner_coords
-        
-        self.sim_width = sim_width 
+        self.real_corner_coords = real_corner_coords 
         
         self.field = Field(0,self.arb_field_size[0],0,self.arb_field_size[1])
 
