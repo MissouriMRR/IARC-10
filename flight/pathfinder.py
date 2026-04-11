@@ -66,7 +66,9 @@ class Pathfinder:
         for [lat, lon] in corner_coords_latlon:
             x, y = self.coord_converter.latlon_to_local(lat, lon)
             local_corners.append([x, y])
-        
+        self.seen_tracker.note_pic(local_corners)
+
+
     #returns final goto list    
     def get_way_points_latlon(self):
         
@@ -77,7 +79,9 @@ class Pathfinder:
         newGraph=Graph(self.field.nodeGraph)        
         self.best_node_list = newGraph.shortest_path(start,end)
         
-        self.best_way_points_local = self.best_path.generate_goto_points(self.best_node_list, self.overlap, self.altitude, self.fovDeg)
+        self.best_way_points_local, best_wp_seg_info = self.best_path.generate_goto_points(self.best_node_list, self.OVERLAP, self.altitude, self.fov_deg)
+
+        self.best_way_points_local = seen_by_drone.remove_extra_coords(self.seen_tracker, self.best_way_points_local, best_wp_seg_info, [self.best_path.ground_covered_image(self.altitude, self.fov_deg), self.best_path.ground_covered_image(self.altitude, self.fov_deg)])
         
         for (x, y) in self.best_way_points_local:
             lat, lon = self.coord_converter.local_to_latlon(x, y) 
