@@ -22,52 +22,51 @@ import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 simWidth = 100
 
 class Pathfinder:
-    def __init__(self, field_size: tuple[tuple[float,float]], mine_radius:float, sim_width:float, corner_coords: tuple[tuple[float,float]], overlap: float, altitude: float, fov_deg: float): 
+    def __init__(self, real_corner_coords: tuple[tuple[float,float]], altitude: float, fov_deg: float): 
         
-        self.field_size = field_size
-        
-        self.mine_radius = mine_radius
+        sim_width:float = 300 # Confirm with nat what this is exactly, this should be an internal constant
 
-        self.corner_coords = corner_coords
+        self.OVERLAP = 3 # This will be an internal constant
+
+        self.coord_converter = SimToLatLonTransformer(real_corner_coords, sim_width)
+
+        self.arb_corner_coords = self.coord_converter.get_arb_corners()
+
+        self.arb_field_size = [max([self.arb_corner_coords[0][0], self.arb_corner_coords[1][0], self.arb_corner_coords[2][0], self.arb_corner_coords[3][0]]) - min([self.arb_corner_coords[0][0], self.arb_corner_coords[1][0], self.arb_corner_coords[2][0], self.arb_corner_coords[3][0]]), max([self.arb_corner_coords[0][1], self.arb_corner_coords[1][1], self.arb_corner_coords[2][1], self.arb_corner_coords[3][1]]) - min([self.arb_corner_coords[0][1], self.arb_corner_coords[1][1], self.arb_corner_coords[2][1], self.arb_corner_coords[3][1]])]
+        
+        self.mine_radius = 3 # Get from the coord converter
+
+        self.real_corner_coords = real_corner_coords
         
         self.sim_width = sim_width 
         
-        self.seen_tracker = seen_by_drone.SightTracker(field_size)
-        
-        self.arb_coord = SimToLatLonTransformer(corner_coords, sim_width)
-        
-        self.field = Field(0,field_size[0],0,field_size[1])
+        self.field = Field(0,self.arb_field_size[0],0,self.arb_field_size[1])
+
+        self.seen_tracker = seen_by_drone.SightTracker(self.arb_field_size)
         
         self.best_node_List = []
         self.best_way_points_latlon = [] #stores best path
         self.best_way_points_local = []
                 
         self.best_path = Path()
-        self.overlap = overlap
         self.altitude = altitude
         self.fov_deg = fov_deg
         
     
     def add_discovered_mine(self, mine_lat:float, mine_lon: float): 
-        x, y = self.arb_coord.latlon_to_local(mine_lat, mine_lon)
+        x, y = self.coord_converter.latlon_to_local(mine_lat, mine_lon)
         self.field.addMine(x, y, self.mine_radius) 
         
         
     def add_discovered_mines(self,discovered_mines_latlon: list[tuple[float, float]]): 
         for (lat, lon) in discovered_mines_latlon:
             self.add_discovered_mine(lat, lon)
-        
-        
-    def accept_field_corner_coord(self, corner_coords_latlon:tuple[tuple[float,float]]):
-        local_corners = []
-        for (lat, lon) in corner_coords_latlon:
-            x, y = self.arb_coord.latlon_to_local(lat, lon)
             
 
     def accept_image_corner_coord(self, corner_coords_latlon:tuple[tuple[float,float]]):
         local_corners = []
         for [lat, lon] in corner_coords_latlon:
-            x, y = self.arb_coord.latlon_to_local(lat, lon)
+            x, y = self.coord_converter.latlon_to_local(lat, lon)
             local_corners.append([x, y])
         
     #returns final goto list    
@@ -83,7 +82,7 @@ class Pathfinder:
         self.best_way_points_local = self.best_path.generate_goto_points(self.best_node_list, self.overlap, self.altitude, self.fovDeg)
         
         for (x, y) in self.best_way_points_local:
-            lat, lon = self.arb_coord.local_to_latlon(x, y) 
+            lat, lon = self.coord_converter.local_to_latlon(x, y) 
             self.best_way_points_latlon.append((lat, lon)) 
             
         return self.best_way_points_latlon
