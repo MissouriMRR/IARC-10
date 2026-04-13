@@ -79,10 +79,6 @@ class SimToLatLonTransformer:
         real_dist = math.sqrt(base_x**2 + base_y**2)
         self.scale = self.sim_w / real_dist
 
-        self.c1_localx, self.c1_localy = self.latlon_to_local(self.c1_lat, self.c1_lon)
-        self.c2_localx, self.c2_localy = self.latlon_to_local(self.c2_lat, self.c2_lon)
-        self.c3_localx, self.c3_localy = self.latlon_to_local(self.c3_lat, self.c3_lon)
-        self.c4_localx, self.c4_localy = self.latlon_to_local(self.c4_lat, self.c4_lon)
         self.origin_localx, self.origin_localy = self.latlon_to_local(self.origin_lat, self.origin_lon)
 
     def latlon_to_local(self, lat, lon):
