@@ -4,7 +4,7 @@ import math
 class SimToLatLonTransformer:
     def __init__(self, corner_coords:tuple[tuple[float,float]], sim_width:float):
 
-
+        self.real_corners = corner_coords
 
         '''
         If angle 134 is acute, the local origin is placed at point 3, otherwise it is put on the projected line that comes from 34 and is directly below point 1. This ensures that the entire minefield is in the first quadrant
@@ -16,8 +16,8 @@ class SimToLatLonTransformer:
 
         '''
         1-------------2
-        |\\            |
-        | \\           |
+        |\\           |
+        | \\          |
         o--3----------4
         '''
 
@@ -112,6 +112,12 @@ class SimToLatLonTransformer:
         lat = self.origin_lat + (dy / self.m_per_lat)
         lon = self.origin_lon + (dx / self.m_per_lon)
         return [lat, lon]
+    
+    def get_arb_corners(self):
+        arb_corners = []
+        for [lat, lon] in self.real_corners:
+            arb_corners.append(self.latlon_to_local(lat, lon))
+        return arb_corners
 
 
 '''

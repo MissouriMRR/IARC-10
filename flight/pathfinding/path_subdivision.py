@@ -7,39 +7,52 @@ import random as rand
 import matplotlib.pyplot as plt
 from flight.pathfinding.node_generation import Node, Mine, Field, Connection, seg
 from flight.pathfinding.path_calculation import Graph
-#purpose: takes in list of nodes outputted from dijkstras algorthm, and creates goto points between each node (arc/line) 
-#with hardcoded lengths (arclength/step) between each point, outputting a final path of points for drone to follow.
-#hello
+'''
+Attributes:
+        total_lin_distance (float) : Cumulative linear distance of the path (feet)
+        total_arc_length (float)   : Cumulative arc distance of the path (feet)
+        total_path_length (float)  : Sum of total_distance and total_arc_length (feet)
+        finalGotoList (list[tuple]): List of (x, y) coordinates representing waypoints [(x1,y1), (x2,y2)] 
+        segmentedList (list[tuple]): List of segments [((x1, y1), (x2, y2), isArc)]
 
-#todo: Modify goto point generation to take the photo size and change the width between goto points as needed. 
+    Methods:
+        ground_covered_image(altitude: float, fovDeg: float) -> float
+            Calculates ground distance covered by a single drone image
+            given camera FOV and altitude (feet).
+
+        generate_goto_points(nodeList: tuple[Node], overlap: float, altitude: float, fovDeg: float) -> [list[tuple], list[tuple]]
+            Generates waypoints along a path connecting nodes.
+            Handles both linear and arc segments.
+            Populates finalGotoList and segmentedList.
+
+        num_score_points(flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float) -> float
+            Computes a performance score based on flight time, mines missed, path length,
+            path width, and drone weight.
 
 '''
-#make-shift mines for testing. radius = 3 feet
-mine1 = Mine(rand.randrange(200), rand.randrange(200), 3)
-mine2 = Mine(rand.randrange(200), rand.randrange(200), 3)
-mine3 = Mine(rand.randrange(200), rand.randrange(200), 3)
-mine4 = Mine(rand.randrange(200), rand.randrange(200), 3)
-mine5 = Mine(rand.randrange(200), rand.randrange(200), 3)
 
-n1 = Node(mine1, mine2)
-n2 = Node(mine2, mine3)
-n3 = Node(mine3, mine4)
-n4 = Node(mine4, mine5)
-
-nodeCorList = [n1, n2, n3, n4]
-'''
-
-class path: 
+class Path: 
     def __init__(self):
-        self.total_distance = 0 #linear distance
+        self.total_lin_distance = 0  #linear distance
         self.total_arc_length = 0
         self.total_path_length = 0
+        self.finalGotoList = []
+        self.segmentedList = []
+        
+    #altitude in feet
+    #returns distance covered by image in feet.
+    def ground_covered_image(altitude: float, fovDeg: float): 
+        fovRad = m.radians(fovDeg)
+        return 2 * altitude * m.tan(fovRad/2)
+        
     
-    #def generate_goto_points(self, nodeList: Node, step: int = 10):
-    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, photoWidth: float): #overlap is percent
-        step = photoWidth * (1-overlap) # distance between goto points (FEET)
-        finalGotoList = []   
-        segmentedList = []
+    #overlap is percent
+    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, altitude: float, fovDeg: float): 
+        
+        imageSize = self.ground_covered_image(altitude, fovDeg)
+        step = imageSize * (1-overlap) # distance between goto points (FEET)
+        #finalGotoList = []   
+        #segmentedList = []
         isArc = False
         for i in range(len(nodeList) - 1):
             n1 = nodeList[i] #first node
@@ -49,26 +62,19 @@ class path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-                segmentedList.append([n1, n2, isArc])
-                '''
-                dx = n2.x - n1.x
-                dy = n2.y - n1.y
-                distance = m.sqrt(dx**2 + dy**2)
-                '''
-                self.total_distance += connect.distance
-                
-                numPoints = max(1, int(connect.distance / step)) # 1 is the min num of points --> subject to change.
+                self.segmentedList.append([(n1), (n2), isArc])
+    
+                self.total_lin_distance += connect.distance
+                numPoints = max(1, int(connect.distance / step)) 
                 x_vals = np.linspace(n1.x, n2.x, numPoints)
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
-
                 for x, y in zip(x_vals, y_vals):
-                    finalGotoList.append([float(x), float(y)])
+                    self.finalGotoList.append((float(x), float(y)))
             
             #arc gotos
-            #elif n1.parentMine==n2.parentMine :
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                segmentedList.append([n1, n2, isArc])
+                self.segmentedList.append([n1, n2, isArc])
                 
                 #get center coords
                 mine = n1.parentMine
@@ -86,28 +92,24 @@ class path:
                 elif delta_theta < -m.pi:
                     delta_theta += 2*m.pi
                 
-                #determine number of points based on arc length
-                #arc_length = abs(delta_theta) * r 
-                self.total_arc_length += connect.distance #arc_length
+                self.total_arc_length += connect.distance 
                 
-                numPoints = max(1, int(connect.distance/ step)) # 3 is the min num of points --> subject to change. #note to self: If I had done delta_theta/(pre-determined radian value), it would uniformly space number of points based on angle, but as radius changes, distance between generated points would vary. 
+                numPoints = max(1, int(connect.distance/ step)) 
                 
                 # Generate arc points
                 angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
-                    finalGotoList.append([float(x), float(y)])
-                    
-      
-        #print("segment List:", segmentList)  
+                    self.finalGotoList.append((float(x), float(y)))
+                
         print(step)    
-        self.total_path_length = self.total_distance + self.total_arc_length       
-        return finalGotoList, segmentedList 
+        self.total_path_length = self.total_lin_distance + self.total_arc_length       
+        return self.finalGotoList, self.segmentedList 
     
     #optimumPath: path center-line length in feet
     #pathWidth: narrowest width of path in feet
-    def numScorePoints(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
+    def num_score_points(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
         if (flightMin > 7): 
             score = 0
         else:
@@ -116,73 +118,94 @@ class path:
 
 
 #set up 
-field = Field(0, 200, 0, 200)
+if __name__ == "__main__":
+        
+    field = Field(0, 200, 0, 200)
 
-field.addMine(80, 30, 20) 
-field.addMine(70, 90, 20) 
-field.addMine(140, 30, 20) 
-field.addMine(170, 100, 20)
+    field.addMine(80, 30, 20) 
+    field.addMine(70, 90, 20) 
+    field.addMine(140, 30, 20) 
+    field.addMine(170, 100, 20)
 
-start=field.placeStartNode(110,0)
-end=field.placeEndNodes(190,2)
+    start=field.placeStartNode(110,0)
+    end=field.placeEndNodes(190,2)
 
-for node in end:
-    node.connectNode(start)
-for mine in field.mines:
-    print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
-    mine.connectMineNodes()
+    for node in end:
+        node.connectNode(start)
+    for mine in field.mines:
+        print(mine,'connected to',','.join(m.__str__() for m in mine.connectedMines))
+        mine.connectMineNodes()
+        
+    nodeList = []
+
+
+    newGraph=Graph(field.nodeGraph)
+    nodeList=newGraph.shortest_path(start,end)
+    print(nodeList)
+
+    field.plotField(labeled=True)
+    """
+    for mine in field.mines:
+        nodeList.extend(mine.getNodes()) # gives all the nodes generated by adding the mines. 
+    """
+
+    '''
+    #make-shift mines for testing. radius = 3 feet
+    mine1 = Mine(rand.randrange(200), rand.randrange(200), 3)
+    mine2 = Mine(rand.randrange(200), rand.randrange(200), 3)
+    mine3 = Mine(rand.randrange(200), rand.randrange(200), 3)
+    mine4 = Mine(rand.randrange(200), rand.randrange(200), 3)
+    mine5 = Mine(rand.randrange(200), rand.randrange(200), 3)
+
+    n1 = Node(mine1, mine2)
+    n2 = Node(mine2, mine3)
+    n3 = Node(mine3, mine4)
+    n4 = Node(mine4, mine5)
+
+    nodeCorList = [n1, n2, n3, n4]
+    '''
+
+    #Function Calls
+    pathObj = Path()
+    finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
+
+    pathWidth = Mine.getRadius(Mine)
+    print("radius", pathWidth)
+    droneWeight = 1 #ounces over 1 pound weight limit
+    flightMin = 7  #worst case scenario
+    minesMissed = 0
+    optimumPath = pathObj.total_path_length
+    score = pathObj.num_score_points(flightMin, minesMissed, optimumPath, pathWidth, droneWeight)
+    print("This is the score: ", score)
+
+
+    #print("goto x and goto y")
+    # Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
+    goto_x = [coord[0] for coord in finalPath]
+    goto_y = [coord[1] for coord in finalPath]
+    #print(segmentedList)
+
+
+    #Display
+    fig, ax = plt.subplots()
+    ax.set_aspect('equal')
+
+    plt.plot(goto_x, goto_y, marker='o', color='red', linestyle='-', markersize=4, label='Goto Points')
+
+    for node in nodeList:
+        plt.plot(node.x, node.y, marker='o', color='blue', markersize= 4, label='Node')
+
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.title("Nodes and Goto Points")
+    plt.grid(True)
+    plt.show()
+
+
     
-nodeList = []
-
-
-newGraph=Graph(field.nodeGraph)
-nodeList=newGraph.shortest_path(start,end)
-print(nodeList)
-
-field.plotField(labeled=True)
-"""
-for mine in field.mines:
-    nodeList.extend(mine.getNodes()) # gives all the nodes generated by adding the mines. 
-"""
-
-#Function Calls
-pathObj = path()
-finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
-
-pathWidth = Mine.getRadius(Mine)
-print("radius", pathWidth)
-droneWeight = 1 #ounces over 1 pound weight limit
-flightMin = 7  #worst case scenario
-minesMissed = 0
-optimumPath = pathObj.total_path_length
-score = pathObj.numScorePoints(flightMin, minesMissed, optimumPath, pathWidth, droneWeight)
-print("This is the score: ", score)
-
-
-#print("goto x and goto y")
-# Extract x and y from finalGotoList (path) [(x1,y1), (x2,y2)]
-goto_x = [coord[0] for coord in finalPath]
-goto_y = [coord[1] for coord in finalPath]
-#print(segmentedList)
-
-
-#Display
-fig, ax = plt.subplots()
-ax.set_aspect('equal')
-
-plt.plot(goto_x, goto_y, marker='o', color='red', linestyle='-', markersize=4, label='Goto Points')
-
-for node in nodeList:
-    plt.plot(node.x, node.y, marker='o', color='blue', markersize= 4, label='Node')
-
-plt.xlabel("X")
-plt.ylabel("Y")
-plt.title("Nodes and Goto Points")
-plt.grid(True)
-plt.show()
-
-
-    
-    
-    
-
+# TODO: LOOK at what mapping code has
+    #ask about overlap with mapping team and if that is being accounted for? 
+# is the given fov horizontal or vertical? I don't think it matter because using distance covered by image for points.
+    # imageHeight = 2⋅h⋅tan(fovv​/2) 
+# Is the best path computed everytime new mine is found, or new image taken?
+# why are my commits unverified?

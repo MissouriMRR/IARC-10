@@ -27,4 +27,5 @@ class CalcScanPath(State):
     run_callable: ClassVar[Callable[["CalcScanPath"], Awaitable[State]]]
 
     def run(self) -> Awaitable[State]:
+        
         return self.run_callable()
