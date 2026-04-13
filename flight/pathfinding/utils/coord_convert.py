@@ -37,16 +37,18 @@ class SimToLatLonTransformer:
         self.m_per_lon = 111320.0 * math.cos(math.radians(self.origin_lat))
 
         # Convert 1-3 and 3-4 to meters from degrees
-        c1_lat, c1_lon = corner_coords[0]
-        c4_lat, c4_lon = corner_coords[3]
+        self.c1_lat, self.c1_lon = corner_coords[0]
+        self.c2_lat, self.c2_lon = corner_coords[1]
+        self.c3_lat, self.c3_lon = corner_coords[2]
+        self.c4_lat, self.c4_lon = corner_coords[3]
 
         # Vector components from point 3 to point 4
-        base_x = (c4_lon - self.origin_lon) * self.m_per_lon
-        base_y = (c4_lat - self.origin_lat) * self.m_per_lat
+        base_x = (self.c4_lon - self.origin_lon) * self.m_per_lon
+        base_y = (self.c4_lat - self.origin_lat) * self.m_per_lat
 
         # Vector components from point 3 to point 1
-        dx13 = (c1_lon - self.origin_lon) * self.m_per_lon
-        dy13 = (c1_lat - self.origin_lat) * self.m_per_lat
+        dx13 = (self.c1_lon - self.origin_lon) * self.m_per_lon
+        dy13 = (self.c1_lat - self.origin_lat) * self.m_per_lat
 
         # Find angle 134
         self.angle_134 = math.acos(np.dot([base_x, base_y], [dx13, dy13])/(math.sqrt(base_x**2+base_y**2)*math.sqrt(dx13**2+dy13**2)))
@@ -65,10 +67,10 @@ class SimToLatLonTransformer:
             self.origin_lon = self.origin_lon + (origin_transform_vector[0] / self.m_per_lon)
 
             # Update global coords relative to moved origin
-            base_x = (c4_lon - self.origin_lon) * self.m_per_lon
-            base_y = (c4_lat - self.origin_lat) * self.m_per_lat
-            dx13 = (c1_lon - self.origin_lon) * self.m_per_lon
-            dy13 = (c1_lat - self.origin_lat) * self.m_per_lat
+            base_x = (self.c4_lon - self.origin_lon) * self.m_per_lon
+            base_y = (self.c4_lat - self.origin_lat) * self.m_per_lat
+            dx13 = (self.c1_lon - self.origin_lon) * self.m_per_lon
+            dy13 = (self.c1_lat - self.origin_lat) * self.m_per_lat
         
         # Angle of the bottom edge (3-4) relative to East
         self.offset_angle = math.atan2(base_y, base_x)
@@ -76,6 +78,12 @@ class SimToLatLonTransformer:
         # Scale: pixels/units per meter
         real_dist = math.sqrt(base_x**2 + base_y**2)
         self.scale = self.sim_w / real_dist
+
+        self.c1_localx, self.c1_localy = self.latlon_to_local(self.c1_lat, self.c1_lon)
+        self.c2_localx, self.c2_localy = self.latlon_to_local(self.c2_lat, self.c2_lon)
+        self.c3_localx, self.c3_localy = self.latlon_to_local(self.c3_lat, self.c3_lon)
+        self.c4_localx, self.c4_localy = self.latlon_to_local(self.c4_lat, self.c4_lon)
+        self.origin_localx, self.origin_localy = self.latlon_to_local(self.origin_lat, self.origin_lon)
 
     def latlon_to_local(self, lat, lon):
         # 1. Convert to relative meters
