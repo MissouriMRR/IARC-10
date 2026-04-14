@@ -28,6 +28,7 @@ Waits for user to prompt for next one
 
 (spreadsheet can be created from JSON in a separate file)
 """
+# TODO update logging to be more readable when no spreadsheet
 
 
 def parse_bool_flag(value: str) -> bool:
@@ -265,6 +266,11 @@ async def main():
                         # If all drones in range tests tests have finished
                         if sum(testsFinishedPerTarget) >= numDrones:
                             testFinished = True
+                    elif len(speedResults[targetId]) % 10 == 0:
+                        print(
+                            f"Test #{len(speedResults[targetId])} completed for drone {targetId}"
+                        )
+
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
@@ -334,7 +340,6 @@ def log_data(
             parents=True, exist_ok=True
         )  # safe if parent folder already exists
         jsonPath.write_text(json.dumps(initialData, indent=2), encoding="utf-8")
-        print("wrote text")
 
     # If json file does not exist, set it up then append
 
@@ -400,10 +405,7 @@ def log_data(
                         availableMemory = int(parts[6])
                         break
 
-                print(f"Total memory (bytes): {totalMemory}mb")
-                print(f"Available memory (bytes): {availableMemory}mb")
                 memoryUsage = ((totalMemory - availableMemory) / totalMemory) * 100
-                print(f"Memory Usage {memoryUsage}%")
 
                 # Get processor usage (takes 2 seconds to run due to delay from top)
                 result = subprocess.run(
@@ -414,7 +416,6 @@ def log_data(
                     if line.startswith("%Cpu(s):"):
                         parts = line.split()
                         cpuLoad = parts[1]
-                print(f"CPU Usage: {cpuLoad}%")
             except Exception as e:  # Exceptions are likely due to code running powershell and not a linux based cli
                 print(e)
 
@@ -436,9 +437,50 @@ def log_data(
         jsonData["data"]["cpuLoad"].append(cpuLoad)
         jsonData["data"]["memoryUsage"].append(memoryUsage)
 
-        print(jsonData)
         with jsonPath.open("w", encoding="utf-8") as f:
             json.dump(jsonData, f, indent=2)
+
+        print("\n" + "=" * 70)
+        print(
+            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {jsonConfigData.get_self_id()} -> {targetDrone}"
+        )
+        print("=" * 70)
+
+        print(f"\nTotal Samples: {len(speedResults)}")
+
+        print("\n--- UPLOAD STATISTICS ---")
+        print("Throughput:")
+        print(
+            f"  Average: {avgUploadThroughputMbps:.2f} Mbps ({avgUploadThroughputMbps * 1000:.2f} Kbps)"
+        )
+        print(f"  Minimum: {minUploadThroughput:.2f} Mbps")
+        print(f"  Maximum: {maxUploadThroughput:.2f} Mbps")
+        print("Round-Trip Time:")
+        print(f"  Average: {avgUploadRttMs:.2f} ms")
+        print(f"  Minimum: {minUploadRtt:.2f} ms")
+        print(f"  Maximum: {maxUploadRtt:.2f} ms")
+
+        print("\n--- DOWNLOAD STATISTICS ---")
+        print("Throughput:")
+        print(
+            f"  Average: {avgDownloadThroughputMbps:.2f} Mbps ({avgDownloadThroughputMbps * 1000:.2f} Kbps)"
+        )
+        print(f"  Minimum: {minDownloadThroughput:.2f} Mbps")
+        print(f"  Maximum: {maxDownloadThroughput:.2f} Mbps")
+        print("Round-Trip Time:")
+        print(f"  Average: {avgDownloadRttMs:.2f} ms")
+        print(f"  Minimum: {minDownloadRtt:.2f} ms")
+        print(f"  Maximum: {maxDownloadRtt:.2f} ms")
+
+        print("\n--- RANGE & PERFORMANCE ---")
+        print(f"  UWB Range: {uwbRange} m")
+        if getPerf:
+            print(f"  CPU Load:     {cpuLoad}%")
+            print(f"  Memory Total: {totalMemory} MB")
+            print(f"  Memory Avail: {availableMemory} MB")
+            print(f"  Memory Usage: {memoryUsage:.1f}%")
+
+        print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
