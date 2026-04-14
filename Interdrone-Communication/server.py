@@ -129,7 +129,10 @@ class Server:
             print(f"Error handling client: {e}")
         finally:
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError:
+                pass
 
     # Run server
     def run(self):
