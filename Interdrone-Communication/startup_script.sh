@@ -18,7 +18,7 @@ ENABLE_UPDATE_PACKAGES=true
 ENABLE_INSTRUCTION_SET=true
 ENABLE_BATMAN=true
 
-# Step 1: Connect to MST-Guest 
+# Step 1: Connect to MST-Guest
 if [ "$ENABLE_NETWORK_CONNECTION" = true ]; then
     nmcli dev wifi connect "MST-Guest" password "miner2020"
 fi
@@ -62,11 +62,10 @@ if [ "$ENABLE_BATMAN" = true ]; then
   ln -sfn "$REPO_ROOT" "/home/mrrdt-$PI_NUMBER/IARC-10"
 
   # Disable power save
-  sudo iw dev wlan0 set power_save off 
+  sudo iw dev wlan0 set power_save off
 
   # Step 6b: Run the batman mesh setup script
   BATMAN_SCRIPT="${BATMAN_MESH_SETUP_SCRIPT_PATH:-Interdrone-Communication/batman-mesh-setup.sh}"
   chmod +x "$REPO_ROOT/$BATMAN_SCRIPT"
   cd "$SCRIPT_DIR" && exec "$REPO_ROOT/$BATMAN_SCRIPT"
 fi
-

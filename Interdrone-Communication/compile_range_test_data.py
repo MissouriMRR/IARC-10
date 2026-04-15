@@ -111,9 +111,7 @@ def main() -> None:
         if headers == combined_headers:
             all_rows.extend(rows)
         else:
-            print(
-                f"Skipping {json_file.name} from combined CSV due to header mismatch."
-            )
+            print(f"Skipping {json_file.name} from combined CSV due to header mismatch.")
 
     if combined_headers and all_rows:
         combined_csv = args.output_dir / args.combined_name

@@ -187,7 +187,7 @@ class FlightSettings:
             Flag for vertical takeoff
         """
         self.__simple_takeoff = simple_takeoff
-    
+
     @property
     def app_opperable(self) -> bool:
         """
@@ -312,120 +312,120 @@ class FlightSettings:
     @property
     def number_of_total_drones(self) -> int:
         """
-        Returns the 
+        Returns the
 
         Returns
         -------
         number_of_total_drones : int
-            
+
         """
         return self.__number_of_total_drones
 
     @number_of_total_drones.setter
     def number_of_total_drones(self, total_drones: int) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
         number_of_total_drones : int
-            New 
+            New
         """
         self.__number_of_total_drones = total_drones
 
     @property
     def other_drone_info(self) -> tuple[dict]:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__other_drone_info
 
     @other_drone_info.setter
     def other_drone_info(self, other_info: tuple[dict]) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__other_drone_info = other_info
 
     @property
     def mission_field_corners(self) -> tuple[dict, dict, dict, dict]:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__mission_field_corners
 
     @mission_field_corners.setter
     def mission_field_corners(self, field_corners: tuple[dict, dict, dict, dict]) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__mission_field_corners = field_corners
-    
+
     @property
     def start_coord(self) -> dict:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__start_coord
 
     @start_coord.setter
     def start_coord(self, start_coord: dict) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__start_coord = start_coord
 
     @property
     def max_flight_height(self) -> dict:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__max_flight_height
 
     @max_flight_height.setter
     def max_flight_height(self, max_height: dict) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__max_flight_height = max_height
 

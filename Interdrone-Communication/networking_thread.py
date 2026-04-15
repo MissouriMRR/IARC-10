@@ -53,9 +53,7 @@ class NetworkingThread:
         jsonConfigData: JsonConfigReader,
     ) -> None:
         # Instantiate Server and Client
-        serverInstance = server.Server(
-            jsonConfigData=jsonConfigData, serverOutData=serverOutData
-        )
+        serverInstance = server.Server(jsonConfigData=jsonConfigData, serverOutData=serverOutData)
         clientInstance = client.Client(
             jsonConfigData=jsonConfigData,
             clientInData=clientInData,

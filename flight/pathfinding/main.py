@@ -55,9 +55,12 @@ class Drone:
     # Updates the corners tracking what the drone is seeing UNEMPLAMENTED
     def updateVision(
         self,
-        corners: tuple[
-            tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]
-        ] = ((1, 1), (1, 1), (1, 1), (1, 1)),
+        corners: tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]] = (
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+        ),
     ):
         self.visionRange = corners
 
@@ -181,9 +184,7 @@ class Drone:
 
 # This is a place holder for the output from generating the fastest path.
 class Path:
-    def __init__(
-        self, chain: tuple[nodeg.Node], length: float = 9999999, width: float = 1
-    ):
+    def __init__(self, chain: tuple[nodeg.Node], length: float = 9999999, width: float = 1):
         self.length = length
         self.chain = chain
         self.width = width
@@ -194,7 +195,9 @@ timeLimit = 120  # Time limit in seconds
 fieldSizeX = 3600  # The max size of the field in inches
 fieldSizeY = 960  # The max size of the field in inches
 startTime = t.time()  # Starting time (Based on global clock)
-previousPath = Path()  # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODE GENERATION
+previousPath = (
+    Path()
+)  # Previous Path DOES NOT WORK AS LAYED OUT NEEDS UPDATE TO PATH CLASS AND THE STRUCTURE OF JACK'S NODE GENERATION
 currentPath = Path()  # Current Working Path SEE ABOVE
 drones = [
     Drone(id=1),
@@ -242,7 +245,7 @@ def mainLoop():
                     diviedGoto.append(gotoCoords[i*6+y])
                 drones[i].updateTasks(diviedGoto)
                 drones[i].completeTasks() # This will likely need to be changed to allow for the code to continue while this runs
-            
+
             # Something to wait for all drones to finish their tasks
 
             # Drones reconvene after finishing performing their respective tasks confirming the found path and saving it as the previous path before incrementing

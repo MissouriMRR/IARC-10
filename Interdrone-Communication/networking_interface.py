@@ -24,9 +24,7 @@ class NetworkingInterface:
         self._serverOutFuture: concurrent.futures.Future[Message] | None = None
 
     # Send a message to the client
-    def queue_client_message(
-        self, message: Message, timeout: float | None = None
-    ) -> None:
+    def queue_client_message(self, message: Message, timeout: float | None = None) -> None:
         future = asyncio.run_coroutine_threadsafe(self.clientIn.put(message), self.loop)
         future.result(timeout=timeout)
 

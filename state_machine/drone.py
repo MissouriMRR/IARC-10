@@ -64,7 +64,9 @@ class Drone:
         Get the Dronekit Vehicle object owned by this Drone object.
     """
 
-    def __init__(self, address: str = "", baud: int | None = None, mine_radius: int = 36, id: int = 0) -> None:
+    def __init__(
+        self, address: str = "", baud: int | None = None, mine_radius: int = 36, id: int = 0
+    ) -> None:
         """
         Initialize a new Drone object, but do not connect to a drone.
 
@@ -82,15 +84,13 @@ class Drone:
         self.baud: int | None = baud
         self.field_size: tuple[int, int] = [3600, 960]
         self.mine_radius = mine_radius
-        self.tasks:tuple = []
+        self.tasks: tuple = []
         self.seen_tracker = seen_by_drone.SightTracker(self.field_size)
-        self.field: 'nodeGen.Field' = None
+        self.field: "nodeGen.Field" = None
         self.id = id
         self.start_node = None
         self.end_nodes = []
         # TODO: add reference to mine and path data classes
-
-
 
     @property
     def is_connected(self) -> bool:
@@ -132,8 +132,6 @@ class Drone:
         if vehicle is None:
             raise RuntimeError("we haven't connected to the drone yet")
         return vehicle
-    
-
 
     async def connect_drone(self) -> None:
         """Connect to a drone. This operation is idempotent.
@@ -198,11 +196,13 @@ class Drone:
             Altitude to reach in meters
         """
         logging.info("Using takeoff altitude of %f m", takeoff_alt)
-        self.vehicle.simple_takeoff(takeoff_alt + 1.5)  # Add 5ft for margin of error (Alt is measured in meters by drone kit tho?)
+        self.vehicle.simple_takeoff(
+            takeoff_alt + 1.5
+        )  # Add 5ft for margin of error (Alt is measured in meters by drone kit tho?)
 
         # Verify vehicle reaches target altitude
         while self.vehicle.location.global_relative_frame.alt < takeoff_alt:
-            await asyncio.sleep(0.5) # ALTITUDE IS IN METERS
+            await asyncio.sleep(0.5)  # ALTITUDE IS IN METERS
         logging.info("Reached target altitude (%f m).", takeoff_alt)
 
     # See the recall function at the bottom, we might remove this function as its specific to SAUS
@@ -230,11 +230,10 @@ class Drone:
         self.vehicle.mode = dronekit.VehicleMode("RTL")
         logging.info("Descending...")
         while (
-            self.vehicle.location.global_relative_frame.alt > 0.2 # ALTITUDE IS IN METERS
+            self.vehicle.location.global_relative_frame.alt > 0.2  # ALTITUDE IS IN METERS
         ):  # Ensure drone gets within 8in above ground
             await asyncio.sleep(0.5)
         logging.info("Reached ground.")
-
 
     async def close(self) -> None:
         """Close the owned DroneKit Vehicle object."""
@@ -268,8 +267,8 @@ class Drone:
                 self.baud = None
             case _:
                 raise ValueError("invalid sim mode")
-    
-    def updateTasks(self, gotoCoords:tuple[tuple[int, int]]):
+
+    def updateTasks(self, gotoCoords: tuple[tuple[int, int]]):
         self.tasks = []
         for i in range(len(gotoCoords)):
             self.tasks.append(gotoCoords[i])
@@ -283,12 +282,20 @@ class Drone:
     def completeTasks(self):
         for i in range(len(self.tasks)):
             self.convert_goto(self.tasks[i])
-            photoStorage = self.takePhoto(cameraLocal) # Small Placeholder should be self explainitory
-            self.addMines(self.processPhoto(photoStorage)) # Big Placeholder (Will need to be in consideration with the current path and mine list)
-    
-    #Smart landing sequence, Should be usable in final product!!
+            photoStorage = self.takePhoto(
+                cameraLocal
+            )  # Small Placeholder should be self explainitory
+            self.addMines(
+                self.processPhoto(photoStorage)
+            )  # Big Placeholder (Will need to be in consideration with the current path and mine list)
+
+    # Smart landing sequence, Should be usable in final product!!
     async def recall(self):
-        if (self.field_size[0] - self.x < self.field_size[1] - self.y):
-            self.convert_goto(self, [self.field_size[0]*round(self.x / self.field_size[0]), self.y], 23)
+        if self.field_size[0] - self.x < self.field_size[1] - self.y:
+            self.convert_goto(
+                self, [self.field_size[0] * round(self.x / self.field_size[0]), self.y], 23
+            )
         else:
-            self.convert_goto(self, [self.x, self.field_size[1]*round(self.y / self.field_size[1])], 23)
+            self.convert_goto(
+                self, [self.x, self.field_size[1] * round(self.y / self.field_size[1])], 23
+            )

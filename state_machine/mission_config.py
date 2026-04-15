@@ -46,10 +46,11 @@ class MissionConfig(TypedDict):
     app_opperable: bool
     current_drone_ID: int
     other_drone_info: tuple[dict[int, int], dict[int, int], dict[int, int]]
-    mission_field_corners: tuple[dict[float, float], dict[float, float], dict[float, float], dict[float, float]]
+    mission_field_corners: tuple[
+        dict[float, float], dict[float, float], dict[float, float], dict[float, float]
+    ]
     start_coord: dict[float, float]
     max_flight_height: float
-
 
 
 def get_mission_config() -> MissionConfig:
