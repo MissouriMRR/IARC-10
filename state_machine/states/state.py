@@ -1,11 +1,13 @@
 """Defines the State abstract base class, which all states should inherit from."""
 
-from abc import ABC, abstractmethod
 import logging
+from abc import ABC, abstractmethod
+from asyncio import Lock
 from typing import Awaitable
 
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
+from state_machine.interdrone import Interdrone
 
 
 class State(ABC):
@@ -20,10 +22,12 @@ class State(ABC):
         The drone to which this state is bound.
     _flight_settings : FlightSettings
         The flight settings to which this state is bound.
+    _interdrone : Interdrone
+        The interdrone object that allows the state to send messages.
 
     Methods
     -------
-    __init__(drone: Drone, flight_settings: FlightSettings) -> None
+    __init__(drone: Drone, flight_settings: FlightSettings, interdrone: Interdrone) -> None
         Initialize a new state object.
 
     name() -> str
@@ -35,11 +39,16 @@ class State(ABC):
     flight_settings() -> FlightSettings
         Get the flight settings this state is bound to.
 
+    interdrone() -> Interdrone
+        Get the interdrone object this state is bound to.
+
     run() -> Awaitable["State"]
         Run this state.
     """
 
-    def __init__(self, drone: Drone, flight_settings: FlightSettings) -> None:
+    def __init__(
+        self, drone: Drone, flight_settings: FlightSettings, interdrone: Interdrone
+    ) -> None:
         """
         Initialize a new state object.
 
@@ -49,9 +58,21 @@ class State(ABC):
             The drone to bind this state to.
         flight_settings : FlightSettings
             The drone to bind this state to.
+        interdrone : Interdrone
+            The interdrone communication object to bind this state to.
+
+        Attributes
+        ----------
+        atomic : Lock
+            A lock that can be used to make an atomic section of code,
+            where it cannot be cancelled while it is running.
         """
         self._drone: Drone = drone
         self._flight_settings: FlightSettings = flight_settings
+        self._interdrone: Interdrone = interdrone
+
+        self.atomic = Lock()
+
         logging.info("Entering %s state", self.name)
 
     @property
@@ -89,6 +110,18 @@ class State(ABC):
             The flight settings object this state is bound to.
         """
         return self._flight_settings
+
+    @property
+    def interdrone(self) -> Interdrone:
+        """
+        Get the interdrone object this state is bound to.
+
+        Returns
+        -------
+        Interdrone
+            The interdrone object this state is bound to.
+        """
+        return self._interdrone
 
     @abstractmethod
     def run(self) -> Awaitable["State"] | Awaitable[None]:

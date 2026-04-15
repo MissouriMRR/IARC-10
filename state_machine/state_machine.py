@@ -1,11 +1,12 @@
 """Defines the StateMachine class."""
 
 import asyncio
-from asyncio import Task
 import logging
+from asyncio import Task
 
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
+from state_machine.interdrone import Interdrone
 from state_machine.states import State
 
 
@@ -21,21 +22,32 @@ class StateMachine:
         The drone this state machine controls.
     flight_settings : FlightSettings
         The flight settings this flight uses.
+    interdrone : Interdrone
+        The interdrone object this state machine uses.
     run_task : Task[None] | None
         The task that runs through the states in a loop. If the state machine
         is not running, this should be None.
 
     Methods
     -------
-    __init__(initial_state: State, drone: Drone, flight_settings: FlightSettings)
+    __init__(
+        initial_state: State,
+        drone: Drone,
+        flight_settings: FlightSettings,
+        interdrone: Interdrone,
+    )
         Initialize a new state machine object.
     run(initial_state: State | None) -> Awaitable[None]
         Run the flight code specific to each state until completion.
-    cancel() -> Awaitable[None]
-        Cancel the currently running state loop.
     """
 
-    def __init__(self, initial_state: State, drone: Drone, flight_settings: FlightSettings):
+    def __init__(
+        self,
+        initial_state: State,
+        drone: Drone,
+        flight_settings: FlightSettings,
+        interdrone: Interdrone,
+    ):
         """
         Initialize a new state machine object.
 
@@ -48,11 +60,16 @@ class StateMachine:
             The drone this state machine will control.
         flight_settings : FlightSettings
             The flight settings to use.
+        interdrone : Interdrone
+            The interdrone communication object to use to coordinate.
         """
         self.current_state: State | None = initial_state
         self.drone: Drone = drone
         self.flight_settings: FlightSettings = flight_settings
+        self.interdrone: Interdrone = interdrone
         self.run_task: Task[None] | None = None
+
+        self.interdrone.register_state_machine(self.run)
 
     async def run(self, initial_state: State | None = None) -> None:
         """Run the flight code specific to each state until completion.
@@ -69,10 +86,19 @@ class StateMachine:
         if initial_state is not None:
             self.current_state = initial_state
 
+        if self.current_state is None:
+            raise ValueError("No state to run")
+
         run_task: Task[None] = asyncio.ensure_future(self._run())
+        self.interdrone.update_task(run_task)
         self.run_task = run_task
         logging.info("State Machine started")
-        await run_task
+
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            logging.info("State Machine cancelled")
+
         if self.run_task is not None:
             self.run_task = None
             logging.info("State Machine complete")
@@ -80,13 +106,5 @@ class StateMachine:
     async def _run(self) -> None:
         """Runs the flight code specific to each state until completion."""
         while self.current_state:
+            self.interdrone.update_state(self.current_state)
             self.current_state = await self.current_state.run()
-
-    def cancel(self) -> None:
-        """Cancel the currently running state loop.."""
-        if self.run_task is None:
-            return
-
-        self.run_task.cancel()
-        self.run_task = None
-        logging.info("State Machine canceled")

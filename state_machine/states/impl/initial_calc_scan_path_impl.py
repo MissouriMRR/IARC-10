@@ -3,19 +3,19 @@
 import asyncio
 import logging
 
+import flight.pathfinding.path_subdivision as gotoDiv
 from flight.extract_gps import extract_gps
+from flight.pathfinding.node_generation import Connection, Field, Mine, Node
+from flight.pathfinding.path_calculation import Graph
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
-from state_machine.states.state import State
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 from state_machine.states.scan import Scan
+from state_machine.states.state import State
 
-import flight.pathfinding.path_subdivision as gotoDiv
-from flight.pathfinding.node_generation import Node, Mine, Field, Connection
-from flight.pathfinding.path_calculation import Graph
 
 async def run(self: InitialCalcScanPath) -> State:
     """
@@ -48,18 +48,18 @@ async def run(self: InitialCalcScanPath) -> State:
         update_nodes()
 
         self.drone.start_node, self.drone.end_nodes = place_start_end_nodes()
-        newGraph=Graph(self.drone.field.nodeGraph)
-        nodeList=newGraph.shortest_path(start_node,end_nodes)
+        newGraph = Graph(self.drone.field.nodeGraph)
+        nodeList = newGraph.shortest_path(start_node, end_nodes)
 
         goto_coords, seg_path = gotoDiv.generate_goto_points(nodeList)
 
         # This relies on the ID's for the drones being 0-3 and not 1-4 CHANGE IF THAT ISN'T THE CASE
-        divied_goto = goto_coords[id*len(divied_goto)/4:(id+1)*len(divied_goto)/4]
+        divied_goto = goto_coords[id * len(divied_goto) / 4 : (id + 1) * len(divied_goto) / 4]
 
         self.drone.updateTasks(divied_goto)
         # Add InitialCalcScanPath code here
 
-        return Scan(self.drone, self.flight_settings)
+        return Scan(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("InitialCalcScanPath state canceled")
         raise ex
