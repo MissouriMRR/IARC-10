@@ -14,7 +14,7 @@ class JsonConfigData(TypedDict):
 class JsonConfigReader:  # TODO update this the name of this to follow correct class syntax
     def __init__(self) -> None:
         self.config: JsonConfigData
-        config_path = Path(__file__).resolve().parent / "config.json"
+        config_path = Path(__file__).resolve().parent / "network_config.json"
         with config_path.open("r", encoding="utf-8") as file:
             self.config = json.load(file)
 
