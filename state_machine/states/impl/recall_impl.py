@@ -5,13 +5,13 @@ import logging
 
 from flight.extract_gps import extract_gps
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
-from state_machine.states.state import State
-from state_machine.states.recall import Recall
 from state_machine.states.land import Land
+from state_machine.states.recall import Recall
+from state_machine.states.state import State
 
 
 async def run(self: Recall) -> State:
@@ -44,7 +44,7 @@ async def run(self: Recall) -> State:
 
         self.drone.recall()
 
-        return Land(self.drone, self.flight_settings)
+        return Land(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("Recall state canceled")
         raise ex
