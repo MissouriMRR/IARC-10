@@ -29,10 +29,11 @@ class Interdrone:
         The callback function to be called when the state machine needs to be restarted.
     """
 
-    def __init__(self):
+    def __init__(self,flight_settings: FlightSettings):
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self.flight_settings=flight_settings
 
     def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
