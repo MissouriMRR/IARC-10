@@ -6,9 +6,9 @@ import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 import time
-from sys import getrefcount
 import gc
 from . import path_calculation
+from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
@@ -354,12 +354,27 @@ class Connection:
 class Field:
     mines = []
     debugPoints = [] # purely for debuging and testing, field will plot these points
-    def __init__(self,xMin,xMax,yMin,yMax):
+
+    # normalizedCorners = arbitrary corners normalized to a rectangle, rawCorners = arbitrary corners skewed to not a rectangle
+    def __init__(self,normalizedCorners:list,rawCorners:list=None):
         self.nodeGraph={}
-        self.xMin = xMin
-        self.yMin = yMin
-        self.xMax = xMax
-        self.yMax = yMax
+
+        self.vertPair1 = [normalizedCorners[0],normalizedCorners[2]]
+        self.vertPair2 = [normalizedCorners[1],normalizedCorners[3]]
+        self.horzPair1 = [normalizedCorners[2],normalizedCorners[3]]
+        self.horzPair2 = [normalizedCorners[0],normalizedCorners[1]]
+
+        
+        self.xMin = min(normalizedCorners[0][0],normalizedCorners[2][0])
+        self.xMax = max(normalizedCorners[1][0],normalizedCorners[3][0])
+        self.yMin = min(normalizedCorners[2][1],normalizedCorners[3][1])
+        self.yMax = min(normalizedCorners[0][1],normalizedCorners[1][1])
+
+        self.leftLine, self.leftSlope = Field.getLine(rawCorners[0],rawCorners[2])
+        self.rightLine, self.rightSlope = Field.getLine(rawCorners[1],rawCorners[3])
+        self.upperLine, self.upperSlope = Field.getLine(rawCorners[0],rawCorners[1])
+        self.lowerLine, self.lowerSlope = Field.getLine(rawCorners[2],rawCorners[3])
+
         self.mines = []
         Connection.field=self
 
@@ -392,8 +407,9 @@ class Field:
             for x in xVals:
                 returnList.append(self.addFloatingNode(x,yVal))
         else:
-            returnList.append(self.addFloatingNode(0,yVal))
+            returnList.append(self.addFloatingNode((self.xMin+self.xMax)/2,yVal))
         return returnList
+    
 
     def addMine(self,centerX,centerY,radius,color:str=''):
         newMine = Mine(centerX,centerY,radius,color=color)
@@ -436,8 +452,6 @@ class Field:
 
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
-            #mine.connectMineNodes()
-            #target.connectMineNodes()
 
             # Add to each mines' overlapping mines list if they do overlap
             if target not in mine.overlappingMines and mine not in target.overlappingMines:
@@ -455,15 +469,99 @@ class Field:
                 connection=Connection(node1,node2)
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
+         
+    @staticmethod #Given two points, get the line equation and slope (to determine negative or positive slope)
+    def getLine(point1: tuple, point2: tuple) -> tuple:
+        x1 = point1[0]
+        y1 = point1[1]
+        x2 = point2[0]
+        y2 = point2[1]
+        try:
+            slope = (y2-y1)/(x2-x1)
+        except ZeroDivisionError: # Infinite/Vertical slope
+            return lambda x: x1 + 0*x # x means nothing in this case, for all values of Y, its x is x1
 
+        offset = y2-slope*x2
+
+        f = lambda x: (slope*x)+offset
+        return (f,slope)
     
+                  # Given two points and a 3rd point, detect if the 3rd point   
+    @staticmethod # lies left of the line made from the two points
+    def isPointLeftofLine(line, slope, point3: tuple) -> bool:
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be 
+        below the line for it to be to the left of line
+        p1
+         `
+          `
+           `
+            `
+          p3 `
+              `
+              p2
+        The logic will be adjusted for positive and infinite(vertical line) slope
+        """
+        x = point3[0]
+        y = point3[1]
+
+        if slope < 0: # Negative slope
+            if (y < line(x)):
+                return True
+        elif slope > 0: # Positive slope
+            if (y > line(x)):
+                return True    
+        return False
+    @staticmethod
+    def isPointRightofLine(point1: tuple, point2: tuple, point3: tuple) -> bool:
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be 
+        above the line for it to be to the right of line
+        p1
+         `
+          ` p3
+           ` 
+            `
+             `
+              `
+              p2
+        The logic will be adjusted for positive and infinite(vertical line) slope
+        """
+        # point[0],point[1] = x,y
+        x1 = point1[0]
+        y1 = point1[1]
+        x2 = point2[0]
+        y2 = point2[1]
+        x3 = point3[0]
+        y3 = point3[1]
+
+        try:
+            slope = (y2-y1)/(x2-x1)
+        except ZeroDivisionError: # Infinite/Vertical slope
+            if (x1==x2) and (x3 > x1):
+                return True
+        offset = y2-slope*x2
+        f = lambda x: (slope*x)+offset
+
+        if slope < 0: # Negative slope
+            if (y3 > f(x3)) and (x3 > min(x1,x2)):
+                return True
+        elif slope > 0: # Positive slope
+            if (y3 < f(x3)) and (x3 > min(x1,x2)):
+                return True
+        else: # Horizontal Line
+            if (x3 > x1 or x3 > x2):
+                return True
+        return False
+
     # Purely for debugging  
     def plotField(self,labeled:bool=False,path=[],title:str="Mines and Potential Paths",xlabel:str="") -> None:
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
-        plt.xlim(self.xMin,self.xMax)
-        plt.ylim(self.yMin,self.yMax)
+        padding = 10
+        plt.xlim(self.xMin-padding,self.xMax+padding)
+        plt.ylim(self.yMin-padding,self.yMax+padding)
         
         # Create a list of circles representing mines, centered to their correlated mine's center
 
@@ -513,7 +611,10 @@ class Field:
             print("Plotting debug points")
             for point in Field.debugPoints:
                 plt.plot(point[0],point[1],"o",color=(0,0,0))
-        
+
+        # Plot field boundaries
+        for pair in [self.horzPair1,self.horzPair2,self.vertPair1,self.vertPair2]:
+            plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.5,0.5,0.5))
         print("Done plotting")
         print("Displaying field...")
         
@@ -625,7 +726,6 @@ class Mine:
        
         #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
         
-        return getrefcount(self)
 
     def __str__(self):
         return self.name
