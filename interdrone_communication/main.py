@@ -1,21 +1,18 @@
-from networking_thread import NetworkingThread
-
-
+# Outside Imports
 import queue
 import threading
-
-# Rename interdrone-communication
-
-# When running inner files from top level do
-# uv run -m main (runs as a module so it has top level access)
-# Change imports to be abosulte rather than relative
-from interdrone_communication.message_types import Message, MessageType
-from json_config_reader import JsonConfigReader
-from networking_interface import NetworkingInterface
 import argparse
 import time
 
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.networking_interface import NetworkingInterface
+from interdrone_communication.networking_thread import NetworkingThread
 
+
+# When running inner files from top level do
+# uv run -m main (runs as a module so it has top level access)
 def main() -> None:
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()

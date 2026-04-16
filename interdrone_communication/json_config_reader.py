@@ -1,5 +1,7 @@
+# Outside Imports
 import json
 from typing import TypedDict
+from pathlib import Path
 
 
 # Typed dict used for JsonConfigReader config variable
@@ -12,7 +14,8 @@ class JsonConfigData(TypedDict):
 class JsonConfigReader:  # TODO update this the name of this to follow correct class syntax
     def __init__(self) -> None:
         self.config: JsonConfigData
-        with open("config.json", "r") as file:
+        config_path = Path(__file__).resolve().parent / "config.json"
+        with config_path.open("r", encoding="utf-8") as file:
             self.config = json.load(file)
 
     # get drone ip address

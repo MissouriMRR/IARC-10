@@ -1,5 +1,8 @@
-from message_types import Message, MessageType
+# Outside Imports
 import json
+
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
 
 
 # Contains message to help convert Messages to and from JSON
@@ -14,7 +17,9 @@ class JsonMessageUtilities:
         try:
             message_type = MessageType(messageIdValue)
         except ValueError:
-            print(f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN")
+            print(
+                f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN"
+            )
             message_type = MessageType.UNKNOWN
 
         return Message.create(
