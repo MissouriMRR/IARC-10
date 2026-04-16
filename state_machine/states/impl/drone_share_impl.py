@@ -5,13 +5,13 @@ import logging
 
 from flight.extract_gps import extract_gps
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
-from state_machine.states.state import State
-from state_machine.states.drone_share import DroneShare
 from state_machine.states.calc_scan_path import CalcScanPath
+from state_machine.states.drone_share import DroneShare
+from state_machine.states.state import State
 
 
 async def run(self: DroneShare) -> State:
@@ -42,8 +42,8 @@ async def run(self: DroneShare) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("DroneShare state running")
 
-        for i in range(1,5):
-            if (self.drone.id == i):
+        for i in range(1, 5):
+            if self.drone.id == i:
                 # Broadcast new minedata and new sight data
                 broadcast()
             else:
@@ -51,7 +51,7 @@ async def run(self: DroneShare) -> State:
                 recieve()
         # Add drone share code here
 
-        return CalcScanPath(self.drone, self.flight_settings)
+        return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("DroneShare state canceled")
         raise ex

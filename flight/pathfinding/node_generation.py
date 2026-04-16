@@ -452,14 +452,11 @@ class Field:
 
             mineExternPrimary.connectNode(targetExternPrimary)
             mineExternSecond.connectNode(targetExternSecond)
+            #mine.connectMineNodes()
+            #target.connectMineNodes()
+            mine.updateOverlap(target)
 
-            # Add to each mines' overlapping mines list if they do overlap
-            if target not in mine.overlappingMines and mine not in target.overlappingMines:
-                distanceThreshold = 2*Mine.radius
-                distance = np.sqrt((mine.x-target.x)**2 + (mine.y-target.y)**2)
-                if distance < distanceThreshold:
-                    mine.overlappingMines.append(target)
-                    target.overlappingMines.append(mine)
+
         
         shallowCopy=self.nodeGraph.copy()
         # Check if any of the other node connections pass through the newly created mine.
@@ -641,10 +638,16 @@ class Field:
                 connection=Connection(node1,node2)
                 if(connection.connectionType==seg.ARC):
                     connection.deleteConnection()
-        
+        Mine.radius+=step
         for mine in self.mines:
             mine.radius+=step
-        Mine.radius+=step
+        #Avoids the case where two mines will/would overlap, but one's radius hasn't been increased yet
+        for mine in self.mines:
+            for target in self.mines:
+                    mine.updateOverlap(target)
+
+
+        
 
         shallowCopy=self.nodeGraph.copy()
         for node1 in shallowCopy:
@@ -726,7 +729,17 @@ class Mine:
        
         #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
         
+        return getrefcount(self)
 
+    #Checks if target and self overlap. If they do update both's overlappingMines list.
+    def updateOverlap(self,target : 'Mine'):
+        # Add to each mines' overlapping mines list if they do overlap
+        if target not in self.overlappingMines and self not in target.overlappingMines:
+            distanceThreshold = 2*Mine.radius
+            distance = np.sqrt((self.x-target.x)**2 + (self.y-target.y)**2)
+            if distance < distanceThreshold:
+                self.overlappingMines.append(target)
+                target.overlappingMines.append(self)
     def __str__(self):
         return self.name
     def __repr__(self):

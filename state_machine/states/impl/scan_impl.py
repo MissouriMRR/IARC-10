@@ -5,13 +5,13 @@ import logging
 
 from flight.extract_gps import extract_gps
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
-from state_machine.states.state import State
-from state_machine.states.scan import Scan
 from state_machine.states.drone_share import DroneShare
+from state_machine.states.scan import Scan
+from state_machine.states.state import State
 
 
 async def run(self: Scan) -> State:
@@ -45,7 +45,7 @@ async def run(self: Scan) -> State:
         self.drone.completeTasks()
         # Add scan code here
 
-        return DroneShare(self.drone, self.flight_settings)
+        return DroneShare(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("Takeoff state canceled")
         raise ex

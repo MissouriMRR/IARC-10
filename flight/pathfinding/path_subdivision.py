@@ -62,7 +62,7 @@ class Path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-                self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                self.segmentedList.append([(n1), (n2), isArc])
     
                 self.total_lin_distance += connect.distance
                 numPoints = max(1, int(connect.distance / step)) 
@@ -74,7 +74,7 @@ class Path:
             #arc gotos
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                self.segmentedList.append(((float(n1.x), float(n1.y)), (float(n2.x), float(n2.y)), isArc))
+                self.segmentedList.append([n1, n2, isArc])
                 
                 #get center coords
                 mine = n1.parentMine

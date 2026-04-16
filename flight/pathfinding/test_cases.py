@@ -16,7 +16,19 @@ mineHistory = "["
 
 # Paste a past list of mine coords as a string, paste the printed mineHistory
 # If wanting to go back to randomized, leave it as empty list
+<<<<<<< HEAD
 recordedMineCoords = []
+=======
+recordedMineCoords =[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
+
+"""
+Iteration of mine coordinates that a bug has appeared:
+
+Bug in: Hugging Edges
+List of mines coords:
+[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
+"""
+>>>>>>> c7ab0087c2cf7956fe2bda5a941aaec01939d42f
 
 if (len(recordedMineCoords) > 0):
     numMines = len(recordedMineCoords)
