@@ -1,12 +1,14 @@
+# Outside Imports
 from asyncio.queues import Queue
-from json_config_reader import JsonConfigReader
 from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
-
 import time
 import asyncio
-from message_types import Message, MessageType
-from json_message_utilities import JsonMessageUtilities
+
+# Interdrone Imports
+from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.json_message_utilities import JsonMessageUtilities
 
 
 # Used by connectionPool to store TCP connections to other servers.

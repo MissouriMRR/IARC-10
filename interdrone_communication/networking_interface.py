@@ -1,10 +1,12 @@
+# Outside Imports
 from asyncio.events import AbstractEventLoop
 from asyncio.queues import Queue
 from asyncio.queues import Queue as AsyncQueue
 import asyncio
 import concurrent.futures
 
-from message_types import Message
+# Interdrone Imports
+from interdrone_communication.message_types import Message
 
 
 # Thread safe interface to communicate with the async networking layer

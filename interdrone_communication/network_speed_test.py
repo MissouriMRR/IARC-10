@@ -1,10 +1,5 @@
+# Outside Imports
 from asyncio import Task
-
-
-from message_types import Message, MessageType
-from json_config_reader import JsonConfigReader
-from networking_thread import NetworkingThread
-
 import asyncio
 import argparse
 import queue
@@ -12,7 +7,11 @@ import threading
 import traceback
 import os
 
-from networking_interface import NetworkingInterface
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.networking_thread import NetworkingThread
+from interdrone_communication.networking_interface import NetworkingInterface
 
 
 # Plan for network test updates: Filter logs based on self id and target

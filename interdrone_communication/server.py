@@ -1,12 +1,13 @@
+# Outside Imports
 from asyncio.queues import Queue
-from json_config_reader import JsonConfigReader
 import asyncio
 from asyncio import StreamReader, StreamWriter
 import time
 
-
-from message_types import Message, MessageType
-from json_message_utilities import JsonMessageUtilities
+# Interdrone Imports
+from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.json_message_utilities import JsonMessageUtilities
+from interdrone_communication.message_types import Message, MessageType
 
 
 class Server:
