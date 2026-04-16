@@ -47,10 +47,14 @@ class Path:
         
     
     #overlap is percent
-    def generate_goto_points(self, nodeList: tuple[Node], overlap: float, altitude: float, fovDeg: float): 
+    def generate_goto_points(self, nodeList: tuple[Node], altitude: float, fovDeg: float, path_width: float, vertical_image_overlap: float = 0.1, horizontal_image_overlap: float = 0.1, scan_edge_overlap: float = 0.3): 
         
         imageSize = self.ground_covered_image(altitude, fovDeg)
-        step = imageSize * (1-overlap) # distance between goto points (FEET)
+
+        # number of side by side waypoints
+        x_temp = m.ceil((path_width-imageSize*(horizontal_image_overlap+2*vertical_image_overlap))/(imageSize*(1-horizontal_image_overlap)))
+        x = x_temp + (x_temp + 1) % 2 # Makes sure number of waypoints is on in order to have a waypoint on the path
+        step = imageSize * (1-vertical_image_overlap) # distance between goto points (FEET)
         #finalGotoList = []   
         #segmentedList = []
         isArc = False
@@ -62,7 +66,6 @@ class Path:
             # linear gotos or floating points
             #if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-                self.segmentedList.append([(n1), (n2), isArc])
     
                 self.total_lin_distance += connect.distance
                 numPoints = max(1, int(connect.distance / step)) 
@@ -70,11 +73,11 @@ class Path:
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
                 for x, y in zip(x_vals, y_vals):
                     self.finalGotoList.append((float(x), float(y)))
+                    self.segmentedList.append([(n1), (n2), isArc])
             
             #arc gotos
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                self.segmentedList.append([n1, n2, isArc])
                 
                 #get center coords
                 mine = n1.parentMine
@@ -102,6 +105,7 @@ class Path:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
                     self.finalGotoList.append((float(x), float(y)))
+                    self.segmentedList.append([n1, n2, isArc])
                 
         print(step)    
         self.total_path_length = self.total_lin_distance + self.total_arc_length       
