@@ -22,4 +22,3 @@ The steps below document how to set up your environment to work with this repo a
 
 Tip:
 Use the split terminal button in VScode to run multiple servers and clients at the same time.
-

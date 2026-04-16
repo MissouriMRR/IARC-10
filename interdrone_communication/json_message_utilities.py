@@ -17,9 +17,7 @@ class JsonMessageUtilities:
         try:
             message_type = MessageType(messageIdValue)
         except ValueError:
-            print(
-                f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN"
-            )
+            print(f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN")
             message_type = MessageType.UNKNOWN
 
         return Message.create(
