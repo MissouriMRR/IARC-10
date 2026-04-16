@@ -7,6 +7,8 @@ import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from state_machine.flight_settings import FlightSettings
+from state_machine.drone import Drone
 
 if TYPE_CHECKING:
     # If this import is left outside of the TYPE_CHECKING check,
