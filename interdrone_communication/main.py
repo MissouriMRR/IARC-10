@@ -4,7 +4,12 @@ from networking_thread import NetworkingThread
 import queue
 import threading
 
-from message_types import Message, MessageType
+# Rename interdrone-communication
+
+# When running inner files from top level do
+# uv run -m main (runs as a module so it has top level access)
+# Change imports to be abosulte rather than relative
+from interdrone_communication.message_types import Message, MessageType
 from json_config_reader import JsonConfigReader
 from networking_interface import NetworkingInterface
 import argparse
