@@ -9,7 +9,7 @@ from state_machine.drone import Drone
 from state_machine.state_machine import StateMachine
 from state_machine.states import Start
 from state_machine.flight_settings import FlightSettings
-
+from state_machine.interdrone import Interdrone
 
 class FlightManager:
     """
@@ -59,12 +59,17 @@ class FlightManager:
 
             self.drone.remove_arming_check()
 
+        interdrone_state : Interdrone = Interdrone(flight_settings,self.drone)
+
+        
+
         logging.info("Starting processes")
         state_machine_task: asyncio.Task[None] = asyncio.ensure_future(
             StateMachine(
-                Start(self.drone, flight_settings),
+                Start(self.drone, flight_settings,interdrone_state),
                 self.drone,
-                flight_settings,
+                flight_settings, 
+                interdrone_state
             ).run()
         )
 
