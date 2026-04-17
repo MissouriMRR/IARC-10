@@ -11,6 +11,7 @@ from state_machine.states import Start
 from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
 
+
 class FlightManager:
     """
     Class that manages the state machine, kill switch, and gracefully exiting the program.
@@ -59,17 +60,15 @@ class FlightManager:
 
             self.drone.remove_arming_check()
 
-        interdrone_state : Interdrone = Interdrone(flight_settings,self.drone)
-
-        
+        interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
 
         logging.info("Starting processes")
         state_machine_task: asyncio.Task[None] = asyncio.ensure_future(
             StateMachine(
-                Start(self.drone, flight_settings,interdrone_state),
+                Start(self.drone, flight_settings, interdrone_state),
                 self.drone,
-                flight_settings, 
-                interdrone_state
+                flight_settings,
+                interdrone_state,
             ).run()
         )
 

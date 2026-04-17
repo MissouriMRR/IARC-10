@@ -36,7 +36,7 @@ class Interdrone:
         self._current_state: "State | None" = None
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings = flight_settings
-        self.drone=drone
+        self.drone = drone
 
     def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
