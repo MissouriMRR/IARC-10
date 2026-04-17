@@ -58,9 +58,7 @@ class Server:
                 except EOFError:
                     break
 
-                message: Message = JsonMessageUtilities.message_from_json(
-                    byteMessage.decode()
-                )
+                message: Message = JsonMessageUtilities.message_from_json(byteMessage.decode())
 
                 # If message was read in, begin processing
                 if not message:
@@ -76,13 +74,9 @@ class Server:
                         await self.serverOutData.put(item=message)
                     case MessageType.APP_CONFIG:
                         self.networkConfig.set_app_ip(newIP=str(message.data["IP"]))
-                        self.networkConfig.set_app_port(
-                            newPort=int(message.data["Port"])
-                        )
+                        self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
                     case MessageType.APP_DEBUG:
-                        writer.write(
-                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
-                        )
+                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
                         await writer.drain()
                         messageSent = True
                     case MessageType.REQUEST_DRONE_LOCATIONS:
@@ -116,9 +110,7 @@ class Server:
                 # Convert responseMessage to string and send over if message hasn't already been sent
                 if not messageSent:
                     writer.write(
-                        (
-                            JsonMessageUtilities.message_to_json(responseMessage) + "\n"
-                        ).encode()
+                        (JsonMessageUtilities.message_to_json(responseMessage) + "\n").encode()
                     )
                     await writer.drain()
 
