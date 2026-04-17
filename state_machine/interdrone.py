@@ -40,13 +40,14 @@ class Interdrone:
         The callback function to be called when the state machine needs to be restarted.
     """
 
-    def __init__(self, flight_settings: FlightSettings):
+    def __init__(self, flight_settings: FlightSettings, drone: Drone):
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
             None
         )
         self.flight_settings = flight_settings
+        self.drone = drone
 
         # Create interdrone resources
         # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
