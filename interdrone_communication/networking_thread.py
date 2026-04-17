@@ -56,9 +56,7 @@ class NetworkingThread:
     ) -> None:
         # Instantiate Server and Client
         # COPY THIS CREATING TASK LOGIC FOR INTERDRONE
-        serverInstance = Server(
-            jsonConfigData=jsonConfigData, serverOutData=serverOutData
-        )
+        serverInstance = Server(jsonConfigData=jsonConfigData, serverOutData=serverOutData)
         clientInstance = Client(
             jsonConfigData=jsonConfigData,
             clientInData=clientInData,
