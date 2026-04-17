@@ -20,7 +20,6 @@ from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
 
-
 if TYPE_CHECKING:
     # If this import is left outside of the TYPE_CHECKING check,
     # it causes a circular import.
@@ -45,9 +44,7 @@ class Interdrone:
     def __init__(self, flight_settings: FlightSettings, drone: Drone):
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
-            None
-        )
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings = flight_settings
         self.drone = drone
 
@@ -69,9 +66,7 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(
-        self, callback: Callable[["State | None"], Awaitable[None]]
-    ) -> None:
+    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -156,9 +151,7 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError(
-                "Cannot restart state machine without a registered callback"
-            )
+            raise RuntimeError("Cannot restart state machine without a registered callback")
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
