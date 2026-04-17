@@ -150,19 +150,18 @@ cd /home/mrrdt-$PI_NUMBER/IARC-10
 log_message "Changed to directory"
 
 # TODO VERIFY THIS WORKS ON PI
-# Create/Update network_config.json with correct IPs and selfId
-log_message "Updating network_config.json..."
+# Update mission_config.json with correct mesh IPs for all drones
+log_message "Updating mission_config.json..."
 uv run python -c "
 import json, sys
 from pathlib import Path
 try:
-    config_path = Path('interdrone_communication/network_config.json')
+    config_path = Path('mission_config.json')
     with config_path.open('r', encoding='utf-8') as file: d=json.load(file)
-    for drone_id in d.get('drones',{}): d['drones'][drone_id]['ip'] = f'169.254.97.{drone_id}'
-    if 'localInfo' not in d: d['localInfo']={}
-    d['localInfo']['selfId'] = '$PI_NUMBER'
+    d['current_drone_info']['IP'] = f\"169.254.97.{d['current_drone_info']['id']}\"
+    for drone in d.get('other_drone_info', []): drone['IP'] = f\"169.254.97.{drone['id']}\"
     with config_path.open('w', encoding='utf-8') as f: json.dump(d,f,indent=2); f.write('\n')
-    print('Successfully updated network_config.json')
+    print('Successfully updated mission_config.json')
 except Exception as e: print(f'Error: {e}'); sys.exit(1)
 "
 
@@ -170,7 +169,7 @@ except Exception as e: print(f'Error: {e}'); sys.exit(1)
 if [ $? -eq 0 ]; then
     log_message "Config updated successfully"
 else
-    log_message "ERROR: Failed to update network_config.json"
+    log_message "ERROR: Failed to update mission_config.json"
 fi
 
 uv run main.py -i $PI_NUMBER

@@ -6,7 +6,7 @@ import asyncio
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message
-from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.server import Server
 from interdrone_communication.client import Client
@@ -18,7 +18,7 @@ class NetworkingThread:
     def run_networking_thread(
         self,
         resourcesReady: queue.Queue[NetworkingInterface],
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
     ) -> None:
         loop: AbstractEventLoop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -42,7 +42,7 @@ class NetworkingThread:
                 clientInData=clientIn,
                 clientOutData=clientOut,
                 serverOutData=serverOut,
-                jsonConfigData=jsonConfigData,
+                networkConfig=networkConfig,
             )
         )
         # Async networking entry point - runs server and client
@@ -52,15 +52,15 @@ class NetworkingThread:
         clientInData: AsyncQueue[Message],
         clientOutData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
     ) -> None:
         # Instantiate Server and Client
         # COPY THIS CREATING TASK LOGIC FOR INTERDRONE
         serverInstance = Server(
-            jsonConfigData=jsonConfigData, serverOutData=serverOutData
+            networkConfig=networkConfig, serverOutData=serverOutData
         )
         clientInstance = Client(
-            jsonConfigData=jsonConfigData,
+            networkConfig=networkConfig,
             clientInData=clientInData,
             clientOutData=clientOutData,
         )

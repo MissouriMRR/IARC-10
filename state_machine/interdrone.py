@@ -13,9 +13,11 @@ import threading
 import time
 
 # IARC Imports
+from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.networking_thread import NetworkingThread
 from state_machine.flight_settings import FlightSettings
+from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
 
 
@@ -57,9 +59,9 @@ class Interdrone:
         # Start networking thread
         networkingThread = threading.Thread(
             target=networkingThreadClassInstance.run_networking_thread,
-            args=(resourcesReady, networkConfigData),
+            args=(resourcesReady, NetworkConfig()),
             daemon=True,
-        )  # TODO FIX ONCE JSON CONFIG STUFF IS MERGED
+        )
         networkingThread.start()
 
         # Wait for networking to be ready

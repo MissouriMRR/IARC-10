@@ -6,13 +6,13 @@ import time
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message, MessageType
-from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.networking_thread import NetworkingThread
 
 
 # When running inner files from top level do
-# uv run -m main (runs as a module so it has top level access)
+# uv run -m interdrone_communication.main -i 1 (runs as a module so it has top level access)
 def main() -> None:
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
@@ -20,14 +20,14 @@ def main() -> None:
     args = parser.parse_args()
 
     # Load config
-    jsonConfigData = JsonConfigReader()
+    networkConfig = NetworkConfig()
 
     # Get drone ID
     if args.id is not None:
         droneId = args.id
-        jsonConfigData.set_self_id(droneId)
+        networkConfig.set_self_id(droneId)
     else:
-        droneId = int(jsonConfigData.get_self_id())
+        droneId = int(networkConfig.get_self_id())
     # parallel
     # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
     networkingThreadClassInstance: NetworkingThread = NetworkingThread()
@@ -35,7 +35,7 @@ def main() -> None:
     # Start networking thread
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, jsonConfigData),
+        args=(resourcesReady, networkConfig),
         daemon=True,
     )
     networkingThread.start()

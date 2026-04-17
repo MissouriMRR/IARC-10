@@ -6,7 +6,7 @@ import time
 import asyncio
 
 # Interdrone Imports
-from interdrone_communication.json_config_reader import JsonConfigReader
+from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.message_types import Message, MessageType
 from interdrone_communication.json_message_utilities import JsonMessageUtilities
 
@@ -24,16 +24,16 @@ class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
         clientInData: Queue[Message],
         clientOutData: Queue[Message],
     ):
-        self.jsonConfigData: JsonConfigReader = jsonConfigData
+        self.networkConfig: NetworkConfig = networkConfig
         self.clientInData: Queue[Message] = clientInData
         self.clientOutData: Queue[Message] = clientOutData
 
         # Check for droneId from flag in main.py
-        self.droneId: int = jsonConfigData.get_self_id()
+        self.droneId: int = networkConfig.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -53,18 +53,20 @@ class Client:
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
         # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
-        for i in range(1, self.jsonConfigData.get_number_of_drones() + 1):
+        for i in range(1, self.networkConfig.get_number_of_drones() + 1):
             # If drone is self (drone running this script) don't add them otherDrones list
             if i != self.droneId:
                 # Add other drones IP and Ports to their respective lists
-                self.otherDronesIps.append(self.jsonConfigData.get_drone_ip(droneId=i))
-                self.otherDronesPorts.append(self.jsonConfigData.get_drone_port(droneId=i))
+                self.otherDronesIps.append(self.networkConfig.get_drone_ip(droneId=i))
+                self.otherDronesPorts.append(
+                    self.networkConfig.get_drone_port(droneId=i)
+                )
                 tempOtherDronesIds.append(i)
         # Update otherDronesIds tuple with tempOtherDronesIds values
         self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
 
         # Get range test toggle variable
-        self.rangeTestEnabled: bool = self.jsonConfigData.get_range_test_toggle()
+        self.rangeTestEnabled: bool = self.networkConfig.get_range_test_toggle()
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -138,8 +140,8 @@ class Client:
         if sendToApp:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.jsonConfigData.get_app_ip(),
-                    serverPort=self.jsonConfigData.get_app_port(),
+                    serverIP=self.networkConfig.get_app_ip(),
+                    serverPort=self.networkConfig.get_app_port(),
                     clientMessageDump=clientMessageDump,
                 )
             )
@@ -164,14 +166,14 @@ class Client:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
     # Takes data and sends it passed in server
-    async def send_data_async(self, serverIP: str, serverPort: int, clientMessageDump: str) -> str:
+    async def send_data_async(
+        self, serverIP: str, serverPort: int, clientMessageDump: str
+    ) -> str:
         try:
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            async with (
-                conn.lock
-            ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
 
@@ -195,7 +197,7 @@ class Client:
             await self._drop_connection(serverIP, serverPort)
             if self.rangeTestEnabled:
                 print(
-                    f"Timeout error sending data from drone #{self.jsonConfigData.get_self_id()} to #{serverPort - 5000}"
+                    f"Timeout error sending data from drone #{self.networkConfig.get_self_id()} to #{serverPort - 5000}"
                 )
             return "timeout"
 
@@ -215,8 +217,12 @@ class Client:
         serverIP: str,
         serverPort: int,
     ) -> None:
-        clientMessage: Message = JsonMessageUtilities.message_from_json(payload=clientMessageDump)
-        serverResponse: Message = JsonMessageUtilities.message_from_json(payload=serverResponseDump)
+        clientMessage: Message = JsonMessageUtilities.message_from_json(
+            payload=clientMessageDump
+        )
+        serverResponse: Message = JsonMessageUtilities.message_from_json(
+            payload=serverResponseDump
+        )
 
         match serverResponse.id:
             case MessageType.SERVER_DEFAULT_RESPONSE:
@@ -247,7 +253,9 @@ class Client:
 
                 uploadSizeBytes = len(clientMessageDump.encode("utf-8"))
                 uploadThroughputKbps = (
-                    (uploadSizeBytes * 8 / 1000) / uploadTime if uploadTime > 0 else float("inf")
+                    (uploadSizeBytes * 8 / 1000) / uploadTime
+                    if uploadTime > 0
+                    else float("inf")
                 )
 
                 downloadSizeBytes = len(serverResponseDump)
@@ -261,7 +269,8 @@ class Client:
                     dronesToSendData=(),
                     data={
                         "target": f"{serverIP}:{serverPort}",
-                        "targetId": serverPort - 5000,  # Port is 500* with start being id
+                        "targetId": serverPort
+                        - 5000,  # Port is 500* with start being id
                         "uploadRttMs": round(uploadTime * 1000, 2),
                         "uploadThroughputKbps": round(uploadThroughputKbps, 2),
                         "downloadRttMs": round(downloadTime * 1000, 2),
@@ -319,7 +328,10 @@ class Client:
         keysToClose: list[tuple[str, int]] = []
         for key, conn in self.connectionPool.items():
             # If connection is closing or is over idle time, flag connection to be closed
-            if conn.writer.is_closing() or (now - conn.lastUsed) > self.connectionIdleTimeoutSec:
+            if (
+                conn.writer.is_closing()
+                or (now - conn.lastUsed) > self.connectionIdleTimeoutSec
+            ):
                 keysToClose.append(key)
 
         # Close all connections flagged above
