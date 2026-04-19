@@ -122,7 +122,7 @@ class Interdrone:
             pass
 
         # TODO: Wait x seconds and check if all drones responded
-        all_respond = True #check if all actually responded
+        all_respond = True  # check if all actually responded
 
         return all_respond
 
@@ -134,7 +134,7 @@ class Interdrone:
         # TODO: Send message ID 430 (arm drones) to drone_id
 
         return
-    
+
     def send_arm_ack(self) -> None:
         """
         Sends arm_ack message.
@@ -143,7 +143,7 @@ class Interdrone:
         # TODO: Send arm_ack message
 
         return
-    
+
     # Function name might change
     def all_armed(self) -> bool:
         """
@@ -152,40 +152,40 @@ class Interdrone:
         Return true they are, false otherwise.
         """
         # TODO: Check if all droneState objects are armed
-        armed = True # actually check if they are
+        armed = True  # actually check if they are
 
         return armed
-    
+
     def all_takeoff(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have taken off.
         """
         # TODO: Check if all droneState objects have taken off
-        taken_off = True # actually check if they are
+        taken_off = True  # actually check if they are
 
         return taken_off
-    
+
     def all_mission_start(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have started mission
         """
         # TODO: Check if all droneState objects have started mission
-        started_mission = True # actually check if they are
+        started_mission = True  # actually check if they are
 
         return started_mission
-    
+
     def all_demo_start(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have started demo
         """
         # TODO: Check if all droneState objects have started demo
-        started_demo = True # actually check if they are
+        started_demo = True  # actually check if they are
 
         return started_demo
-    
+
     # I'm lowkey guessing on descriptions from here until the async cancel_state
     def send_takeoff(self, drone_id: int) -> None:
         """
@@ -204,7 +204,7 @@ class Interdrone:
         # TODO: Send takeoff_ack message
 
         return
-    
+
     def send_start_demo(self, drone_id: int) -> None:
         """
         Send a start demo message to the drone id passed as a parameter
@@ -222,7 +222,7 @@ class Interdrone:
         # TODO: Send demo_ack message
 
         return
-    
+
     def send_start_mission(self, drone_id: int) -> None:
         """
         Send a start mission message to the drone id passed as a parameter.
