@@ -5,13 +5,13 @@ import logging
 
 from flight.extract_gps import extract_gps
 from state_machine.state_tracker import (
-    update_state,
     update_drone,
     update_flight_settings,
+    update_state,
 )
+from state_machine.states.land import Land
 from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
-from state_machine.states.land import Land
 
 
 async def run(self: Takeoff) -> State:
@@ -48,7 +48,7 @@ async def run(self: Takeoff) -> State:
         )
         await self.drone.takeoff(takeoff_altitude)
 
-        return InitialCalcScanPath(self.drone, self.flight_settings)
+        return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("Takeoff state canceled")
         raise ex
