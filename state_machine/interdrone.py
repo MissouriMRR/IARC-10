@@ -69,6 +69,146 @@ class Interdrone:
         """
         self._current_state = state
 
+    async def ping_drones(self) -> bool:
+        """
+        All drones run this function.
+        Sets ping_response flag in droneState to false for all drones.
+        Loops through all drones and pings them.
+        Whenever we recieve a ping_ack we set the ping_response flag to true.
+        Wait x seconds and check if all of the ping_response flags are set.
+        If they are, return true, otherwise return false.
+        """
+        # TODO: Get all the drones
+        drone_list = []
+
+        # TODO: Set ping_response flag to False for all drones
+        for drone in drone_list:
+            pass
+
+        # TODO: Ping all drones
+        for drone in drone_list:
+            pass
+
+        # TODO: Wait x seconds and check if all drones responded
+        all_respond = True #check if all actually responded
+
+        return all_respond
+
+    def send_ARM(self, drone_id: int) -> None:
+        """
+        Message ID = 430
+        Send an arm message to the drone id passed as a parameter.
+        """
+        # TODO: Send message ID 430 (arm drones) to drone_id
+
+        return
+    
+    def send_arm_ack(self) -> None:
+        """
+        Sends arm_ack message.
+        Not used by drone 1, only recieved.
+        """
+        # TODO: Send arm_ack message
+
+        return
+    
+    # Function name might change
+    def all_armed(self) -> bool:
+        """
+        Used by drone one.
+        Loop through all droneState objects to see if they are armed.
+        Return true they are, false otherwise.
+        """
+        # TODO: Check if all droneState objects are armed
+        armed = True # actually check if they are
+
+        return armed
+    
+    def all_takeoff(self) -> bool:
+        """
+        Used by drone one
+        Loop through all droneState objects to see if they have taken off.
+        """
+        # TODO: Check if all droneState objects have taken off
+        taken_off = True # actually check if they are
+
+        return taken_off
+    
+    def all_mission_start(self) -> bool:
+        """
+        Used by drone one
+        Loop through all droneState objects to see if they have started mission
+        """
+        # TODO: Check if all droneState objects have started mission
+        started_mission = True # actually check if they are
+
+        return started_mission
+    
+    def all_demo_start(self) -> bool:
+        """
+        Used by drone one
+        Loop through all droneState objects to see if they have started demo
+        """
+        # TODO: Check if all droneState objects have started demo
+        started_demo = True # actually check if they are
+
+        return started_demo
+    
+    # I'm lowkey guessing on descriptions from here until the async cancel_state
+    def send_takeoff(self, drone_id: int) -> None:
+        """
+        Send a takeoff message to the drone id passed as a parameter
+        """
+        # TODO: Send message id xxx (takeoff) to drone_id
+        # TODO: actually make a message id for takeoff
+
+        return
+
+    def send_takeoff_ack(self) -> None:
+        """
+        Sends takeoff_ack message.
+        Not used by drone 1, only recieved.
+        """
+        # TODO: Send takeoff_ack message
+
+        return
+    
+    def send_start_demo(self, drone_id: int) -> None:
+        """
+        Send a start demo message to the drone id passed as a parameter
+        """
+        # TODO: Send message id xxx (start demo) to drone_id
+        # TODO: actually make a message id for start demo
+
+        return
+
+    def send_demo_ack(self) -> None:
+        """
+        Sends demo_ack message.
+        Not used by drone 1, only recieved.
+        """
+        # TODO: Send demo_ack message
+
+        return
+    
+    def send_start_mission(self, drone_id: int) -> None:
+        """
+        Send a start mission message to the drone id passed as a parameter.
+        """
+        # TODO: Send message id xxx (start mission) to drone_id
+        # TODO: actually make a message id for start mission
+
+        return
+
+    def send_mission_ack(self) -> None:
+        """
+        Sends mission_ack message.
+        Not used by drone 1, only recieved.
+        """
+        # TODO: Send mission_ack message
+
+        return
+
     async def cancel_state(self) -> None:
         """
         Cancels the current state being executed.
