@@ -23,15 +23,15 @@ class PolygonMask:
             x2 = node_2.x + nodeg.Mine.radius
             y2 = node_2.y
 
-        self.top_x = max([x1, 2(node_1.x - x1) + x1, x2, 2(node_2.x - x2) + x2])
-        self.bottom_x = min([x1, 2(node_1.x - x1) + x1, x2, 2(node_2.x - x2) + x2])
-        self.top_y = max([y1, 2(node_1.y - y1) + y1, y2, 2(node_2.y - y2) + y2])
-        self.bottom_y = min([y1, 2(node_1.y - y1) + y1, y2, 2(node_2.y - y2) + y2])
+        self.top_x = max([x1, 2 * (node_1.x - x1) + x1, x2, 2 * (node_2.x - x2) + x2])
+        self.bottom_x = min([x1, 2 * (node_1.x - x1) + x1, x2, 2 * (node_2.x - x2) + x2])
+        self.top_y = max([y1, 2 * (node_1.y - y1) + y1, y2, 2 * (node_2.y - y2) + y2])
+        self.bottom_y = min([y1, 2 * (node_1.y - y1) + y1, y2, 2 * (node_2.y - y2) + y2])
         polygon = [
             (x1 - self.bottom_x, y1 - self.bottom_y),
-            (2(node_1.x - x1) + x1 - self.bottom_x, 2(node_1.y - y1) + y1 - self.bottom_y),
+            (2 * (node_1.x - x1) + x1 - self.bottom_x, 2 * (node_1.y - y1) + y1 - self.bottom_y),
             (x2 - self.bottom_x, y2 - self.bottom_y),
-            (2(node_2.x - x2) + x2 - self.bottom_x, 2(node_2.y - y2) + y2 - self.bottom_y),
+            (2 * (node_2.x - x2) + x2 - self.bottom_x, 2 * (node_2.y - y2) + y2 - self.bottom_y),
         ]
 
         img = Image.new("L", [self.top_x - self.bottom_x, self.top_y - self.bottom_y], 0)
@@ -102,8 +102,8 @@ class PolygonMask:
 
         radius = int(math.hypot(x1, y1))
 
-        angle1 = math.degrees(math.atan2(y1, x1))
-        angle2 = math.degrees(math.atan2(y2, x2))
+        angle1 = math.degrees(math.atan2 * (y1, x1))
+        angle2 = math.degrees(math.atan2 * (y2, x2))
         if angle1 < 0:
             angle1 += 360
         if angle2 < 0:
