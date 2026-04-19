@@ -30,7 +30,6 @@ class PolygonMask:
 
         
         img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
-        img = Image.new('L', [self.top_x-self.bottom_x, self.top_y-self.bottom_y], 0)
         ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
         self.body = np.array(img)
 
@@ -95,14 +94,14 @@ class PolygonMask:
             angle2=angle3
 
         if angle1<90 and angle2>90:
-            self.top_y=node1.ParentMine.y+(2*radius)
+            self.top_y=node1.parentMine.y+(2*radius)
         else:
-            self.top_y=max(node1.ParentMine.y,max(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
+            self.top_y=max(node1.parentMine.y,max(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
 
         if angle1<270 and angle2>270:
-            self.bottom_y.ParentMine.y-(2*radius)
+            self.bottom_y.parentMine.y-(2*radius)
         else:
-            self.bottom_y=min(node1.ParentMine.y,min(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
+            self.bottom_y=min(node1.parentMine.y,min(2*radius*math.cos(angle1),2*radius*math.cos(angle2)))
 
 
 
@@ -111,20 +110,20 @@ class PolygonMask:
 
 
         if angle1<180 and angle2>180:
-            self.bottom_x=node1.ParentMine.y-(2*radius)
+            self.bottom_x=node1.parentMine.y-(2*radius)
         else:
-            self.bottom_x=min(node1.ParentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
+            self.bottom_x=min(node1.parentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
 
         if angle1>=270 and angle2<=90:
-            self.top_x=node1.ParentMine.x+(2*radius)
+            self.top_x=node1.parentMine.x+(2*radius)
         else:
-            self.top_x=min(node1.ParentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
+            self.top_x=min(node1.parentMine.x,min(2*radius*math.sin(angle1),2*radius*math.sin(angle2)))
 
      
 
-        img =  Image.new("RGBA", (2*radius, 2*radius), (0,0,0,0))
+        img =  Image.new("L", (2*radius, 2*radius), 0)
         draw = ImageDraw.Draw(img)
-        draw.pieslice((0, 0 , 2*radius, 2*radius), angle1, angle2,(255, 255, 255, 255))
+        draw.pieslice((0, 0), angle1, angle2, 1, 1)
 
 
 
