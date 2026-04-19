@@ -71,9 +71,7 @@ async def cancel_and_restart_task(
     logging.info("Cancel task: Cancelling state")
     await interdrone.cancel_state()
     logging.info("Cancel task: Restarting state machine and starting State1 again")
-    await interdrone.restart_state_machine(
-        TestState1(drone, flight_settings, interdrone)
-    )
+    await interdrone.restart_state_machine(TestState1(drone, flight_settings, interdrone))
     logging.info(
         "Cancel task: State machine restarted and State1 started again, "
         "waiting before cancelling again"
