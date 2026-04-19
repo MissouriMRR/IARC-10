@@ -1,8 +1,16 @@
 """Defines the Drone class for the state machine."""
 
 import asyncio
+import collections
+import collections.abc
 import json
 import logging
+
+# dronekit uses removed collections aliases (Python 3.10+)
+collections.MutableMapping = collections.abc.MutableMapping  # type: ignore[attr-defined]
+collections.Mapping = collections.abc.Mapping  # type: ignore[attr-defined]
+collections.MutableSet = collections.abc.MutableSet  # type: ignore[attr-defined]
+collections.Callable = collections.abc.Callable  # type: ignore[attr-defined]
 
 import dronekit
 from pymavlink import mavutil
