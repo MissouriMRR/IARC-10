@@ -1,5 +1,8 @@
-from message_types import Message, MessageType
+# Outside Imports
 import json
+
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
 
 
 # Contains message to help convert Messages to and from JSON

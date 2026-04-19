@@ -155,11 +155,19 @@ class FlightSettings:
             else (config["sim_mode_config"] if sim_flag else config["real_mode_config"])
         )
         config_settings: FlightSettings = FlightSettings(
-            config["simple_takeoff"],
-            config["run_title"],
-            config["run_description"],
-            sim_mode,
-            sim_mode_config["mission_data_path"],
+            simple_takeoff=config["simple_takeoff"],
+            app_opperable=config["app_opperable"],
+            title=config["run_title"],
+            description=config["run_description"],
+            drone_ID=config["current_drone_info"]["id"],
+            app_IP=config["app_info"]["ip"],
+            total_drones=config["number_of_total_drones"],
+            other_drone_info=config["other_drone_info"],
+            mission_corners=config["mission_field_corners"],
+            max_height=config["max_flight_height"],
+            start_coord=config["start_coord"],
+            sim_mode=sim_mode,
+            mission_data_path=sim_mode_config["mission_data_path"],
         )
         return config_settings
 

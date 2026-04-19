@@ -1,12 +1,14 @@
+# Outside Imports
 from asyncio.queues import Queue
-from json_config_reader import JsonConfigReader
 from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
-
 import time
 import asyncio
-from message_types import Message, MessageType
-from json_message_utilities import JsonMessageUtilities
+
+# Interdrone Imports
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.json_message_utilities import JsonMessageUtilities
 
 
 # Used by connectionPool to store TCP connections to other servers.
@@ -22,16 +24,16 @@ class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
         clientInData: Queue[Message],
         clientOutData: Queue[Message],
     ):
-        self.jsonConfigData: JsonConfigReader = jsonConfigData
+        self.networkConfig: NetworkConfig = networkConfig
         self.clientInData: Queue[Message] = clientInData
         self.clientOutData: Queue[Message] = clientOutData
 
         # Check for droneId from flag in main.py
-        self.droneId: int = jsonConfigData.get_self_id()
+        self.droneId: int = networkConfig.get_self_id()
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -51,18 +53,18 @@ class Client:
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
         # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
-        for i in range(1, self.jsonConfigData.get_number_of_drones() + 1):
+        for i in range(1, self.networkConfig.get_number_of_drones() + 1):
             # If drone is self (drone running this script) don't add them otherDrones list
             if i != self.droneId:
                 # Add other drones IP and Ports to their respective lists
-                self.otherDronesIps.append(self.jsonConfigData.get_drone_ip(droneId=i))
-                self.otherDronesPorts.append(self.jsonConfigData.get_drone_port(droneId=i))
+                self.otherDronesIps.append(self.networkConfig.get_drone_ip(droneId=i))
+                self.otherDronesPorts.append(self.networkConfig.get_drone_port(droneId=i))
                 tempOtherDronesIds.append(i)
         # Update otherDronesIds tuple with tempOtherDronesIds values
         self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
 
         # Get range test toggle variable
-        self.rangeTestEnabled: bool = self.jsonConfigData.get_range_test_toggle()
+        self.rangeTestEnabled: bool = self.networkConfig.get_range_test_toggle()
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -136,8 +138,8 @@ class Client:
         if sendToApp:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.jsonConfigData.get_app_ip(),
-                    serverPort=self.jsonConfigData.get_app_port(),
+                    serverIP=self.networkConfig.get_app_ip(),
+                    serverPort=self.networkConfig.get_app_port(),
                     clientMessageDump=clientMessageDump,
                 )
             )
@@ -193,7 +195,7 @@ class Client:
             await self._drop_connection(serverIP, serverPort)
             if self.rangeTestEnabled:
                 print(
-                    f"Timeout error sending data from drone #{self.jsonConfigData.get_self_id()} to #{serverPort - 5000}"
+                    f"Timeout error sending data from drone #{self.networkConfig.get_self_id()} to #{serverPort - 5000}"
                 )
             return "timeout"
 

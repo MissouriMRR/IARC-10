@@ -1,22 +1,23 @@
+# Outside Imports
 from asyncio.queues import Queue
-from json_config_reader import JsonConfigReader
 import asyncio
 from asyncio import StreamReader, StreamWriter
 import time
 
-
-from message_types import Message, MessageType
-from json_message_utilities import JsonMessageUtilities
+# Interdrone Imports
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.json_message_utilities import JsonMessageUtilities
+from interdrone_communication.message_types import Message, MessageType
 
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
         serverOutData: Queue[Message],
     ):
-        self.jsonConfigData: JsonConfigReader = jsonConfigData
+        self.networkConfig: NetworkConfig = networkConfig
         self.serverOutData: Queue[Message] = serverOutData
         self.serverDefaultResponseMessage: Message = Message.create(
             id=MessageType.SERVER_DEFAULT_RESPONSE,
@@ -27,14 +28,14 @@ class Server:
         )
 
         # Check for droneId from flag in main.py
-        self.droneId: int = jsonConfigData.get_self_id()
+        self.droneId: int = networkConfig.get_self_id()
 
     # Async server startup
     async def start_server_async(self):
         server = await asyncio.start_server(
             self.handle_client,
-            self.jsonConfigData.get_drone_ip(self.droneId),
-            self.jsonConfigData.get_drone_port(self.droneId),
+            self.networkConfig.get_drone_ip(self.droneId),
+            self.networkConfig.get_drone_port(self.droneId),
         )
 
         try:
@@ -72,8 +73,8 @@ class Server:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
                     case MessageType.APP_CONFIG:
-                        self.jsonConfigData.set_app_ip(newIP=str(message.data["IP"]))
-                        self.jsonConfigData.set_app_port(newPort=int(message.data["Port"]))
+                        self.networkConfig.set_app_ip(newIP=str(message.data["IP"]))
+                        self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
                     case MessageType.APP_DEBUG:
                         writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
                         await writer.drain()

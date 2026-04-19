@@ -1,8 +1,8 @@
+# Outside Imports
 import unittest
-from message_types import Message, MessageType
 
-# THIS FILE IS NOT UNDER THE Tests FOLDER BECAUSE PYTHON'S IMPORT SYSTEM IS
-# HORRIBLE. It can be moved later, but right now it only works here
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
 
 
 class TestMessages(unittest.TestCase):

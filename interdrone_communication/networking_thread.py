@@ -1,13 +1,15 @@
+# Outside Imports
 from asyncio.events import AbstractEventLoop
 from asyncio.queues import Queue as AsyncQueue
 import queue
 import asyncio
 
-from message_types import Message
-from json_config_reader import JsonConfigReader
-from networking_interface import NetworkingInterface
-import server
-import client
+# Interdrone Imports
+from interdrone_communication.message_types import Message
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.networking_interface import NetworkingInterface
+from interdrone_communication.server import Server
+from interdrone_communication.client import Client
 
 
 # The NetworkingThread class contains methods to start the networking on a seperate thread and generate the NetworkingInterface
@@ -16,7 +18,7 @@ class NetworkingThread:
     def run_networking_thread(
         self,
         resourcesReady: queue.Queue[NetworkingInterface],
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
     ) -> None:
         loop: AbstractEventLoop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -40,7 +42,7 @@ class NetworkingThread:
                 clientInData=clientIn,
                 clientOutData=clientOut,
                 serverOutData=serverOut,
-                jsonConfigData=jsonConfigData,
+                networkConfig=networkConfig,
             )
         )
         # Async networking entry point - runs server and client
@@ -50,12 +52,13 @@ class NetworkingThread:
         clientInData: AsyncQueue[Message],
         clientOutData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
-        jsonConfigData: JsonConfigReader,
+        networkConfig: NetworkConfig,
     ) -> None:
         # Instantiate Server and Client
-        serverInstance = server.Server(jsonConfigData=jsonConfigData, serverOutData=serverOutData)
-        clientInstance = client.Client(
-            jsonConfigData=jsonConfigData,
+        # COPY THIS CREATING TASK LOGIC FOR INTERDRONE
+        serverInstance = Server(networkConfig=networkConfig, serverOutData=serverOutData)
+        clientInstance = Client(
+            networkConfig=networkConfig,
             clientInData=clientInData,
             clientOutData=clientOutData,
         )

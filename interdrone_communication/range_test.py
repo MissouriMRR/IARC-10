@@ -1,10 +1,5 @@
+# Outside Imports
 from asyncio import Task
-
-
-from message_types import Message, MessageType
-from json_config_reader import JsonConfigReader
-from networking_thread import NetworkingThread
-
 import asyncio
 import argparse
 import queue
@@ -15,7 +10,12 @@ from pathlib import Path
 import json
 import subprocess
 
-from networking_interface import NetworkingInterface
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.networking_thread import NetworkingThread
+from interdrone_communication.networking_interface import NetworkingInterface
+
 
 """
 General Functionality:
@@ -116,7 +116,7 @@ async def main():
 
     args = parser.parse_args()
     # Load config
-    jsonConfigData = JsonConfigReader()
+    networkConfig = NetworkConfig()
 
     # Declare flag variables
     droneId: int
@@ -129,9 +129,9 @@ async def main():
     # Get drone ID
     if args.id is not None:
         droneId = args.id
-        jsonConfigData.set_self_id(droneId)
+        networkConfig.set_self_id(droneId)
     else:
-        droneId = int(jsonConfigData.get_self_id())
+        droneId = int(networkConfig.get_self_id())
 
     # TODO decide how I want to set up num drones / other drones
     if args.targets is not None:
@@ -182,7 +182,7 @@ async def main():
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, jsonConfigData),
+        args=(resourcesReady, networkConfig),
         daemon=True,
     )
     networkingThread.start()
@@ -203,10 +203,10 @@ async def main():
             "initialDownloadTime": 0.0,
             "finalDownloadTime": 0.0,
             "senderId": droneId,
-            "payloadSize": jsonConfigData.get_speed_test_data_size() * 1024,
+            "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
             "payload": "X"
             * (
-                jsonConfigData.get_speed_test_data_size() * 1024
+                networkConfig.get_speed_test_data_size() * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
@@ -245,7 +245,7 @@ async def main():
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
-                                jsonConfigData,
+                                networkConfig,
                                 current_test_num,
                                 logTitle,
                                 fileName,
@@ -261,7 +261,7 @@ async def main():
                         task.add_done_callback(backgroundTasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {jsonConfigData.get_self_id()} -> {targetId}"
+                            f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
                         )
                         # If all drones in range tests tests have finished
                         if sum(testsFinishedPerTarget) >= numDrones:
@@ -295,14 +295,14 @@ async def main():
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except (KeyboardInterrupt, asyncio.CancelledError):
+        except KeyboardInterrupt, asyncio.CancelledError:
             print("Shutting down...")
             break
 
 
 def log_data(
     speedResults: list[Message],
-    jsonConfigData: JsonConfigReader,
+    networkConfig: NetworkConfig,
     testNumber: int,
     logTitle: str,
     fileName: str,
@@ -442,7 +442,7 @@ def log_data(
 
         print("\n" + "=" * 70)
         print(
-            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {jsonConfigData.get_self_id()} -> {targetDrone}"
+            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {networkConfig.get_self_id()} -> {targetDrone}"
         )
         print("=" * 70)
 

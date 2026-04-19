@@ -1,10 +1,5 @@
+# Outside Imports
 from asyncio import Task
-
-
-from message_types import Message, MessageType
-from json_config_reader import JsonConfigReader
-from networking_thread import NetworkingThread
-
 import asyncio
 import argparse
 import queue
@@ -12,7 +7,11 @@ import threading
 import traceback
 import os
 
-from networking_interface import NetworkingInterface
+# Interdrone Imports
+from interdrone_communication.message_types import Message, MessageType
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.networking_thread import NetworkingThread
+from interdrone_communication.networking_interface import NetworkingInterface
 
 
 # Plan for network test updates: Filter logs based on self id and target
@@ -23,21 +22,21 @@ async def main():
     args = parser.parse_args()
 
     # Load config
-    jsonConfigData = JsonConfigReader()
+    networkConfig = NetworkConfig()
 
     # Get drone ID
     if args.id is not None:
         droneId = args.id
-        jsonConfigData.set_self_id(droneId)
+        networkConfig.set_self_id(droneId)
     else:
-        droneId = int(jsonConfigData.get_self_id())
+        droneId = int(networkConfig.get_self_id())
 
     # Start networking thread
     networkingThreadClassInstance: NetworkingThread = NetworkingThread()
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, jsonConfigData),
+        args=(resourcesReady, networkConfig),
         daemon=True,
     )
     networkingThread.start()
@@ -56,10 +55,10 @@ async def main():
             "initialDownloadTime": 0.0,
             "finalDownloadTime": 0.0,
             "senderId": droneId,
-            "payloadSize": jsonConfigData.get_speed_test_data_size() * 1024,
+            "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
             "payload": "X"
             * (
-                jsonConfigData.get_speed_test_data_size() * 1024
+                networkConfig.get_speed_test_data_size() * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
@@ -95,7 +94,7 @@ async def main():
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
-                                jsonConfigData,
+                                networkConfig,
                                 current_test_num,
                             )
                         )
@@ -107,7 +106,7 @@ async def main():
                         task.add_done_callback(backgroundTasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {jsonConfigData.get_self_id()} -> {targetId}"
+                            f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
                         )
                 except Exception:
                     # print(f"Error processing result: {e}")
@@ -119,17 +118,17 @@ async def main():
                 networking.queue_client_message(message=speedTestMessage)
 
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except (KeyboardInterrupt, asyncio.CancelledError):
+        except KeyboardInterrupt, asyncio.CancelledError:
             print("Shutting down...")
             break
 
 
 def log_data(
-    speedResults: list[Message], jsonConfigData: JsonConfigReader, testNumber: int
+    speedResults: list[Message], networkConfig: NetworkConfig, testNumber: int
 ):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"Logs/Speed_Test/From_{jsonConfigData.get_self_id()}_To_{speedResults[0].data['targetId']}"
+    folder_name = f"Logs/Speed_Test/From_{networkConfig.get_self_id()}_To_{speedResults[0].data['targetId']}"
     os.makedirs(folder_name, exist_ok=True)
 
     file_path = f"{folder_name}/test-results-{testNumber}.txt"
@@ -142,7 +141,7 @@ def log_data(
 
         log_print("\n" + "=" * 70)
         log_print(
-            f"NETWORK SPEED TEST RESULTS FROM {jsonConfigData.get_self_id()} -> {speedResults[0].data['targetId']}"
+            f"NETWORK SPEED TEST RESULTS FROM {networkConfig.get_self_id()} -> {speedResults[0].data['targetId']}"
         )
         log_print("=" * 70)
 

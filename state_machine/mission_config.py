@@ -17,6 +17,17 @@ class SimModeConfig(TypedDict):
     mission_data_path: str
 
 
+class DroneInfo(TypedDict):
+    id: int
+    IP: str
+    port: int
+
+
+class AppInfo(TypedDict):
+    ip: str
+    port: str | int
+
+
 class MissionConfig(TypedDict):
     """
     A configuration for a flight mission.
@@ -30,11 +41,31 @@ class MissionConfig(TypedDict):
     real_mode_config : SimModeConfig
         Settings to use when running in real mode.
     sim_mode_config : SimModeConfig
-        Settings to use when running in real mode.
+        Settings to use when running in sim mode.
     airsim_mode_config : SimModeConfig
-        Settings to use when running in real mode.
+        Settings to use when running in airsim mode.
     simple_takeoff : bool
         Sets if flight will use a simple vertical takeoff.
+    app_opperable : bool
+        Whether the app is operational.
+    current_drone_info : DroneInfo
+        ID, IP, and port of this drone.
+    number_of_total_drones : int
+        Total number of drones in the mission.
+    other_drone_info : list[DroneInfo]
+        ID, IP, and port for every other drone.
+    app_info : AppInfo
+        IP and port for the ground control app.
+    speed_test_kb_data_size : int
+        Payload size in KB used by network speed tests.
+    range_test_toggle : bool
+        Whether range test timeout logging is enabled.
+    mission_field_corners : list[dict[str, float]]
+        GPS coordinates (lat/lon) of the four field corners.
+    start_coord : dict[str, float]
+        Starting GPS coordinate (lat/lon).
+    max_flight_height : float
+        Maximum flight altitude in metres.
     """
 
     run_title: str
@@ -44,12 +75,14 @@ class MissionConfig(TypedDict):
     airsim_mode_config: SimModeConfig
     simple_takeoff: bool
     app_opperable: bool
-    current_drone_ID: int
-    other_drone_info: tuple[dict[int, int], dict[int, int], dict[int, int]]
-    mission_field_corners: tuple[
-        dict[float, float], dict[float, float], dict[float, float], dict[float, float]
-    ]
-    start_coord: dict[float, float]
+    current_drone_info: DroneInfo
+    number_of_total_drones: int
+    other_drone_info: list[DroneInfo]
+    app_info: AppInfo
+    speed_test_kb_data_size: int
+    range_test_toggle: bool
+    mission_field_corners: list[dict[str, float]]
+    start_coord: dict[str, float]
     max_flight_height: float
 
 

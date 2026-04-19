@@ -3,10 +3,22 @@ Contains the Interdrone class, which handles interdrone communication messages
 and allows for the cancellation and starting of states based on message data.
 """
 
+# Outside Imports
 import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+import queue
+import threading
+import time
+
+# IARC Imports
+from interdrone_communication.network_config import NetworkConfig
+from interdrone_communication.networking_interface import NetworkingInterface
+from interdrone_communication.networking_thread import NetworkingThread
+from state_machine.flight_settings import FlightSettings
+from state_machine.drone import Drone
+from interdrone_communication.message_types import Message, MessageType
 
 if TYPE_CHECKING:
     # If this import is left outside of the TYPE_CHECKING check,
@@ -29,10 +41,30 @@ class Interdrone:
         The callback function to be called when the state machine needs to be restarted.
     """
 
-    def __init__(self):
+    def __init__(self, flight_settings: FlightSettings, drone: Drone):
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self.flight_settings = flight_settings
+        self.drone = drone
+
+        # Create interdrone resources
+        # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
+        networkingThreadClassInstance: NetworkingThread = NetworkingThread()
+        resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+
+        # Start networking thread
+        networkingThread = threading.Thread(
+            target=networkingThreadClassInstance.run_networking_thread,
+            args=(resourcesReady, NetworkConfig()),
+            daemon=True,
+        )
+        networkingThread.start()
+
+        # Wait for networking to be ready
+        self.networking: NetworkingInterface = (
+            resourcesReady.get()
+        )  # Used to interface with networking thread
 
     def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
@@ -274,4 +306,50 @@ class Interdrone:
         """
         Send a message.
         """
+        # ADDS A NEW MESSAGE TO QUEUE
         raise NotImplementedError
+
+    # Start client code and call the client_loop()
+    async def start_interdrone(self):
+        await self.interdrone_loop()
+
+    # Check for new messages to send and create tasks to send them
+    async def interdrone_loop(self) -> None:
+        # TODO maybe setup a fancy message storage class
+
+        heartbeatMessage: Message = Message.create(
+            id=MessageType.HEARTBEAT,
+            dronesToSendData=(),
+            data={
+                "senderId": 1,  # TODO UPDATE ONCE CONFIG READER ACTUALLY WORKS :)
+                "payload": "Hello server!",
+            },
+        )
+
+        # Main loop
+        msgNum = 0  # Used for testing
+        startTime = time.time()
+        try:
+            while True:
+                # Check for server messages
+                serverMsg = self.networking.try_get_server_message(timeout=0.02)
+                if serverMsg is not None:
+                    msgNum += 1
+                    # print(f"Server Data: {serverMsg}")
+                    print(f"Client Data: {msgNum}")
+
+                # Check for client responses
+                clientMsg = self.networking.try_get_client_response(timeout=0.02)
+                if clientMsg is not None:
+                    # print(f"Client Data: {msgNum}")
+                    pass
+                # Send heartbeat if queue is empty
+                if self.networking.is_client_in_empty():
+                    heartbeatMessage.data["payload"] = str(msgNum)
+                    self.networking.queue_client_message(heartbeatMessage)
+
+                time.sleep(0.1)
+
+        except KeyboardInterrupt:
+            print(f"Program ran for {time.time() - startTime}")
+            print("Shutting down...")
