@@ -2,9 +2,13 @@ from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
 import asyncio
+import argparse
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    args = parser.parse_args()
     print("Hello from iarc-10!")
     drone: Drone = Drone()
     flight_settings: FlightSettings = FlightSettings()
