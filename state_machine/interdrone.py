@@ -126,7 +126,7 @@ class Interdrone:
 
         return all_respond
 
-    def send_ARM(self, drone_id: int) -> None:
+    async def send_ARM(self, drone_id: int) -> None:
         """
         Message ID = 430
         Send an arm message to the drone id passed as a parameter.
@@ -135,7 +135,7 @@ class Interdrone:
 
         return
 
-    def send_arm_ack(self) -> None:
+    async def send_arm_ack(self) -> None:
         """
         Sends arm_ack message.
         Not used by drone 1, only recieved.
@@ -145,7 +145,7 @@ class Interdrone:
         return
 
     # Function name might change
-    def all_armed(self) -> bool:
+    async def all_armed(self) -> bool:
         """
         Used by drone one.
         Loop through all droneState objects to see if they are armed.
@@ -156,7 +156,7 @@ class Interdrone:
 
         return armed
 
-    def all_takeoff(self) -> bool:
+    async def all_takeoff(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have taken off.
@@ -166,7 +166,7 @@ class Interdrone:
 
         return taken_off
 
-    def all_mission_start(self) -> bool:
+    async def all_mission_start(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have started mission
@@ -176,7 +176,7 @@ class Interdrone:
 
         return started_mission
 
-    def all_demo_start(self) -> bool:
+    async def all_demo_start(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have started demo
@@ -187,7 +187,7 @@ class Interdrone:
         return started_demo
 
     # I'm lowkey guessing on descriptions from here until the async cancel_state
-    def send_takeoff(self, drone_id: int) -> None:
+    async def send_takeoff(self, drone_id: int) -> None:
         """
         Send a takeoff message to the drone id passed as a parameter
         """
@@ -196,7 +196,7 @@ class Interdrone:
 
         return
 
-    def send_takeoff_ack(self) -> None:
+    async def send_takeoff_ack(self) -> None:
         """
         Sends takeoff_ack message.
         Not used by drone 1, only recieved.
@@ -205,7 +205,7 @@ class Interdrone:
 
         return
 
-    def send_start_demo(self, drone_id: int) -> None:
+    async def send_start_demo(self, drone_id: int) -> None:
         """
         Send a start demo message to the drone id passed as a parameter
         """
@@ -214,7 +214,7 @@ class Interdrone:
 
         return
 
-    def send_demo_ack(self) -> None:
+    async def send_demo_ack(self) -> None:
         """
         Sends demo_ack message.
         Not used by drone 1, only recieved.
@@ -223,7 +223,7 @@ class Interdrone:
 
         return
 
-    def send_start_mission(self, drone_id: int) -> None:
+    async def send_start_mission(self, drone_id: int) -> None:
         """
         Send a start mission message to the drone id passed as a parameter.
         """
@@ -232,7 +232,7 @@ class Interdrone:
 
         return
 
-    def send_mission_ack(self) -> None:
+    async def send_mission_ack(self) -> None:
         """
         Sends mission_ack message.
         Not used by drone 1, only recieved.
