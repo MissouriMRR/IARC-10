@@ -44,7 +44,9 @@ class Interdrone:
     def __init__(self, flight_settings: FlightSettings, drone: Drone):
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings = flight_settings
         self.drone = drone
 
@@ -56,7 +58,7 @@ class Interdrone:
         # Start networking thread
         networkingThread = threading.Thread(
             target=networkingThreadClassInstance.run_networking_thread,
-            args=(resourcesReady, NetworkConfig()),
+            args=(resourcesReady, NetworkConfig(self.flight_settings)),
             daemon=True,
         )
         networkingThread.start()
@@ -66,7 +68,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -291,7 +295,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -341,6 +347,7 @@ class Interdrone:
                 # Check for client responses
                 clientMsg = self.networking.try_get_client_response(timeout=0.02)
                 if clientMsg is not None:
+                    print("stuff here")
                     # print(f"Client Data: {msgNum}")
                     pass
                 # Send heartbeat if queue is empty
@@ -348,7 +355,7 @@ class Interdrone:
                     heartbeatMessage.data["payload"] = str(msgNum)
                     self.networking.queue_client_message(heartbeatMessage)
 
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
 
         except KeyboardInterrupt:
             print(f"Program ran for {time.time() - startTime}")

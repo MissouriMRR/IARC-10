@@ -55,8 +55,9 @@ class NetworkingThread:
         networkConfig: NetworkConfig,
     ) -> None:
         # Instantiate Server and Client
-        # COPY THIS CREATING TASK LOGIC FOR INTERDRONE
-        serverInstance = Server(networkConfig=networkConfig, serverOutData=serverOutData)
+        serverInstance = Server(
+            networkConfig=networkConfig, serverOutData=serverOutData
+        )
         clientInstance = Client(
             networkConfig=networkConfig,
             clientInData=clientInData,

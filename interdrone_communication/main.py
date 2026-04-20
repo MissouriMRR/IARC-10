@@ -9,6 +9,7 @@ from interdrone_communication.message_types import Message, MessageType
 from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.networking_thread import NetworkingThread
+from state_machine.flight_settings import FlightSettings
 
 
 # When running inner files from top level do
@@ -19,15 +20,10 @@ def main() -> None:
     parser.add_argument("-i", "--id", help="Self ID", type=int)
     args = parser.parse_args()
 
-    # Load config
-    networkConfig = NetworkConfig()
-
-    # Get drone ID
-    if args.id is not None:
-        droneId = args.id
-        networkConfig.set_self_id(droneId)
-    else:
-        droneId = int(networkConfig.get_self_id())
+    # Load config with full drone_info populated from mission_config.json
+    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
+    networkConfig = NetworkConfig(flight_settings)
+    droneId = networkConfig.get_self_id()
     # parallel
     # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
     networkingThreadClassInstance: NetworkingThread = NetworkingThread()

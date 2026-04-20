@@ -12,13 +12,9 @@
   },
   "simple_takeoff": false,
   "app_opperable": false,
-  "current_drone_info": {
-    "id": 1,
-    "IP": "127.0.0.1",
-    "port": 5001
-  },
-  "number_of_total_drones": 4,
-  "other_drone_info": [
+  "self_id": 1,
+  "drone_info": [
+    { "id": 1, "IP": "127.0.0.1", "port": 5001 },
     { "id": 2, "IP": "127.0.0.2", "port": 5002 },
     { "id": 3, "IP": "127.0.0.3", "port": 5003 },
     { "id": 4, "IP": "127.0.0.4", "port": 5004 }

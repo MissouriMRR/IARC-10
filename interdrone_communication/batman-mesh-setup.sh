@@ -158,8 +158,7 @@ from pathlib import Path
 try:
     config_path = Path('mission_config.json')
     with config_path.open('r', encoding='utf-8') as file: d=json.load(file)
-    d['current_drone_info']['IP'] = f\"169.254.97.{d['current_drone_info']['id']}\"
-    for drone in d.get('other_drone_info', []): drone['IP'] = f\"169.254.97.{drone['id']}\"
+    for drone in d.get('drone_info', []): drone['IP'] = f\"169.254.97.{drone['id']}\"
     with config_path.open('w', encoding='utf-8') as f: json.dump(d,f,indent=2); f.write('\n')
     print('Successfully updated mission_config.json')
 except Exception as e: print(f'Error: {e}'); sys.exit(1)

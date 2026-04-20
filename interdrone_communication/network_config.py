@@ -1,6 +1,5 @@
-import json
 from typing import TypedDict
-from pathlib import Path
+from state_machine.flight_settings import FlightSettings
 
 
 class DroneInfo(TypedDict):
@@ -14,27 +13,20 @@ class AppInfo(TypedDict):
     port: str | int
 
 
-class MissionConfigData(TypedDict):
-    current_drone_info: DroneInfo
-    number_of_total_drones: int
-    other_drone_info: list[DroneInfo]
-    app_info: AppInfo
-
-
 class NetworkConfig:
-    def __init__(self) -> None:
-        self.config: MissionConfigData
-        config_path = Path(__file__).resolve().parent.parent / "mission_config.json"
-        with config_path.open("r", encoding="utf-8") as file:
-            self.config = json.load(file)
+    def __init__(self, flight_settings: FlightSettings = FlightSettings()) -> None:
+        self._self_id: int = flight_settings.current_drone_ID
+        self._drone_info: list[DroneInfo] = list(flight_settings.drone_info)
+        self._app_ip: str = flight_settings.app_IP
+        self._app_port: int = flight_settings.app_port
+        self._speed_test_data_size: int = 16
+        self._range_test_toggle: bool = False
 
     def _find_drone(self, droneId: int) -> DroneInfo:
-        if self.config["current_drone_info"]["id"] == droneId:
-            return self.config["current_drone_info"]
-        for drone in self.config["other_drone_info"]:
+        for drone in self._drone_info:
             if drone["id"] == droneId:
                 return drone
-        raise ValueError(f"Drone ID {droneId} not found in mission_config.json")
+        raise ValueError(f"Drone ID {droneId} not found in drone_info")
 
     def get_drone_ip(self, droneId: int) -> str:
         return str(self._find_drone(droneId)["IP"])
@@ -43,39 +35,34 @@ class NetworkConfig:
         return int(self._find_drone(droneId)["port"])
 
     def get_app_ip(self) -> str:
-        return str(self.config["app_info"]["ip"])
+        return self._app_ip
 
     def set_app_ip(self, newIP: str) -> None:
-        self.config["app_info"]["ip"] = newIP
+        self._app_ip = newIP
 
     def get_app_port(self) -> int:
-        return int(self.config["app_info"]["port"])
+        return self._app_port
 
     def set_app_port(self, newPort: int) -> None:
-        self.config["app_info"]["port"] = newPort
+        self._app_port = newPort
 
     def get_self_id(self) -> int:
-        return int(self.config["current_drone_info"]["id"])
+        return self._self_id
 
     def set_self_id(self, newId: int) -> None:
-        old_self = self.config["current_drone_info"]
-        if old_self["id"] == newId:
+        if self._self_id == newId:
             return
-        for i, drone in enumerate(self.config["other_drone_info"]):
-            if drone["id"] == newId:
-                self.config["other_drone_info"][i] = old_self
-                self.config["current_drone_info"] = drone
-                return
-        raise ValueError(f"Drone ID {newId} not found in mission_config.json")
+        self._find_drone(newId)  # raises ValueError if not found
+        self._self_id = newId
 
     def get_speed_test_data_size(self) -> int:
-        return int(self.config.get("speed_test_kb_data_size", 16))  # type: ignore[call-overload]
+        return self._speed_test_data_size
 
     def get_range_test_toggle(self) -> bool:
-        return bool(self.config.get("range_test_toggle", False))  # type: ignore[call-overload]
+        return self._range_test_toggle
 
     def set_range_test_toggle(self, rangeTestToggle: bool) -> None:
-        self.config["range_test_toggle"] = rangeTestToggle  # type: ignore[typeddict-unknown-key]
+        self._range_test_toggle = rangeTestToggle
 
     def get_number_of_drones(self) -> int:
-        return int(self.config["number_of_total_drones"])
+        return len(self._drone_info)

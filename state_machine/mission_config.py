@@ -48,12 +48,10 @@ class MissionConfig(TypedDict):
         Sets if flight will use a simple vertical takeoff.
     app_opperable : bool
         Whether the app is operational.
-    current_drone_info : DroneInfo
-        ID, IP, and port of this drone.
-    number_of_total_drones : int
-        Total number of drones in the mission.
-    other_drone_info : list[DroneInfo]
-        ID, IP, and port for every other drone.
+    self_id : int
+        ID of this drone (can be overridden with -i flag).
+    drone_info : list[DroneInfo]
+        ID, IP, and port for all drones in the mission.
     app_info : AppInfo
         IP and port for the ground control app.
     speed_test_kb_data_size : int
@@ -75,9 +73,8 @@ class MissionConfig(TypedDict):
     airsim_mode_config: SimModeConfig
     simple_takeoff: bool
     app_opperable: bool
-    current_drone_info: DroneInfo
-    number_of_total_drones: int
-    other_drone_info: list[DroneInfo]
+    self_id: int
+    drone_info: list[DroneInfo]
     app_info: AppInfo
     speed_test_kb_data_size: int
     range_test_toggle: bool
