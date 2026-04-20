@@ -5,6 +5,7 @@ from typing import Tuple
 from detection import Detection
 from datetime import datetime
 from PIL import Image, ImageDraw
+from mine_detection.py import MineDetection
 import time
 import json
 import os
@@ -78,7 +79,7 @@ class Camera():
       print("--- Detections saved ---")
    
    # save drone metadata
-   def _save_metadata_to_json(s, path, drone):
+   def _save_metadata_to_json(s, path, drone_attitude):
       print("Saving metadata...")
       os.makedirs(s.config["pathToMetadata"], exist_ok = True)
       file_name = f"metadata_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
@@ -94,14 +95,16 @@ class Camera():
 
    # returns all detections in image as list of Detection objects
    # with bonus data saving parameters!
-   def capture(s, save_image: bool, save_detections: bool, save_metadata: bool, drone, force_capture: bool = False) -> list[Detection]:
-      # path = ''.join(d for d in str(datetime.now()) if d.isdigit()) if (save_image or save_to_json) else None # EVIL code because i'm EVIL
-      metadata = s.picam2.capture_metadata()
-      detections = s._parse_detections(metadata)
-      if detections is None or detections == []:
-         print("Nothing detected")
-         if not force_capture: return None
-      if save_image: s._save_image(s.config["pathToPics"], detections)
-      if save_detections: s._save_detections_to_json(s.config["pathToDetections"], detections)
-      if save_metadata: s._save_metadata_to_json(s.config["pathToMetadata"], drone)
-      return detections
+   def capture(s, save_image: bool, save_detections: bool, save_metadata: bool, drone_position,
+               force_capture: bool = False) -> list[MineDetection]:
+      # return corner coordinates as well
+      # add photo object?
+        metadata = s.picam2.capture_metadata()
+        detections = s._parse_detections(metadata)
+        if detections is None or detections == []:
+             print("Nothing detected")
+        if not force_capture: return []
+        if save_image: s._save_image(s.config["pathToPics"], detections)
+        if save_detections: s._save_detections_to_json(s.config["pathToDetections"], detections)
+        if save_metadata: s._save_metadata_to_json(s.config["pathToMetadata"], drone_position[3:])
+        return [MineDetection(detection.box, drone_position) for detection in detections]
