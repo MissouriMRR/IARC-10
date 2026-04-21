@@ -59,12 +59,23 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
-        self.network_config: NetworkConfig = NetworkConfig(flight_settings=flight_settings)
+        self.network_config: NetworkConfig = NetworkConfig(
+            flight_settings=flight_settings
+        )
         self.droneState: DroneState = DroneState(flight_settings=flight_settings)
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
+
+        # Store messages that each function may need
+        self.interdrone_messages = {
+            MessageType.PING_ACK: queue.Queue(),
+            MessageType.PING_NACK: queue.Queue(),
+            # NOTE ADD OTHER MESSAGES HERE AS NEEDED
+        }
 
         # Create interdrone resources
         # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
@@ -84,7 +95,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -120,32 +133,70 @@ class Interdrone:
         self._current_state = state
 
     async def ping_drones(self) -> bool:
-        # NOTE TO MATT: YOU NEED TO FINISH IMPLEMENTING THIS
-
         """
         All drones run this function.
-        Sets ping_response flag in droneState to false for all drones.
+        Sets ping_response flag in droneState to None for all drones.
         Loops through all drones and pings them.
         Whenever we recieve a ping_ack we set the ping_response flag to true.
+        If we receive a ping_nack we set the flag to false (communication not available)
         Wait x seconds and check if all of the ping_response flags are set.
         If they are, return true, otherwise return false.
         """
-        # TODO: Get all the drones
-        drone_list: list[DroneInfo] = self.network_config.get_other_drones()
-        drone_response: dict[int, bool] = {drone["id"]: False for drone in drone_list}
+        # Get all other drones and set value of ping response to None
+        drone_list: list[DroneInfo] = (
+            self.network_config.get_other_drones()
+        )  # TODO UPDATE WITH WAY TO DO LESS THAN 3 OTHER DRONES
+        self.droneState.ping_response = {drone["id"]: None for drone in drone_list}
 
-        # TODO NEXT STEP: SCAFFOLD ALL MESSAGES AND THEN BEGIN IMPLEMENTING.
-        # TODO MAY NEED FANCY NETWORKING STUFF HERE IF MESSAGE TIME OUTS
-        # Idea, since no more clientOut, have client send it's own server a failure message :)
+        # Idea, since no more clientOut, have client send it's own server a failure message (ping nack) :) Could also just have it put in serverOut from client
 
-        # TODO: Ping all drones
-        for drone in drone_list:
-            pass
+        # Ping all drones
+        ping_message: Message = Message.create(
+            id=MessageType.PING,
+            dronesToSendData=(),
+            senderId=self.network_config.get_self_id(),
+            data={},
+        )
+        self.send(ping_message)
 
-        # TODO: Wait x seconds and check if all drones responded
-        all_respond = True  # check if all actually responded
+        print(
+            f"Pings have been sent. Current state of ping respone is {self.droneState.ping_response}"
+        )
 
-        return all_respond
+        # Wait until all drones have responded to ping (ACK or NACK)
+        while None in self.droneState.ping_response.values():
+            updated = False
+
+            try:
+                ack: Message = self.interdrone_messages[
+                    MessageType.PING_ACK
+                ].get_nowait()
+                if ack.senderId in self.droneState.ping_response:
+                    self.droneState.ping_response[ack.senderId] = True
+                    updated = True
+            except queue.Empty:
+                pass
+
+            try:
+                nack: Message = self.interdrone_messages[
+                    MessageType.PING_NACK
+                ].get_nowait()
+                if nack.senderId in self.droneState.ping_response:
+                    self.droneState.ping_response[nack.senderId] = False
+                    updated = True
+            except queue.Empty:
+                pass
+
+            if not updated:
+                await asyncio.sleep(0.05)
+
+        # Check if all actually drones acknowledged ping
+        all_ack: bool = False not in self.droneState.ping_response.values()
+
+        print(
+            f"Return {all_ack} from ping_drones. \nPing status is : {self.droneState.ping_response}"
+        )
+        return all_ack
 
     async def send_ARM(self, drone_id: int) -> None:
         """
@@ -312,7 +363,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -361,13 +414,19 @@ class Interdrone:
                 # Check for server messages
                 serverMsg = self.networking.try_get_server_message(timeout=0.02)
                 if serverMsg is not None:
-                    msgNum += 1
-                    print(f"Server Data: {msgNum}")
+                    # Adds the new message to its respective message queue
+                    print(serverMsg)
+                    self.interdrone_messages.setdefault(
+                        serverMsg.id, queue.Queue()
+                    ).put(serverMsg)
+                    # Catch different messages here and add them to interdrone message queue so other functions can use them
+                    # msgNum += 1
+                    # print(f"Server Data: {msgNum}")
 
                 # Send heartbeat if queue is empty
-                if self.networking.is_client_in_empty():
-                    heartbeatMessage.data["payload"] = str(msgNum)
-                    self.networking.queue_client_message(heartbeatMessage)
+                # if self.networking.is_client_in_empty():
+                #     heartbeatMessage.data["payload"] = str(msgNum)
+                #     self.networking.queue_client_message(heartbeatMessage)
 
                 await asyncio.sleep(0.1)
 

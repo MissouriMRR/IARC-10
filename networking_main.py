@@ -12,9 +12,21 @@ async def main():
     args = parser.parse_args()
 
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(
+        self_id=args.id
+    )
     interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
+    # Call ping here and get response
+
+    while True:
+        ping_worked: bool = await interdrone.ping_drones()
+        if ping_worked:
+            print("Ping succeeded. Exiting loop")
+            break
+        else:
+            print("Ping failed. Trying again")
+        await asyncio.sleep(0.1)
     try:
         # Keep the networking loop alive
         while True:

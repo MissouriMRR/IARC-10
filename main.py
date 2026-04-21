@@ -7,13 +7,15 @@ import argparse
 
 async def main():
     # Get drone ID arg
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()  # TODO MOVE ARG PARSER TO FLIGHT SETTINGS
     parser.add_argument("-i", "--id", help="Self ID", type=int)
     args = parser.parse_args()
 
     print("Hello from iarc-10!")
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(
+        self_id=args.id
+    )
     interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
     try:

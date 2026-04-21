@@ -67,7 +67,7 @@ class DroneState:
         return self._ping_response
 
     @ping_response.setter
-    def ping_response(self, value) -> None:
+    def ping_response(self, value: dict[int, bool | None]) -> None:
         self._ping_response = value
 
     # Takeoff: Tracks if the drone has transitioned to flight

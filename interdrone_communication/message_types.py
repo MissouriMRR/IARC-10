@@ -33,6 +33,7 @@ class MessageType(Enum):
     ARM_NACK = 522
     PING = 534
     PING_ACK = 535
+    PING_NACK = 536
     START_TAKEOFF = 542
     START_TAKEOFF_ACK = 543
     START_DEMO = 552
@@ -42,7 +43,12 @@ class MessageType(Enum):
 
 
 SchemaFieldType: TypeAlias = (
-    type[int] | type[float] | type[str] | type[tuple[Any, ...]] | type[dict[str, Any]] | MessageType
+    type[int]
+    | type[float]
+    | type[str]
+    | type[tuple[Any, ...]]
+    | type[dict[str, Any]]
+    | MessageType
 )
 
 # If you need documentation for message types, see this document:
@@ -180,6 +186,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },
+    MessageType.PING_NACK: {
+        "id": MessageType.PING_NACK,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
     MessageType.START_TAKEOFF: {
         "id": MessageType.START_TAKEOFF,
         "dronesToSendData": tuple[int, ...],
@@ -249,7 +260,8 @@ def _matches_type(value: object, expected_type: object) -> bool:
         else:
             key_type, value_type = object, object
         return all(
-            _matches_type(k, key_type) and _matches_type(v, value_type) for k, v in mapping.items()
+            _matches_type(k, key_type) and _matches_type(v, value_type)
+            for k, v in mapping.items()
         )
 
     # tuple[T, ...] or tuple[T1, T2, ...]
