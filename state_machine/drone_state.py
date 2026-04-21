@@ -14,9 +14,6 @@ class PersistentConnection:
     lastUsed: float  # timestamp of the last communication
 
 
-
-
-
 @dataclass
 class DroneState:
     """
@@ -130,4 +127,3 @@ class DroneState:
         Resets the mission path by emptying the waypoint list.
         """
         self.list_of_waypoints = []
-  
