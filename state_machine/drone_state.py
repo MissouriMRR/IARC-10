@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+
 @dataclass
 class PersistentConnection:
     reader: asyncio.StreamReader
@@ -14,8 +15,7 @@ class DroneState:
 
     def __init__(self, drone_id=None, drone_ip=None):
         # Member Variables / Flags
-        
-        
+
         self.drone_id = drone_id
         self.drone_ip = drone_ip
         self.armed = False
@@ -27,7 +27,7 @@ class DroneState:
 
     # --- Functions ---
 
-# --- Drone ID ---
+    # --- Drone ID ---
     @property
     def drone_id(self):
         return self._drone_id
@@ -98,6 +98,7 @@ class DroneState:
     @list_of_waypoints.setter
     def list_of_waypoints(self, value):
         self._list_of_waypoints = value
+
     def update_state(self):
         pass
 
