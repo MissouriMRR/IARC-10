@@ -89,6 +89,13 @@ fi
 
 log_message "Found USB WiFi adapter: $UAIN"
 
+# On Pi 1, wlan1 is reserved for the DroneAP access point
+# Use wlan0 for the mesh instead
+if [ "$PI_NUMBER" = "1" ]; then
+    log_message "Pi 1 detected - wlan1 reserved for AP, using wlan0 for mesh"
+    UAIN="wlan0"
+fi
+
 # Load batman-adv kernel module
 modprobe batman-adv
 if [ $? -ne 0 ]; then
