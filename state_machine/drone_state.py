@@ -2,11 +2,13 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+
 @dataclass
 class PersistentConnection:
     """
     Wraps an asyncio network connection containing a timestap in order to track the usage
     """
+
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
     lastUsed: float  # timestamp of the last communication
@@ -23,18 +25,18 @@ class DroneState:
         # --- Physical Identity variables
         self.drone_id = drone_id
         self.drone_ip = drone_ip
-        
+
         # --- Safety/Power flags
-        self.armed = False          # True if motors are on
-        self.takeoff = False        # True if drone is off the ground
-        
+        self.armed = False  # True if motors are on
+        self.takeoff = False  # True if drone is off the ground
+
         # --- Connectivity Monitoring ---
-        self.ping_response = None   # Stores the latest latency
-        
+        self.ping_response = None  # Stores the latest latency
+
         # --- Mission Control Flags ---
-        self.demo_start = False     # Flag for pre-programmed demonstration mode
+        self.demo_start = False  # Flag for pre-programmed demonstration mode
         self.mission_start = False  # Flag for autonomous mission execution
-        self.list_of_waypoints = [] # Collection of GPS/coordinate targets
+        self.list_of_waypoints = []  # Collection of GPS/coordinate targets
 
     # --- Property Accessors ---
     # These provide a controlled interface for reading/writing internal attributes
@@ -115,7 +117,7 @@ class DroneState:
 
     def update_state(self):
         """
-        Placeholder for logic that synchronizes local state 
+        Placeholder for logic that synchronizes local state
         with incoming data from drone.
         """
         pass
