@@ -23,9 +23,8 @@ class DroneState:
         self._takeoff: bool = False  # True if drone is off the ground
 
         # --- Connectivity Monitoring ---
-        self._ping_response: dict[
-            int, bool
-        ] = {}  # Stores the latest ping response status
+        # Stores the latest ping response status. None = No response yet, False = PING_NACK, True = PING_ACK
+        self._ping_response: dict[int, bool | None] = {}
 
         # --- Mission Control Flags ---
         self._demo_start: bool = False  # Flag for pre-programmed demonstration mode
@@ -46,56 +45,56 @@ class DroneState:
 
     # Drone IP: The network address used for communication
     @property
-    def drone_ip(self):
+    def drone_ip(self) -> str:
         return self._drone_ip
 
     @drone_ip.setter
-    def drone_ip(self, value):
+    def drone_ip(self, value) -> None:
         self._drone_ip = value
 
     # Armed Status: Controls the drone motors to spend
     @property
-    def armed(self):
+    def armed(self) -> bool:
         return self._armed
 
     @armed.setter
-    def armed(self, value):
+    def armed(self, value) -> None:
         self._armed = value
 
     # Ping Response: Used to monitor link latency
     @property
-    def ping_response(self):
+    def ping_response(self) -> dict[int, bool | None]:
         return self._ping_response
 
     @ping_response.setter
-    def ping_response(self, value):
+    def ping_response(self, value) -> None:
         self._ping_response = value
 
     # Takeoff: Tracks if the drone has transitioned to flight
     @property
-    def takeoff(self):
+    def takeoff(self) -> bool:
         return self._takeoff
 
     @takeoff.setter
-    def takeoff(self, value):
+    def takeoff(self, value) -> None:
         self._takeoff = value
 
     # Demo Mode: Used for testing
     @property
-    def demo_start(self):
+    def demo_start(self) -> bool:
         return self._demo_start
 
     @demo_start.setter
-    def demo_start(self, value):
+    def demo_start(self, value) -> None:
         self._demo_start = value
 
     # Mission Status: Indicates if the drone is executing its primary objective
     @property
-    def mission_start(self):
+    def mission_start(self) -> bool:
         return self._mission_start
 
     @mission_start.setter
-    def mission_start(self, value):
+    def mission_start(self, value) -> None:
         self._mission_start = value
 
     # Waypoints: A list of coordinates the drone must visit
