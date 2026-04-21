@@ -22,7 +22,6 @@ from interdrone_communication.message_types import Message, MessageType
 from state_machine.mission_config import DroneInfo
 from enum import Enum
 
-
 if TYPE_CHECKING:
     # If this import is left outside of the TYPE_CHECKING check,
     # it causes a circular import.
