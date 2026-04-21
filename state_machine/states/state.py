@@ -3,11 +3,13 @@
 import logging
 from abc import ABC, abstractmethod
 from asyncio import Lock
-from typing import Awaitable
+from typing import TYPE_CHECKING, Awaitable
 
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
-from state_machine.interdrone import Interdrone
+
+if TYPE_CHECKING:
+    from state_machine.interdrone import Interdrone
 
 
 class State(ABC):
@@ -47,7 +49,7 @@ class State(ABC):
     """
 
     def __init__(
-        self, drone: Drone, flight_settings: FlightSettings, interdrone: Interdrone
+        self, drone: Drone, flight_settings: FlightSettings, interdrone: "Interdrone"
     ) -> None:
         """
         Initialize a new state object.
@@ -69,7 +71,7 @@ class State(ABC):
         """
         self._drone: Drone = drone
         self._flight_settings: FlightSettings = flight_settings
-        self._interdrone: Interdrone = interdrone
+        self._interdrone: "Interdrone" = interdrone
 
         self.atomic = Lock()
 
@@ -112,7 +114,7 @@ class State(ABC):
         return self._flight_settings
 
     @property
-    def interdrone(self) -> Interdrone:
+    def interdrone(self) -> "Interdrone":
         """
         Get the interdrone object this state is bound to.
 

@@ -13,9 +13,7 @@ import threading
 import time
 
 # IARC Imports
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
-from interdrone_communication.networking_thread import NetworkingThread
 from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
@@ -52,9 +50,14 @@ class Interdrone:
     """
 
     def __init__(self, flight_settings: FlightSettings, drone: Drone):
+        from interdrone_communication.network_config import NetworkConfig
+        from interdrone_communication.networking_thread import NetworkingThread
+
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings = flight_settings
         self.drone = drone
         self.network_config = NetworkConfig(flight_settings=flight_settings)
@@ -78,7 +81,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -304,7 +309,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -354,12 +361,6 @@ class Interdrone:
                     # print(f"Server Data: {serverMsg}")
                     print(f"Client Data: {msgNum}")
 
-                # Check for client responses
-                clientMsg = self.networking.try_get_client_response(timeout=0.02)
-                if clientMsg is not None:
-                    print("stuff here")
-                    # print(f"Client Data: {msgNum}")
-                    pass
                 # Send heartbeat if queue is empty
                 if self.networking.is_client_in_empty():
                     heartbeatMessage.data["payload"] = str(msgNum)

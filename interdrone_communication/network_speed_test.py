@@ -12,9 +12,11 @@ from interdrone_communication.message_types import Message, MessageType
 from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_thread import NetworkingThread
 from interdrone_communication.networking_interface import NetworkingInterface
+from state_machine.flight_settings import FlightSettings
 
 
 # Plan for network test updates: Filter logs based on self id and target
+# uv run -m interdrone_communication.network_speed_test -i 1
 async def main():
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
@@ -22,7 +24,7 @@ async def main():
     args = parser.parse_args()
 
     # Load config
-    networkConfig = NetworkConfig()
+    networkConfig = NetworkConfig(FlightSettings.from_mission_config())
 
     # Get drone ID
     if args.id is not None:
@@ -51,9 +53,6 @@ async def main():
         dronesToSendData=(),  # Modify this for selective speed test
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "finalUploadTime": 0.0,
-            "initialDownloadTime": 0.0,
-            "finalDownloadTime": 0.0,
             "senderId": droneId,
             "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
             "payload": "X"
@@ -62,7 +61,6 @@ async def main():
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
-
     continuousSpeedTest = True
     speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
     numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
@@ -71,15 +69,18 @@ async def main():
     while continuousSpeedTest:
         try:
             # Check for client responses
-            clientMsg = networking.try_get_client_response(timeout=0.02)
-            if clientMsg is not None:
+            serverMsg = networking.try_get_server_message(timeout=0.02)
+            if (
+                serverMsg is not None
+                and serverMsg.id == MessageType.SPEED_TEST_RESPONSE
+            ):
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = clientMsg.data["targetId"]
+                    targetId: int = serverMsg.data["targetId"]
                     # print(targetId)
                     if targetId not in speedResults:
                         speedResults[targetId] = []
-                    speedResults[targetId].append(clientMsg)
+                    speedResults[targetId].append(serverMsg)
                     if len(speedResults[targetId]) >= numQueriesPerTest:
                         # Copy data and clear original list so we can keep receiving immediately
                         results_to_log = list(speedResults[targetId])
@@ -108,17 +109,23 @@ async def main():
                         print(
                             f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
                         )
+                    elif len(speedResults[targetId]) % 10 == 0:
+                        print(
+                            f"Test #{len(speedResults[targetId])} / {numQueriesPerTest} complete to target #{targetId}"
+                        )
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {clientMsg}")
+                    # print(f"Client Data: {serverMsg}")
             # If previous message has been sent, add new one to queue
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
 
-            await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except KeyboardInterrupt, asyncio.CancelledError:
+            await asyncio.sleep(
+                0
+            )  # Yield to event loop for background tasks (is good for performance)
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
             break
 
@@ -128,7 +135,7 @@ def log_data(
 ):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"Logs/Speed_Test/From_{networkConfig.get_self_id()}_To_{speedResults[0].data['targetId']}"
+    folder_name = f"logs/Speed_Test/From_{networkConfig.get_self_id()}_To_{speedResults[0].data['targetId']}"
     os.makedirs(folder_name, exist_ok=True)
 
     file_path = f"{folder_name}/test-results-{testNumber}.txt"

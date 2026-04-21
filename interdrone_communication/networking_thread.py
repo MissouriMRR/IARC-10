@@ -24,7 +24,6 @@ class NetworkingThread:
         asyncio.set_event_loop(loop)
 
         clientIn: AsyncQueue[Message] = asyncio.Queue()
-        clientOut: AsyncQueue[Message] = asyncio.Queue()
         serverOut: AsyncQueue[Message] = asyncio.Queue()
 
         # Provide interface to main thread
@@ -32,7 +31,6 @@ class NetworkingThread:
             NetworkingInterface(
                 loop=loop,
                 clientIn=clientIn,
-                clientOut=clientOut,
                 serverOut=serverOut,
             )
         )
@@ -40,7 +38,6 @@ class NetworkingThread:
         loop.run_until_complete(
             self.start_networking(
                 clientInData=clientIn,
-                clientOutData=clientOut,
                 serverOutData=serverOut,
                 networkConfig=networkConfig,
             )
@@ -50,16 +47,18 @@ class NetworkingThread:
     async def start_networking(
         self,
         clientInData: AsyncQueue[Message],
-        clientOutData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
         networkConfig: NetworkConfig,
     ) -> None:
         # Instantiate Server and Client
-        serverInstance = Server(networkConfig=networkConfig, serverOutData=serverOutData)
+        serverInstance = Server(
+            networkConfig=networkConfig,
+            serverOutData=serverOutData,
+            clientInData=clientInData,
+        )
         clientInstance = Client(
             networkConfig=networkConfig,
             clientInData=clientInData,
-            clientOutData=clientOutData,
         )
 
         # Run both concurrently

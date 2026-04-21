@@ -199,9 +199,6 @@ async def main():
         ),  # Modify this for selective speed test
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "finalUploadTime": 0.0,
-            "initialDownloadTime": 0.0,
-            "finalDownloadTime": 0.0,
             "senderId": droneId,
             "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
             "payload": "X"
@@ -222,15 +219,15 @@ async def main():
     while True:
         try:
             # Check for client responses
-            clientMsg = networking.try_get_client_response(timeout=0.02)
-            if clientMsg is not None:
+            serverMsg = networking.try_get_server_message(timeout=0.02)
+            if serverMsg is not None:
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = clientMsg.data["targetId"]
+                    targetId: int = serverMsg.data["targetId"]
                     # print(targetId)
                     if targetId not in speedResults:
                         speedResults[targetId] = []
-                    speedResults[targetId].append(clientMsg)
+                    speedResults[targetId].append(serverMsg)
                     if len(speedResults[targetId]) >= numQueriesPerTest:
                         # Copy data and clear original list so we can keep receiving immediately
                         results_to_log = list(speedResults[targetId])
@@ -275,7 +272,7 @@ async def main():
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {clientMsg}")
+                    # print(f"Client Data: {serverMsg}")
             if testFinished:
                 # Wait for logging tasks to finish
                 while len(backgroundTasks) != 0:
@@ -295,7 +292,7 @@ async def main():
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except KeyboardInterrupt, asyncio.CancelledError:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
             break
 
