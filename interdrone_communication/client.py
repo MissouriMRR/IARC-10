@@ -170,7 +170,9 @@ class Client:
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+            async with (
+                conn.lock
+            ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
 
