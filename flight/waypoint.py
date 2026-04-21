@@ -35,8 +35,14 @@ class Waypoint:
     def _set_has_visited(self, new_has_visited: bool):
         self.has_visited = new_has_visited
 
-    def _set_has_to_waited(self, new_has_to_wait: bool):
+    def _set_has_to_wait(self, new_has_to_wait: bool):
         self.has_to_wait = new_has_to_wait
 
-    def _set_waypoints_to_reach(self, new_waypoint: Waypoint):
+    def _add_waypoints_to_reach(self, new_waypoint: Waypoint):
         self.waypoints_to_reach.append(new_waypoint)
+
+    def check_wait(self) -> None:
+        for waypoint in self.waypoints_to_reach:
+            if not waypoint._get_has_visited():
+                self._set_has_to_wait(True)
+        self._set_has_to_wait(False)
