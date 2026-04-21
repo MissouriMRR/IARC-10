@@ -1,5 +1,4 @@
 from typing import NamedTuple
-from math import radians, cos, sin, asin, sqrt
 
 class WaypointGroups(NamedTuple):
     drone1_waypoints: tuple[Waypoint, Waypoint]
