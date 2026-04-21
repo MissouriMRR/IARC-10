@@ -43,12 +43,7 @@ class MessageType(Enum):
 
 
 SchemaFieldType: TypeAlias = (
-    type[int]
-    | type[float]
-    | type[str]
-    | type[tuple[Any, ...]]
-    | type[dict[str, Any]]
-    | MessageType
+    type[int] | type[float] | type[str] | type[tuple[Any, ...]] | type[dict[str, Any]] | MessageType
 )
 
 # If you need documentation for message types, see this document:
@@ -260,8 +255,7 @@ def _matches_type(value: object, expected_type: object) -> bool:
         else:
             key_type, value_type = object, object
         return all(
-            _matches_type(k, key_type) and _matches_type(v, value_type)
-            for k, v in mapping.items()
+            _matches_type(k, key_type) and _matches_type(v, value_type) for k, v in mapping.items()
         )
 
     # tuple[T, ...] or tuple[T1, T2, ...]
