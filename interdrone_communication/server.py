@@ -61,9 +61,7 @@ class Server:
                 except EOFError:
                     break
 
-                message: Message = JsonMessageUtilities.message_from_json(
-                    byteMessage.decode()
-                )
+                message: Message = JsonMessageUtilities.message_from_json(byteMessage.decode())
 
                 # If message was read in, begin processing
                 if not message:
@@ -83,13 +81,9 @@ class Server:
                         self.networkConfig.set_app_ip(
                             newIP=str(message.data["IP"])
                         )  # TODO see if this works correctly new setup. Try and print App IP in main.py
-                        self.networkConfig.set_app_port(
-                            newPort=int(message.data["Port"])
-                        )
+                        self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
                     case MessageType.APP_DEBUG:
-                        writer.write(
-                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
-                        )
+                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
                         await writer.drain()
                         messageSent = True
                     case MessageType.REQUEST_DRONE_LOCATIONS:
@@ -131,9 +125,7 @@ class Server:
                                 "payload": message.data["payload"],
                             },
                         )  # From here update processing response and then go onto making sure responseMessage is sent to server
-                        responseMessage.data["initialDownloadTime"] = (
-                            time.perf_counter()
-                        )
+                        responseMessage.data["initialDownloadTime"] = time.perf_counter()
                         # Send response message to server
                     # Receive response data, calculate values, and return to serverOutData
                     case MessageType.SPEED_TEST_RESPONSE:
@@ -160,9 +152,7 @@ class Server:
                         downloadTime = estimatedOneWayTime
 
                         uploadSizeBytes = len(
-                            (
-                                JsonMessageUtilities.message_to_json(message=message)
-                            ).encode("utf-8")
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
                         )  # TODO change this actual uploaded message (difference is negligible)
                         uploadThroughputKbps = (
                             (uploadSizeBytes * 8 / 1000) / uploadTime
@@ -171,9 +161,7 @@ class Server:
                         )
 
                         downloadSizeBytes = len(
-                            (
-                                JsonMessageUtilities.message_to_json(message=message)
-                            ).encode("utf-8")
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
                         )
                         downloadThroughputKbps = (
                             (downloadSizeBytes * 8 / 1000) / downloadTime
@@ -182,13 +170,9 @@ class Server:
                         )
 
                         message.data["uploadRttMs"] = round(uploadTime * 1000, 2)
-                        message.data["uploadThroughputKbps"] = round(
-                            uploadThroughputKbps, 2
-                        )
+                        message.data["uploadThroughputKbps"] = round(uploadThroughputKbps, 2)
                         message.data["downloadRttMs"] = round(downloadTime * 1000, 2)
-                        message.data["downloadThroughputKbps"] = round(
-                            downloadThroughputKbps, 2
-                        )
+                        message.data["downloadThroughputKbps"] = round(downloadThroughputKbps, 2)
                         await self.serverOutData.put(item=message)
                     case _:
                         pass
@@ -197,9 +181,7 @@ class Server:
                     # SEND TO PASS INTO CLIENT IN DATA
                     # TODO UPDATE ONCE SENDER ID IS ADDED TO MESSAGE_TYPES.py
                     if responseMessage.id == MessageType.SPEED_TEST_RESPONSE:
-                        await self.clientInData.put(
-                            responseMessage
-                        )  # VERIFY THIS WORKS
+                        await self.clientInData.put(responseMessage)  # VERIFY THIS WORKS
 
         except asyncio.TimeoutError:
             print("Client timeout - no data received")
