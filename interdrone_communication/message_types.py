@@ -124,9 +124,6 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SPEED_TEST_REQUEST,
         "dronesToSendData": tuple[int, ...],
         "initialUploadTime": float,
-        "finalUploadTime": float,
-        "initialDownloadTime": float,
-        "finalDownloadTime": float,
         "senderId": int,
         "payloadSize": int,
         "payload": str,
@@ -134,12 +131,15 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.SPEED_TEST_RESPONSE: {
         "id": MessageType.SPEED_TEST_RESPONSE,
         "dronesToSendData": tuple[int, ...],
-        "target": str,
+        "initialUploadTime": float,
+        "finalUploadTime": float,
+        "initialDownloadTime": float,  # Don't need a final since it will be computed along with other values
         "targetId": int,
         "uploadRttMs": float,
         "uploadThroughputKbps": float,
         "downloadRttMs": float,
         "downloadThroughputKbps": float,
+        "payload": str,
     },
     MessageType.ARM: {
         "id": MessageType.ARM,

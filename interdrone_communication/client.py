@@ -131,7 +131,7 @@ class Client:
         clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
 
         # Create messageTasks list to store tasks for all drone connections
-        messageTasks: list[asyncio.Task[str]] = []
+        messageTasks: list[asyncio.Task[None]] = []
 
         # Loop through otherDronesIds and create to task to send message data to them if they're in dronesToSendData to list
         if sendToApp:
@@ -163,27 +163,14 @@ class Client:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
     # Takes data and sends it passed in server
-    async def send_data_async(self, serverIP: str, serverPort: int, clientMessageDump: str) -> str:
+    async def send_data_async(self, serverIP: str, serverPort: int, clientMessageDump: str) -> None:
         try:
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            async with (
-                conn.lock
-            ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
-
-                serverResponseBytes = await asyncio.wait_for(
-                    conn.reader.readuntil(b"\n"), timeout=2.0
-                )
-                conn.lastUsed = time.monotonic()  # Needed for dropping idle connections
-
-            serverResponseDump: str = serverResponseBytes.decode()
-            await self.process_client_data(
-                clientMessageDump, serverResponseDump, serverIP, serverPort
-            )
-            return serverResponseDump
 
         except (
             asyncio.TimeoutError,
@@ -196,81 +183,14 @@ class Client:
                 print(
                     f"Timeout error sending data from drone #{self.networkConfig.get_self_id()} to #{serverPort - 5000}"
                 )
-            return "timeout"
 
-        except ConnectionRefusedError as e:
+        except ConnectionRefusedError:
             await self._drop_connection(serverIP, serverPort)
             # print(f"ConnectionRefusedError: {e}")
-            return str(e)
 
         except Exception as e:
             await self._drop_connection(serverIP, serverPort)
             raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
-
-    async def process_client_data(
-        self,
-        clientMessageDump: str,
-        serverResponseDump: str,
-        serverIP: str,
-        serverPort: int,
-    ) -> None:
-        clientMessage: Message = JsonMessageUtilities.message_from_json(payload=clientMessageDump)
-        serverResponse: Message = JsonMessageUtilities.message_from_json(payload=serverResponseDump)
-
-        match serverResponse.id:
-            case MessageType.SERVER_DEFAULT_RESPONSE:
-                # await self.clientOutData.put(item=serverResponseDump)  # Keep commented out for performance unless you want to see default server message
-                pass
-            # Network Speedtest Message (Needs a client response)
-            case MessageType.SPEED_TEST_REQUEST:
-                # Client receives response - set final download time
-                receiveTime = time.perf_counter()
-
-                # Calculate Server Processing Time (Delta on Server Clock)
-                serverProcessingTime: float = float(
-                    serverResponse.data["initialDownloadTime"]
-                ) - float(serverResponse.data["finalUploadTime"])
-
-                # Calculate Total Round Trip Time (Delta on Client Clock)
-                totalRtt = receiveTime - clientMessage.data["initialUploadTime"]
-
-                # Calculate Network RTT (Total - Processing)
-                networkRtt = totalRtt - serverProcessingTime
-
-                # Since the server echoes the payload, upload and download sizes are roughly equal,
-                # so we estimate upload and download time as half of the network RTT.
-                estimatedOneWayTime = networkRtt / 2
-
-                uploadTime = estimatedOneWayTime
-                downloadTime = estimatedOneWayTime
-
-                uploadSizeBytes = len(clientMessageDump.encode("utf-8"))
-                uploadThroughputKbps = (
-                    (uploadSizeBytes * 8 / 1000) / uploadTime if uploadTime > 0 else float("inf")
-                )
-
-                downloadSizeBytes = len(serverResponseDump)
-                downloadThroughputKbps = (
-                    (downloadSizeBytes * 8 / 1000) / downloadTime
-                    if downloadTime > 0
-                    else float("inf")
-                )
-                result: Message = Message.create(
-                    id=MessageType.SPEED_TEST_RESPONSE,
-                    dronesToSendData=(),
-                    data={
-                        "target": f"{serverIP}:{serverPort}",
-                        "targetId": serverPort - 5000,  # Port is 500* with start being id
-                        "uploadRttMs": round(uploadTime * 1000, 2),
-                        "uploadThroughputKbps": round(uploadThroughputKbps, 2),
-                        "downloadRttMs": round(downloadTime * 1000, 2),
-                        "downloadThroughputKbps": round(downloadThroughputKbps, 2),
-                    },
-                )
-                await self.clientOutData.put(item=result)
-            case _:
-                # If no message ID, return server response data
-                await self.clientOutData.put(item=serverResponse)
 
     # Used to get or create a TCP connection to a specific ip and port
     async def _get_or_create_connection(

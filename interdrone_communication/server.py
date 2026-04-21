@@ -16,6 +16,7 @@ class Server:
         self,
         networkConfig: NetworkConfig,
         serverOutData: Queue[Message],
+        # TODO PASS CLIENT IN DATA HERE
     ):
         self.networkConfig: NetworkConfig = networkConfig
         self.serverOutData: Queue[Message] = serverOutData
@@ -69,11 +70,14 @@ class Server:
 
                 # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
                 messageSent = False
+                # TODO Big boy rewrite to put all processing code in interdrone
                 match message.id:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
                     case MessageType.APP_CONFIG:
-                        self.networkConfig.set_app_ip(newIP=str(message.data["IP"]))
+                        self.networkConfig.set_app_ip(
+                            newIP=str(message.data["IP"])
+                        )  # TODO see if this works correctly new setup. Try and print App IP in main.py
                         self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
                     case MessageType.APP_DEBUG:
                         writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
@@ -102,13 +106,77 @@ class Server:
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:
-                        message.data["finalUploadTime"] = time.perf_counter()
+                        # Decision: Make response have other needed things from sender
+                        finalUploadTime = time.perf_counter()
                         message.data["initialDownloadTime"] = time.perf_counter()
-                        responseMessage = message
+                        responseMessage = Message.create(
+                            id=MessageType.SPEED_TEST_RESPONSE,
+                            dronesToSendData=(),
+                            data={
+                                "initialUploadTime": message.data["initialUploadTime"],
+                                "finalUploadTime": finalUploadTime,
+                                "initialDownloadTime": 0.0,
+                                "targetId": self.networkConfig.get_self_id(),
+                                "uploadRttMs": 0.0,
+                                "uploadThroughputKbps": 0.0,
+                                "downloadRttMs": 0.0,
+                                "downloadThroughputKbps": 0.0,
+                                "payload": message.data["payload"],
+                            },
+                        )  # From here update processing response and then go onto making sure responseMessage is sent to server
+                        responseMessage.data["initialDownloadTime"] = time.perf_counter()
+                        # Send response message to server
+                    # Receive response data, calculate values, and return to serverOutData
+                    case MessageType.SPEED_TEST_RESPONSE:
+                        # Client receives response - set final download time
+                        receiveTime = time.perf_counter()
+
+                        # Calculate Server Processing Time (Delta on Server Clock)
+                        serverProcessingTime: float = float(
+                            message.data["initialDownloadTime"]
+                        ) - float(message.data["finalUploadTime"])
+
+                        # Calculate Total Round Trip Time (Delta on Client Clock)
+                        totalRtt = receiveTime - message.data["initialUploadTime"]
+
+                        # Calculate Network RTT (Total - Processing)
+                        networkRtt = totalRtt - serverProcessingTime
+
+                        # Since the server echoes the payload, upload and download sizes are roughly equal,
+                        # so we estimate upload and download time as half of the network RTT.
+                        estimatedOneWayTime = networkRtt / 2
+
+                        uploadTime = estimatedOneWayTime
+                        downloadTime = estimatedOneWayTime
+
+                        uploadSizeBytes = len(
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                        )  # TODO change this actual uploaded message (difference is negligible)
+                        uploadThroughputKbps = (
+                            (uploadSizeBytes * 8 / 1000) / uploadTime
+                            if uploadTime > 0
+                            else float("inf")
+                        )
+
+                        downloadSizeBytes = len(
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                        )
+                        downloadThroughputKbps = (
+                            (downloadSizeBytes * 8 / 1000) / downloadTime
+                            if downloadTime > 0
+                            else float("inf")
+                        )
+
+                        message.data["uploadRttMs"] = round(uploadTime * 1000, 2)
+                        message.data["uploadThroughputKbps"] = round(uploadThroughputKbps, 2)
+                        message.data["downloadRttMs"] = round(downloadTime * 1000, 2)
+                        message.data["downloadThroughputKbps"] = round(downloadThroughputKbps, 2)
+                        await self.serverOutData.put(item=message)
                     case _:
                         pass
-                # Convert responseMessage to string and send over if message hasn't already been sent
+                # Send
                 if not messageSent:
+                    # SEND TO PASS INTO CLIENT IN DATA
                     writer.write(
                         (JsonMessageUtilities.message_to_json(responseMessage) + "\n").encode()
                     )
