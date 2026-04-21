@@ -16,15 +16,7 @@ mineHistory = "["
 
 # Paste a past list of mine coords as a string, paste the printed mineHistory
 # If wanting to go back to randomized, leave it as empty list
-recordedMineCoords =[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
-
-"""
-Iteration of mine coordinates that a bug has appeared:
-
-Bug in: Hugging Edges
-List of mines coords:
-[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
-"""
+recordedMineCoords = []
 
 if (len(recordedMineCoords) > 0):
     numMines = len(recordedMineCoords)
@@ -39,30 +31,38 @@ stepDebug = False # True if you want to step through mines being added,
 # Get converted dimensions of field
 
 lat_lon1 = [36.021683, -95.941831] # *
+lat_lon1_alt = [36.021695, -95.941831]
 lat_lon2 = [36.020694, -95.941856] # **
 lat_lon3 = [36.021694, -95.942372] # ***
 lat_lon4 = [36.020703, -95.942397]
-labeled = False
 
-converter = coordCon([lat_lon1,lat_lon2,lat_lon3,lat_lon4],360)
+# converter = coordCon([lat_lon1,lat_lon2,lat_lon3,lat_lon4],360)
+converter = coordCon([lat_lon1_alt, lat_lon2, lat_lon3, lat_lon4], 360)
+
 arbCorners = converter.get_arb_corners()
-rawCorners = None # To be recieved later, represents field corners before normalizing to a rectangle
+# sim_field_size = [width, height]
+sim_field_size = [max([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]) - min([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]), max([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]]) - min([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]])]
+simCorners = [(0,sim_field_size[1]),
+              (sim_field_size[0],sim_field_size[1]),
+              (0,0),
+              (sim_field_size[0],0)]
 fieldSimCoords = {
-    "xMin": arbCorners[0][0],
-    "xMax": arbCorners[1][0],
-    "yMin": arbCorners[3][1],
-    "yMax": arbCorners[1][1]
+    "xMin": simCorners[0][0],
+    "xMax": simCorners[1][0],
+    "yMin": simCorners[3][1],
+    "yMax": simCorners[1][1]
 }
 genXMin = int(fieldSimCoords["xMin"])
 genXMax = int(fieldSimCoords["xMax"])
 genYMin = int(fieldSimCoords["yMin"])
 genYMax = int(fieldSimCoords["yMax"])
 
-field = Field(arbCorners, rawCorners)
+field = Field(sim_field_size, arbCorners)
+
 position = [0,0]
 mineGenTolerance = 0*radius
 step = 0
-
+labeled = False
 # Mine generation, do not add floating nodes before this point
 for num in range(numMines):
     step += 1
