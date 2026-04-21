@@ -21,6 +21,10 @@ class NetworkConfig:
         self._app_port: int = flight_settings.app_port
         self._speed_test_data_size: int = 16
         self._range_test_toggle: bool = False
+        self._other_drones: list[DroneInfo] = []
+        for drone in self._drone_info:
+            if drone["id"] != self._self_id:
+                self._other_drones.append(drone)
 
     def _find_drone(self, droneId: int) -> DroneInfo:
         for drone in self._drone_info:
@@ -33,6 +37,9 @@ class NetworkConfig:
 
     def get_drone_port(self, droneId: int) -> int:
         return int(self._find_drone(droneId)["port"])
+
+    def get_other_drones(self) -> list[DroneInfo]:
+        return self._other_drones
 
     def get_app_ip(self) -> str:
         return self._app_ip
