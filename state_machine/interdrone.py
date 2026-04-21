@@ -55,7 +55,9 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings = flight_settings
         self.drone = drone
         self.network_config = NetworkConfig(flight_settings=flight_settings)
@@ -79,7 +81,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -305,23 +309,24 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
 
-    def read(self) -> None:
+    def read(self) -> Message | None:
         """
-        Read an message.
+        Try to read a message.
         """
-        raise NotImplementedError
+        return self.networking.try_get_server_message(timeout=0.02)
 
-    def send(self) -> None:
+    def send(self, message: Message) -> None:
         """
         Send a message.
         """
-        # ADDS A NEW MESSAGE TO QUEUE
-        raise NotImplementedError
+        self.networking.queue_client_message(message)
 
     def get_cmd_msg(self) -> CMD_MSG:
         return self.cmd_msg
@@ -359,7 +364,7 @@ class Interdrone:
                     heartbeatMessage.data["payload"] = str(msgNum)
                     self.networking.queue_client_message(heartbeatMessage)
 
-                await asyncio.sleep(0.1)  # TODO CHANGE TO 0 ONCE STATE MACHINE IS LIVE
+                await asyncio.sleep(0.1)
 
         except KeyboardInterrupt:
             print(f"Program ran for {time.time() - startTime}")
