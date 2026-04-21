@@ -8,6 +8,7 @@ import warnings
 from typing import cast, get_args, get_origin
 import types
 
+
 class MessageType(Enum):
     UNKNOWN = 0
     # App
@@ -196,6 +197,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "droneSenderID": int,
     },
 }
+
 
 def _matches_type(value: object, expected_type: object) -> bool:
     # Treat Any as a wildcard
