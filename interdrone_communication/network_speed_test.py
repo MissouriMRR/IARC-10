@@ -123,7 +123,7 @@ async def main():
                 networking.queue_client_message(message=speedTestMessage)
 
             await asyncio.sleep(
-                0
+                0.1
             )  # Yield to event loop for background tasks (is good for performance)
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
