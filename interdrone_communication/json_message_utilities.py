@@ -17,12 +17,15 @@ class JsonMessageUtilities:
         try:
             message_type = MessageType(messageIdValue)
         except ValueError:
-            print(f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN")
+            print(
+                f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN"
+            )
             message_type = MessageType.UNKNOWN
 
         return Message.create(
             id=message_type,
             dronesToSendData=tuple(data.get("dronesToSendData", ())),
+            senderId=data.get("senderId"),
             data=data.get("data", {}),
         )
 
@@ -32,6 +35,7 @@ class JsonMessageUtilities:
             {
                 "id": message.id.value,
                 "dronesToSendData": message.dronesToSendData,
+                "senderId": message.senderId,
                 "data": message.data,
             }
         )

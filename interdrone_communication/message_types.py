@@ -42,7 +42,12 @@ class MessageType(Enum):
 
 
 SchemaFieldType: TypeAlias = (
-    type[int] | type[float] | type[str] | type[tuple[Any, ...]] | type[dict[str, Any]] | MessageType
+    type[int]
+    | type[float]
+    | type[str]
+    | type[tuple[Any, ...]]
+    | type[dict[str, Any]]
+    | MessageType
 )
 
 # If you need documentation for message types, see this document:
@@ -51,58 +56,69 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.UNKNOWN: {
         "id": MessageType.UNKNOWN,
         "dronesToSendData": tuple[int, ...],  # ... allows tuple to be any length
+        "senderId": int,
         "data": dict[str, object],
     },
     # For app messages, use (0) for dronesToSendData too if you wish to send data to the app
     MessageType.APP_TEST: {
         "id": MessageType.APP_TEST,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "data": dict[str, object],  # TODO REMOVE DATA HERE
     },
     MessageType.APP_CONFIG: {
         "id": MessageType.APP_CONFIG,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "IP": str,
         "Port": int,
     },
     MessageType.APP_DEBUG: {
         "id": MessageType.APP_DEBUG,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "embeddedDebugMessage": str,
     },
     MessageType.SET_SCAN_STATUS: {
         "id": MessageType.SET_SCAN_STATUS,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "setScanStatus": bool,
     },
     MessageType.SET_HOVER_STATUS: {
         "id": MessageType.SET_HOVER_STATUS,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "setHoverStatus": bool,
         "height": float,
     },
     MessageType.REQUEST_MAP_DATA: {
         "id": MessageType.REQUEST_MAP_DATA,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
     },
     MessageType.REQUEST_DRONE_LOCATIONS: {
         "id": MessageType.REQUEST_DRONE_LOCATIONS,
         "dronesToSendData": tuple[int, ...],  # VERIFY WE DON'T NEED DATA
+        "senderId": int,
     },
     MessageType.SEND_PATHS_TO_APP: {
         "id": MessageType.SEND_PATHS_TO_APP,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "MapDataReady": bool,
     },
     MessageType.SEND_DRONE_LOCATIONS: {
         "id": MessageType.SEND_DRONE_LOCATIONS,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "drone1Data": dict[str, list[int | float]],  # Contains latLong and xYCoords
         "drone2Data": dict[str, list[int | float]],
     },
     MessageType.SEND_APP_SCANNING_ERROR: {
         "id": MessageType.SEND_APP_SCANNING_ERROR,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "errorType": int,
         "errorMessage": str,
     },
@@ -115,6 +131,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.SERVER_DEFAULT_RESPONSE: {
         "id": MessageType.SERVER_DEFAULT_RESPONSE,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "payload": str,
     },
     # Message: SPEED_TEST_REQUEST
@@ -123,14 +140,15 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.SPEED_TEST_REQUEST: {
         "id": MessageType.SPEED_TEST_REQUEST,
         "dronesToSendData": tuple[int, ...],
-        "initialUploadTime": float,
         "senderId": int,
+        "initialUploadTime": float,
         "payloadSize": int,
         "payload": str,
     },
     MessageType.SPEED_TEST_RESPONSE: {
         "id": MessageType.SPEED_TEST_RESPONSE,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "initialUploadTime": float,
         "finalUploadTime": float,
         "initialDownloadTime": float,  # Don't need a final since it will be computed along with other values
@@ -144,57 +162,58 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     MessageType.ARM: {
         "id": MessageType.ARM,
         "dronesToSendData": tuple[int, ...],
+        "senderId": int,
         "droneSenderID": int,
     },
     MessageType.ARM_ACK: {
         "id": MessageType.ARM_ACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.ARM_NACK: {
         "id": MessageType.ARM_NACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.PING: {
         "id": MessageType.PING,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.PING_ACK: {
         "id": MessageType.PING_ACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_TAKEOFF: {
         "id": MessageType.START_TAKEOFF,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_TAKEOFF_ACK: {
         "id": MessageType.START_TAKEOFF_ACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_DEMO: {
         "id": MessageType.START_DEMO,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_DEMO_ACK: {
         "id": MessageType.START_DEMO_ACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_MISSION: {
         "id": MessageType.START_MISSION,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
     MessageType.START_MISSION_ACK: {
         "id": MessageType.START_MISSION_ACK,
         "dronesToSendData": tuple[int, ...],
-        "droneSenderID": int,
+        "senderId": int,
     },
 }
 
@@ -235,7 +254,8 @@ def _matches_type(value: object, expected_type: object) -> bool:
         else:
             key_type, value_type = object, object
         return all(
-            _matches_type(k, key_type) and _matches_type(v, value_type) for k, v in mapping.items()
+            _matches_type(k, key_type) and _matches_type(v, value_type)
+            for k, v in mapping.items()
         )
 
     # tuple[T, ...] or tuple[T1, T2, ...]
@@ -262,9 +282,10 @@ def _matches_type(value: object, expected_type: object) -> bool:
 class Message:
     """Message class for interdrone communication. Provides a way to create, validate, and serialize messages."""
 
-    # ID and dronesToSendData are required values for each message
+    # ID, dronesToSendData, and senderId are required values for each message
     id: MessageType
     dronesToSendData: tuple[int, ...]
+    senderId: int
     # The data variable contains all keys and values in a schema that aren't id and dronesToSendData.
     data: dict[str, Any] = field(default_factory=dict)  # TODO long term remove any
 
@@ -275,6 +296,7 @@ class Message:
             warnings.warn(f"Message type not in schema: {self.id}, setting to UNKNOWN")
             object.__setattr__(self, "id", MessageType.UNKNOWN)
             object.__setattr__(self, "dronesToSendData", ())
+            object.__setattr__(self, "senderId", ())
             object.__setattr__(self, "data", {})
             return
         # Check to make sure all expected keys in schema are present in new message.
@@ -282,7 +304,7 @@ class Message:
         actual_keys = set(self.data.keys())
         expected_keys = set(expected.keys())
 
-        expected_keys -= {"id", "dronesToSendData"}
+        expected_keys -= {"id", "dronesToSendData", "senderId"}
 
         # Check missing/extra keys
         missing = expected_keys - actual_keys
@@ -301,7 +323,7 @@ class Message:
 
         # Iterate through schema and add keys to data and check for errors
         for key, allowed_types in expected.items():
-            if key not in {"id", "dronesToSendData"}:
+            if key not in {"id", "dronesToSendData", "senderId"}:
                 value = self.data[key]
                 if not _matches_type(value, allowed_types):
                     warnings.warn(
@@ -314,9 +336,18 @@ class Message:
 
     @classmethod
     def create(
-        cls, id: MessageType, dronesToSendData: tuple[int, ...], data: dict[str, Any]
+        cls,
+        id: MessageType,
+        dronesToSendData: tuple[int, ...],
+        senderId: int,
+        data: dict[str, Any],
     ) -> "Message":
-        return cls(id=id, dronesToSendData=dronesToSendData, data=data.copy())
+        return cls(
+            id=id,
+            dronesToSendData=dronesToSendData,
+            senderId=senderId,
+            data=data.copy(),
+        )
 
 
 # Ensures you can't change values of keys once a message is created, only their values (prevents potential issues with networking)

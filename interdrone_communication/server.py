@@ -17,18 +17,10 @@ class Server:
         networkConfig: NetworkConfig,
         serverOutData: Queue[Message],
         clientInData: Queue[Message],
-        # TODO PASS CLIENT IN DATA HERE
     ):
         self.networkConfig: NetworkConfig = networkConfig
         self.serverOutData: Queue[Message] = serverOutData
         self.clientInData: Queue[Message] = clientInData
-        self.serverDefaultResponseMessage: Message = Message.create(
-            id=MessageType.SERVER_DEFAULT_RESPONSE,
-            dronesToSendData=(),
-            data={
-                "payload": "Server received your message!",
-            },
-        )
 
         # Check for droneId from flag in main.py
         self.droneId: int = networkConfig.get_self_id()
@@ -61,38 +53,38 @@ class Server:
                 except EOFError:
                     break
 
-                message: Message = JsonMessageUtilities.message_from_json(byteMessage.decode())
-
+                message: Message = JsonMessageUtilities.message_from_json(
+                    byteMessage.decode()
+                )
                 # If message was read in, begin processing
                 if not message:
                     continue
 
-                # IN ORDER TO HAVE THE CLIENT PROCESS A SERVER RESPONSE, YOU MUST OVERWRITE THE responseMessage!!! SEE MessageType.SPEED_TEST_REQUEST FOR AN EXAMPLE
-                responseMessage: Message = (
-                    self.serverDefaultResponseMessage
-                )  # TODO CHANGE THIS TO NONE. ONLY SEND RESPONSE IF NEEDED (not None)
+                # If the received message requires a response inside of server, it's overwritten and sent via clientInData at the end of handle_client()
+                responseMessage: Message | None = None
 
-                # messageSent is set to true in special cases to send a different message early. If it's true, message won't be sent at bottom.
-                messageSent = False
+                # Message Handling for all messages sent to the server. Some messages are processed here if they are simple while others are sent back to interdrone to be processed.
                 match message.id:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
                     case MessageType.APP_CONFIG:
-                        self.networkConfig.set_app_ip(
-                            newIP=str(message.data["IP"])
-                        )  # TODO see if this works correctly new setup. Try and print App IP in main.py
-                        self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
+                        self.networkConfig.set_app_ip(newIP=str(message.data["IP"]))
+                        self.networkConfig.set_app_port(
+                            newPort=int(message.data["Port"])
+                        )
                     case MessageType.APP_DEBUG:
-                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
+                        writer.write(
+                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
+                        )
                         await writer.drain()
-                        messageSent = True
                     case MessageType.REQUEST_DRONE_LOCATIONS:
                         # Send back response message with two drones locations
                         # NOTE in the future we will need to have state that fetches drone location to fill in the data here
                         # This is temporary for app testing
                         responseMessage = Message.create(
                             id=MessageType.SEND_DRONE_LOCATIONS,
-                            dronesToSendData=(),
+                            dronesToSendData=(message.senderId,),
+                            senderId=self.networkConfig.get_self_id(),
                             # TODO FIGURE OUT PATHFINDINGS COORD SYSTEM (please write docs)
                             data={
                                 "drone1Data": {
@@ -112,9 +104,12 @@ class Server:
                         finalUploadTime = time.perf_counter()
                         responseMessage = Message.create(
                             id=MessageType.SPEED_TEST_RESPONSE,
-                            dronesToSendData=(message.data["senderId"],),
+                            dronesToSendData=(message.senderId,),
+                            senderId=self.networkConfig.get_self_id(),
                             data={
-                                "initialUploadTime": message.data["initialUploadTime"],
+                                "initialUploadTime": message.data.get(
+                                    "initialUploadTime", 0.0
+                                ),
                                 "finalUploadTime": finalUploadTime,
                                 "initialDownloadTime": 0.0,
                                 "targetId": self.networkConfig.get_self_id(),
@@ -125,13 +120,20 @@ class Server:
                                 "payload": message.data["payload"],
                             },
                         )  # From here update processing response and then go onto making sure responseMessage is sent to server
-                        responseMessage.data["initialDownloadTime"] = time.perf_counter()
+                        responseMessage.data["initialDownloadTime"] = (
+                            time.perf_counter()
+                        )
                         # Send response message to server
                     # Receive response data, calculate values, and return to serverOutData
                     case MessageType.SPEED_TEST_RESPONSE:
-                        messageSent = True
                         # Client receives response - set final download time
                         receiveTime = time.perf_counter()
+
+                        if "initialUploadTime" not in message.data:
+                            print(
+                                "SPEED_TEST_RESPONSE missing initialUploadTime, skipping"
+                            )
+                            continue
 
                         # Calculate Server Processing Time (Delta on Server Clock)
                         serverProcessingTime: float = float(
@@ -152,7 +154,9 @@ class Server:
                         downloadTime = estimatedOneWayTime
 
                         uploadSizeBytes = len(
-                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                            (
+                                JsonMessageUtilities.message_to_json(message=message)
+                            ).encode("utf-8")
                         )  # TODO change this actual uploaded message (difference is negligible)
                         uploadThroughputKbps = (
                             (uploadSizeBytes * 8 / 1000) / uploadTime
@@ -161,7 +165,9 @@ class Server:
                         )
 
                         downloadSizeBytes = len(
-                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                            (
+                                JsonMessageUtilities.message_to_json(message=message)
+                            ).encode("utf-8")
                         )
                         downloadThroughputKbps = (
                             (downloadSizeBytes * 8 / 1000) / downloadTime
@@ -170,18 +176,20 @@ class Server:
                         )
 
                         message.data["uploadRttMs"] = round(uploadTime * 1000, 2)
-                        message.data["uploadThroughputKbps"] = round(uploadThroughputKbps, 2)
+                        message.data["uploadThroughputKbps"] = round(
+                            uploadThroughputKbps, 2
+                        )
                         message.data["downloadRttMs"] = round(downloadTime * 1000, 2)
-                        message.data["downloadThroughputKbps"] = round(downloadThroughputKbps, 2)
+                        message.data["downloadThroughputKbps"] = round(
+                            downloadThroughputKbps, 2
+                        )
                         await self.serverOutData.put(item=message)
                     case _:
                         pass
-                # Send
-                if not messageSent:
-                    # SEND TO PASS INTO CLIENT IN DATA
-                    # TODO UPDATE ONCE SENDER ID IS ADDED TO MESSAGE_TYPES.py
-                    if responseMessage.id == MessageType.SPEED_TEST_RESPONSE:
-                        await self.clientInData.put(responseMessage)  # VERIFY THIS WORKS
+
+                # If responseMessage was overwritten, send the response
+                if responseMessage is not None:
+                    await self.clientInData.put(responseMessage)
 
         except asyncio.TimeoutError:
             print("Client timeout - no data received")

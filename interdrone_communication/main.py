@@ -46,8 +46,8 @@ def main() -> None:
     heartbeatMessage: Message = Message.create(
         id=MessageType.HEARTBEAT,
         dronesToSendData=(),
+        senderId=droneId,
         data={
-            "senderId": droneId,
             "payload": "Hello server!",
         },
     )

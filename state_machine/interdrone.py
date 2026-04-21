@@ -55,7 +55,9 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings = flight_settings
         self.drone = drone
         self.network_config = NetworkConfig(flight_settings=flight_settings)
@@ -79,7 +81,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -305,7 +309,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -337,8 +343,8 @@ class Interdrone:
         heartbeatMessage: Message = Message.create(
             id=MessageType.HEARTBEAT,
             dronesToSendData=(),
+            senderId=self.flight_settings.current_drone_ID,
             data={
-                "senderId": self.flight_settings.current_drone_ID,
                 "payload": "Hello server!",
             },
         )
@@ -352,15 +358,14 @@ class Interdrone:
                 serverMsg = self.networking.try_get_server_message(timeout=0.02)
                 if serverMsg is not None:
                     msgNum += 1
-                    # print(f"Server Data: {serverMsg}")
-                    print(f"Client Data: {msgNum}")
+                    print(f"Server Data: {msgNum}")
 
                 # Send heartbeat if queue is empty
                 if self.networking.is_client_in_empty():
                     heartbeatMessage.data["payload"] = str(msgNum)
                     self.networking.queue_client_message(heartbeatMessage)
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.1)  # TODO CHANGE TO 0 ONCE STATE MACHINE IS LIVE
 
         except KeyboardInterrupt:
             print(f"Program ran for {time.time() - startTime}")

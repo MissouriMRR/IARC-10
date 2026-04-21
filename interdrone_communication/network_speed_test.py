@@ -51,9 +51,9 @@ async def main():
     speedTestMessage: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
         dronesToSendData=(),  # Modify this for selective speed test
+        senderId=droneId,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "senderId": droneId,
             "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
             "payload": "X"
             * (
