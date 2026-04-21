@@ -1,5 +1,6 @@
 from flight.pathfinding.node_generation import Field, Mine, Node
 from flight.pathfinding.path_calculation import Graph
+from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from random import randint, seed
 import math
 import time
@@ -10,20 +11,12 @@ The output will be at the bottom.
 """
 # seed(2020) # make random or not
 numMines = 40
-radius = 32
+radius = 10
 mineHistory = "["
 
 # Paste a past list of mine coords as a string, paste the printed mineHistory
 # If wanting to go back to randomized, leave it as empty list
-recordedMineCoords =[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
-
-"""
-Iteration of mine coordinates that a bug has appeared:
-
-Bug in: Hugging Edges
-List of mines coords:
-[(59,-10), (0,24), (-86,-48), (-13,-112), (140,40), (-140,-111), (-129,105), (-6,-92), (122,40), (-27,79), (17,108), (67,71), (-108,-101), (-122,104), (97,-29), (-134,-132), (16,29), (143,108), (143,-74), (110,-98)]
-"""
+recordedMineCoords = []
 
 if (len(recordedMineCoords) > 0):
     numMines = len(recordedMineCoords)
@@ -32,35 +25,44 @@ pathFindingType = "A*"  # dijkstra OR A* OR both OR none
 
 stepDebug = False # True if you want to step through mines being added, 
                   # closing the generated window moves onto to the next step.
-                  # NOTE:In order to fully end the program you need to run ctrl+C in the terminal
+                  # NOTE:In order to fully end the program you need to run ctrl+C in the terminal and focus onto the graph window
                   # or fully iterate through numMines times
-labeled = False
-if numMines >= 20:
-    xMin = -numMines*radius
-    xMax = numMines*radius
-    yMin = -numMines*radius
-    yMax = numMines*radius
 
-    genXMin = -radius*(numMines//4)
-    genXMax = radius*(numMines//4)
-    genYMin =-radius*(numMines//4)
-    genYMax = radius*(numMines//4)
-else:
-    xMin = -numMines*radius*4
-    xMax = numMines*radius*4
-    yMin = -numMines*radius*4
-    yMax = numMines*radius*4
+# Get converted dimensions of field
 
-    genXMin = -radius*(numMines//2)
-    genXMax = radius*(numMines//2)
-    genYMin =-radius*(numMines//2)
-    genYMax = radius*(numMines//2)
+lat_lon1 = [36.021683, -95.941831] # *
+lat_lon1_alt = [36.021695, -95.941831]
+lat_lon2 = [36.020694, -95.941856] # **
+lat_lon3 = [36.021694, -95.942372] # ***
+lat_lon4 = [36.020703, -95.942397]
 
-field = Field(xMin,xMax,yMin,yMax)
+# converter = coordCon([lat_lon1,lat_lon2,lat_lon3,lat_lon4],360)
+converter = coordCon([lat_lon1_alt, lat_lon2, lat_lon3, lat_lon4], 360)
+
+arbCorners = converter.get_arb_corners()
+# sim_field_size = [width, height]
+sim_field_size = [max([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]) - min([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]), max([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]]) - min([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]])]
+simCorners = [(0,sim_field_size[1]),
+              (sim_field_size[0],sim_field_size[1]),
+              (0,0),
+              (sim_field_size[0],0)]
+fieldSimCoords = {
+    "xMin": simCorners[0][0],
+    "xMax": simCorners[1][0],
+    "yMin": simCorners[3][1],
+    "yMax": simCorners[1][1]
+}
+genXMin = int(fieldSimCoords["xMin"])
+genXMax = int(fieldSimCoords["xMax"])
+genYMin = int(fieldSimCoords["yMin"])
+genYMax = int(fieldSimCoords["yMax"])
+
+field = Field(sim_field_size, arbCorners)
+
 position = [0,0]
 mineGenTolerance = 0*radius
 step = 0
-
+labeled = False
 # Mine generation, do not add floating nodes before this point
 for num in range(numMines):
     step += 1
@@ -76,7 +78,7 @@ for num in range(numMines):
                     break
             if invalidPosition:
                 continue
-            if position[0] <= xMin + radius or position[0] >= xMax - radius or position[1] <= yMin + radius or position[1] >= yMax - radius:
+            if position[0] <= fieldSimCoords["xMin"] + radius or position[0] >= fieldSimCoords["xMax"] - radius or position[1] <= fieldSimCoords["yMin"] + radius or position[1] >= fieldSimCoords["yMax"] - radius:
                 continue
             break
         
@@ -94,9 +96,11 @@ print("done adding mines\n")
 
 if len(recordedMineCoords) <= 0:
     mineHistory += "]"
+    print("Mine positions:")
     print(mineHistory)
-start = field.placeStartNode(0,0.5*yMin)
-endPoints = field.placeEndNodes(yMax - (radius*1.5),1) # A density of one defaults to the end node at (0,yVal)
+    print()
+start = field.placeStartNode(-5,-5)
+endPoints = field.placeEndNodes(fieldSimCoords["yMax"],1) # A density of one defaults to the end node at (x range midpoint,yVal)
 #CONNECTS FLOATING NODES TOGETHER, DONT REMOVE
 for node in endPoints:
     node.connectNode(start)
@@ -150,5 +154,6 @@ if pathFindingType=="both":
 if not stepDebug:
     field.plotField(path=aStarPath)
 
-field.increaseRadius(100)
+print(f"Increasing radius from {radius} to {radius*2}")
+field.increaseRadius(radius*2)
 field.plotField()

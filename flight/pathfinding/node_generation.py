@@ -1,14 +1,14 @@
 import sys, os
 sys.path.append(os.path.abspath(".."))
-import matplotlib.patches as patches
 
+from typing import Callable
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 import time
-from sys import getrefcount
 import gc
 from . import path_calculation
+from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from enum import Enum
 
 ######## File: genNodesFromMines.py                                                                      ########
@@ -47,14 +47,18 @@ KEY CONNECTION ATTRIBUTES/METHODS:
     Node3: {Node1:ConnectionObj 1<->3}
     }
  - Connection.deleteConnection() -> Removes itself from nodeGraph
- - Connection.validPath() -> Determines if any point along the connection collides with a mine.
+ - Connection.validPath() -> Determines if any point along the connection collides with a mine or outside of field boundaries.
  - Connection.mineCollision(self,mine) -> Determines if the connection collides with a specific mine.
 
 KEY FIELD ATTRIBUTES/METHODS:
  = Class Variable: nodeGraph -> a dictionary containing Connection objects
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
- - Field.plotField(labeled:bool) -> Using matplotlib, plots the field. If labeled=True, labels the nodes.
-                                    plot key: NID = Node ID; MID = Mine ID ; CID = [Parent Mine ID].[Node ID]
+ - Field.plotField(labeled:bool,path:list["Node"],title:str,xlabel:str) -> Using matplotlib, plots the field.
+                                    plot key: 
+                                        NID = Node ID;
+                                        MID = Mine ID;
+                                        CID = [Parent Mine ID].[Node ID];
+                                        Black line = A* path
  - addFloatingNode(x,y): -> adds a node to the field that does not have a parent mine,
                             But does have a target mine.
  - placeStartNode(xVal,yVal) -> adds the starting Node(s). Must have at least one.
@@ -66,12 +70,15 @@ KEY FIELD ATTRIBUTES/METHODS:
 Use the Field class to generate mines and their nodes.
 Unless you are optimizing or working on this program/code/algorithm, 
 I suggest you create mines and nodes via the Field class.
-    Field(xMin,xMax,yMin,yMax)
+    Field(simFieldSize,fieldCorners)
     Field Setup:
-     - xMin,xMax : The fields x axis range
-     - yMin, yMax : The fields y axis range
-Ex: A basic setup of 3 Mines with start and end nodes.
-    field = Field(-100,150,-100,150)
+     - simFieldSize = simulated size of field, a rectangle.
+     - fieldCorners = arbitrary corners that might not form a rectangle.
+
+Ex: A basic setup of 3 Mines with start and end nodes. 
+Coordinates are example only, may not actually display accurately.
+
+    field = Field(simFieldSize, fieldCorners)
     field.addMine(0,0,20)
     field.addMine(-30,0,20)
     field.addMine(30,25,20)
@@ -181,6 +188,8 @@ class Connection:
         y1 = float(self.node1.y)
         x2 = float(self.node2.x)
         y2 = float(self.node2.y)
+        field = self.field
+        # Connection intersecting mine test
         if self.connectionType == seg.LINE:
             for mine in Connection.field.mines:
                 x3 = mine.x
@@ -231,6 +240,7 @@ class Connection:
                     print("Something went really wrong with midpoint & intersectionpoints")
             return validEdge
         
+       
         return True
 
     #checks if a path collides with a specific mine
@@ -308,11 +318,6 @@ class Connection:
         if(intersectionPointAngle2<0):
             intersectionPointAngle2+=np.pi*2
 
-        # print(f"interscetion angle {intersectionAngle}")
-        # print(f"offset angle {offsetAngle}")
-        # print(f"firstNode ANgle {firstNodeAngle}")
-        # print(f"second node ANgle {secondNodeAngle}")
-
         #First if handles case where the hugging edge travels over angle=0.
         if(firstNodeAngle>secondNodeAngle):
             if(intersectionPointAngle1>firstNodeAngle and intersectionPointAngle1<secondNodeAngle+np.pi*2):
@@ -327,13 +332,67 @@ class Connection:
                 return False
         return True
     
+    def isInFieldBoundaries(self):
+        """
+        Check if the the current connection's nodes are within
+        field boundries.
+        """
+        #  Node landing outside of field boundaries
+        """
+                               p2
+                            `     `   n2
+                        `           `
+                   Up                  Ri                                       
+               `           n1            `
+           `                                `
+         p1                                   `
+            `                                  p4
+               `                             `
+                  `                        `
+                     Le                  Lo
+                        `              `
+                          `         `
+                             `   `   
+                               p3(Origin)
+        """
+        field = self.field
+        x1 = self.node1.x
+        y1 = self.node1.y
+        x2 = self.node2.x
+        y2 = self.node2.y
+        # Behold massive if statement
+        node1Valid = True
+        node2Valid = True
+        if (self.node1.type != "start" or self.node1.type !="end"):
+            print(f"Checking if {self.node1} is within boundaries")
+            if (not((field.isPointRightofLine(field.leftLine,field.leftSlope,(x1,y1))) and # Right Check (x1,y1)
+                (field.isPointLeftofLine(field.rightLine,field.rightSlope,(x1,y1))) and    # Left Check
+                (field.isPointBelowLine(field.upperLine,(x1,y1))) and                      # Lower Check
+                (field.isPointAboveLine(field.lowerLine,(x1,y1))))):                       # Upper Check
+                print(f"It is not within bounds at {(x1,y1)}")
+                node1Valid = False
+        if (self.node2.type != "start" or self.node2.type != "end"):
+            print(f"Checking if {self.node2} is within boundaries")
+            if not((field.isPointRightofLine(field.leftLine,field.leftSlope,(x2,y2))) and # Right Check (x2,y2)
+                (field.isPointLeftofLine(field.rightLine,field.rightSlope,(x2,y2))) and   # Left Check
+                (field.isPointBelowLine(field.upperLine,(x2,y2))) and                     # Lower Check
+                (field.isPointAboveLine(field.lowerLine,(x2,y2)))):                       # Upper Check
+                print(f"It is not within bounds at {(x2,y2)}")
+                node2Valid = False
+        
+        if not(node1Valid and node2Valid):
+            return False
+        return True
+            
     """Generating the points where mines intersect"""
     @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
     def generateIntersectionPoints(mine1:"Mine",mine2:"Mine") -> list[float]:
         distance : float = np.sqrt((mine1.x-mine2.x)**2 + (mine1.y-mine2.y)**2)
         # Fraction of the area of each mine that is not overlapping
-        radicalLineDistance: float = ((mine1.radius**2 - mine2.radius**2 + distance**2))/(2*distance)
-        
+        if (distance != 0):
+            radicalLineDistance: float = ((mine1.radius**2 - mine2.radius**2 + distance**2))/(2*distance)
+        else:
+            radicalLineDistance: float = 0
        
         # Plus and minus this angle to get the angle at which the circles overlap
         offsetAngle = np.arccos(radicalLineDistance/mine1.radius)
@@ -354,18 +413,53 @@ class Connection:
 class Field:
     mines = []
     debugPoints = [] # purely for debuging and testing, field will plot these points
-    def __init__(self,xMin,xMax,yMin,yMax):
+
+    # simFieldSize = simulated size of field, a rectangle.
+    # fieldCorners = arbitrary corners that might not form a rectangle
+    def __init__(self,simFieldSize:list,fieldCorners:list):
+        """
+        simFieldSize = simulated size of field, a rectangle.
+        \nfieldCorners = arbitrary corners of field, a quadrilateral
+        """
         self.nodeGraph={}
-        self.xMin = xMin
-        self.yMin = yMin
-        self.xMax = xMax
-        self.yMax = yMax
+        
+        simCorners = [(0,simFieldSize[1]),
+              (simFieldSize[0],simFieldSize[1]),
+              (0,0),
+              (simFieldSize[0],0)]
+        self.rawCorners = fieldCorners
+
+        # For simulation bounded view
+        self.simVertPairLeft = [simCorners[0],simCorners[2]]
+        self.simVertPairRight = [simCorners[1],simCorners[3]]
+        self.simHorzPairUpper = [simCorners[2],simCorners[3]]
+        self.simHorzPairLower = [simCorners[0],simCorners[1]]
+        # For field bounds
+        self.fieldVertPairLeft = [self.rawCorners[0],self.rawCorners[2]]
+        self.fieldVertPairRight = [self.rawCorners[1],self.rawCorners[3]]
+        self.fieldHorzPairUpper = [self.rawCorners[0],self.rawCorners[1]]
+        self.fieldHorzPairLower = [self.rawCorners[2],self.rawCorners[3]]
+        
+        self.xMin = min(simCorners[0][0],simCorners[2][0])
+        self.xMax = max(simCorners[1][0],simCorners[3][0])
+        self.yMin = min(simCorners[2][1],simCorners[3][1])
+        self.yMax = min(simCorners[0][1],simCorners[1][1])
+
+        # To be used for comparing if nodes are within the valid field
+        self.leftLine, self.leftSlope = Field.getLine(self.fieldVertPairLeft[0],self.fieldVertPairLeft[1])
+        self.rightLine, self.rightSlope = Field.getLine(self.fieldVertPairRight[0],self.fieldVertPairRight[1])
+        self.upperLine, self.upperSlope = Field.getLine(self.fieldHorzPairUpper[0],self.fieldHorzPairUpper[1])
+        self.lowerLine, self.lowerSlope = Field.getLine(self.fieldHorzPairLower[0],self.fieldHorzPairLower[1])
+        
         self.mines = []
         Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
-    def addFloatingNode(self,x:int,y:int) ->'Node':
-        fNode = Node(x,y,True) # Floating Node
+    def addFloatingNode(self,x:float,y:float,ndType:str=None) ->'Node':
+        """
+        Given a coordinate position, place a floating node onto the field
+        """
+        fNode = Node(x,y,True,nType=ndType) # Floating Node
         
         for mine in Connection.field.mines:
             mineNodePrimary = MineNode(parentMine=mine,floatingNode=fNode,primary=True,connectedToFloating=True)
@@ -381,21 +475,31 @@ class Field:
         return fNode
     
     #Due to the current node stucture, right now this only modifies the nodeGraph
-    def placeStartNode(self,xVal:int ,yVal:int ) -> 'Node':
-        start = self.addFloatingNode(xVal,yVal)
+    def placeStartNode(self,xVal:float ,yVal:float ) -> 'Node':
+        """
+        Given a coordinate, place a start node onto the field
+        """
+        start = self.addFloatingNode(xVal,yVal,"start")
         return start    
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
-    def placeEndNodes(self, yVal: int, density: int):
+    def placeEndNodes(self, yVal: float, density: int):
+        """
+        Given a y-value and density amount of nodes, places the end Nodes onto the field
+        """
         returnList=[]
         if density > 1:
             xVals = [self.xMin + (i * ((self.xMax-self.xMin)/density-1)) for i in range(density)]
             for x in xVals:
-                returnList.append(self.addFloatingNode(x,yVal))
+                returnList.append(self.addFloatingNode(x,yVal,"end"))
         else:
-            returnList.append(self.addFloatingNode(0,yVal))
+            returnList.append(self.addFloatingNode((self.xMin+self.xMax)/2,yVal,"end"))
         return returnList
 
-    def addMine(self,centerX,centerY,radius,color:str=''):
+    def addMine(self,centerX:float,centerY:float,radius:int,color:str=''):
+        """
+        Given the simulated local coordinates, radius, and optional color;
+        add a new Mine object centered at the coordinates to the field and generate/regenerate nodes and connections
+        """
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
@@ -450,15 +554,139 @@ class Field:
                 connection=Connection(node1,node2)
                 if(connection.mineCollision(newMine)):
                     connection.deleteConnection()
+         
+    @staticmethod #Given two points, get the line equation and slope (to determine negative or positive slope)
+    def getLine(point1: tuple, point2: tuple) -> tuple:
+        """
+        Given two points as a tuple of floats each, get a line function and its slope
+        """
+        x1 = point1[0]
+        y1 = point1[1]
+        x2 = point2[0]
+        y2 = point2[1]
+        try:
+            slope = (y2-y1)/(x2-x1)
+        except ZeroDivisionError: # Infinite/Vertical slope
+            # x means nothing in this case, for all values of Y, its x is x1 and x2
+            return (lambda x: x1 + 0*x, "undef") 
 
+        offset = y2-slope*x2
+
+        f = lambda x: (slope*x)+offset
+        return (f,slope)
     
-    # Purely for debugging  
-    def plotField(self,labeled:bool=False,path=[],title:str="Mines and Potential Paths",xlabel:str="") -> None:
+    # Given a line function and a point, detect if the point   
+    @staticmethod # lies to the left of the line
+    def isPointLeftofLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], slope:float, point: tuple[float,float]) -> bool:
+        """
+        Given a line function, point, and slope;
+        Check if the point lies to the left of the line
+        """
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be 
+        below the line for it to be to the left of line
+        p1
+         `
+          `
+           `
+            `
+          p3 `
+              `
+              p2
+        The logic will be adjusted for positive and undefined(vertical line) slope.
+        
+        """
+        x = point[0]
+        y = point[1]
+
+        if slope < 0: # Negative slope
+            if (y < line(x)):
+                return True
+        elif slope > 0: # Positive slope
+            if (y > line(x)):
+                return True
+        elif slope == "undef": # Verticle line
+            if (x < line(x)):
+                return True
+        else:
+        # If the points are horizontal, and since this is checking a *line*
+        # A point will always be within the line <-----*--->
+        # So technically cant be left of the line
+            return False
+        return False
+    # Given a line function and a point, detects if the point
+    @staticmethod # lies to the right of the line
+    def isPointRightofLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], slope:float, point: tuple[float,float]) -> bool:
+        """
+        Given a line function, point, and slope;
+        Check if the point lies to the right of the line
+        """
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be 
+        above the line for it to be to the right of line
+        p1
+         `
+          ` p3
+           ` 
+            `
+             `
+              `
+              p2
+        The logic will be adjusted for positive and undefined(vertical line) slope
+        """
+        # point[0],point[1] = x,y
+        x = point[0]
+        y = point[1]
+
+        if slope < 0: # Negative Slope
+            if (y > line(x)):
+                return True
+        elif slope > 0: # Positive Slope
+            if (y < line(x)):
+                return True
+        elif slope == "undef": # Verticle line
+            if (x > line(x)):
+                return True
+        else: # Horizontal
+            return False
+        return False
+    
+    # Given a line function and a point, detects if the point
+    @staticmethod # lies above the line
+    def isPointAboveLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], point:tuple[float,float]):
+        """
+        Given a line function, point, and slope;
+        Check if the point lies above the line
+        """
+        x = point[0]
+        y = point[1]
+        if (y > line(x)):
+            return True
+        return False
+    # Given a line function and a point, detects if the point
+    @staticmethod # lies below the line
+    def isPointBelowLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], point:tuple[float,float]):
+        """
+        Given a line function, point, and slope;
+        Check if the point lies below the line
+        """
+        x = point[0]
+        y = point[1]
+        if (y < line(x)):
+            return True
+        return False
+    
+    # Purely for debugging
+    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="Mines and Potential Paths",xlabel:str="") -> None:
+        """
+        Using the matplotlib library and various optional labelling, plots the current iteration of the field
+        """
         plt = pyplot
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
-        plt.xlim(self.xMin,self.xMax)
-        plt.ylim(self.yMin,self.yMax)
+        padding = 10
+        plt.xlim(self.xMin-padding,self.xMax+padding)
+        plt.ylim(self.yMin-padding,self.yMax+padding)
         
         # Create a list of circles representing mines, centered to their correlated mine's center
 
@@ -494,11 +722,15 @@ class Field:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
-        
+        xlabel += "KEY:\n"
+        xlabel += "Colors = Potential Paths"
+        xlabel += "\nLight Gray = Simulated Boundary"
+        xlabel += "\nDark Gray = Field Boundary"
+        xlabel += "\nX = Mines' centers"
         # If a path is passed in, display the path as a black line
         if len(path) > 0:
             if len(xlabel) <= 0:
-                xlabel += "Black = A* path"
+                xlabel += "\nBlack = A* path"
             for i, node in enumerate(path):
                 if (i < len(path)-1):
                     nextNode = path[i+1]
@@ -508,16 +740,28 @@ class Field:
             print("Plotting debug points")
             for point in Field.debugPoints:
                 plt.plot(point[0],point[1],"o",color=(0,0,0))
-        
+
+        # Plot simulation boundaries
+        for pair in [self.simHorzPairUpper,self.simHorzPairLower,self.simVertPairLeft,self.simVertPairRight]:
+            plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.5,0.5,0.5))
+        # Plot field boundaries
+        for pair in [self.fieldVertPairLeft,self.fieldVertPairRight,self.fieldHorzPairUpper,self.fieldHorzPairLower]:
+            plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.3,0.3,0.3))
         print("Done plotting")
         print("Displaying field...")
         
         plt.title(title)
         plt.xlabel(xlabel)
         plt.show()
+        print("Done displaying field.")
 
     # Run this to remove nodes that have no associated connection, ie, {node: None}
     def cleanNodeGraph(self):
+        """
+        Removes nodes that have no associated connection from the node graph
+        \nSuch as:
+        \n{node: None}
+        """
         if self.nodeGraph != None:
             for node in self.nodeGraph.copy():
                 if self.nodeGraph[node] == None:
@@ -526,7 +770,11 @@ class Field:
         else:
             print("Node graph is empty")
 
-    def increaseRadius(self,step): 
+    def increaseRadius(self,step:int):
+        """
+        Manually increases radius of all mines by a step 
+        and recalculates connections accordingly 
+        """
         shallowCopy=self.nodeGraph.copy()
         #Delete all arc connections
         for node1 in shallowCopy.keys():
@@ -623,11 +871,7 @@ class Mine:
         arcConnection = Connection(sortedNodes[len(sortedNodes)-1],sortedNodes[0])
         if(arcConnection.validPath()):
             arcConnection.addGraph()
-       
-        #TODO: validate that path doesn't run through another mine. Validation isn't setup yet
-        
-        return getrefcount(self)
-
+            
     #Checks if target and self overlap. If they do update both's overlappingMines list.
     def updateOverlap(self,target : 'Mine'):
         # Add to each mines' overlapping mines list if they do overlap
@@ -647,7 +891,13 @@ class Node:
     nodeNum = 0
     connectionList = []
     
-    def __init__(self, xPosition: float, yPosition:float,floating:bool,angle:float=0,name:str="",labeled:bool=False):
+    def __init__(self, xPosition: float, yPosition:float,floating:bool,angle:float=0,name:str="",labeled:bool=False, nType:str="default"):
+        """
+        Create node based off of (x,y) coordinate, whether or not it is floating,
+        its angle, optional name, whether or not it is named, labeled, 
+        and the kind of Node it is(for selective elimination purposes)
+        \nTypes(case sensitive): "default","start","end"
+        """
         Node.nodeNum += 1
         if len(name) < 1:
             self.name = "NID: "+str(Node.nodeNum)
@@ -663,6 +913,12 @@ class Node:
         self.floating=floating
         self.angle = angle # will stay 0 if node doesnt have an angle, AKA it is floating
 
+        # For selective elimination(dont want to delete end or start nodes)
+        # Types:
+        # - "default"
+        # - "start"
+        # - "end"
+        self.nType = nType
 
    
     # Establishes a connection between nodes
@@ -703,7 +959,7 @@ class Node:
     def __gt__(self, node1:'Node'):
         return self.y>node1.y
 
-
+# MineNode class, subclass of Node, keeps track of node and corresponding mines
 class MineNode(Node):
     
     def __init__(self,parentMine:"Mine"=None,targetMine:"Mine"=None,internal:bool=True,primary:bool=True,connectedToFloating:bool=False,floatingNode:"Node"=None,name:str=''):
@@ -865,13 +1121,14 @@ class MineNode(Node):
 TODO:
 X=Done
 - = Todo
- X Arc lengths
+------
  X Terminate nodes if the nodes themselves are created within another mine
  X Establish a list of paths between connected Nodes
  X Terminate internal bitangents unless external bitangents are intersecting
  X Combine all node lists into one
  X Generate Floating Nodes
  X Generate tangent mineNodes connecting to floating nodes
- -  Expanding mines
- X Hugging 
+ - Expanding mines
+ X Hugging Edges
+------
 """
