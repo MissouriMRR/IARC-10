@@ -4,6 +4,9 @@ and allows for the cancellation and starting of states based on message data.
 """
 
 # Outside Imports
+from interdrone_communication.network_config import NetworkConfig
+
+
 import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
@@ -18,6 +21,7 @@ from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
 from state_machine.mission_config import DroneInfo
+from state_machine.drone_state import DroneState
 from enum import Enum
 
 if TYPE_CHECKING:
@@ -58,9 +62,12 @@ class Interdrone:
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
             None
         )
-        self.flight_settings = flight_settings
-        self.drone = drone
-        self.network_config = NetworkConfig(flight_settings=flight_settings)
+        self.flight_settings: FlightSettings = flight_settings
+        self.drone: Drone = drone
+        self.network_config: NetworkConfig = NetworkConfig(
+            flight_settings=flight_settings
+        )
+        self.droneState: DroneState = DroneState(flight_settings=flight_settings)
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
 
         # Create interdrone resources
@@ -134,6 +141,8 @@ class Interdrone:
         drone_response: dict[int, bool] = {drone["id"]: False for drone in drone_list}
 
         # TODO NEXT STEP: SCAFFOLD ALL MESSAGES AND THEN BEGIN IMPLEMENTING.
+        # TODO MAY NEED FANCY NETWORKING STUFF HERE IF MESSAGE TIME OUTS
+        # Idea, since no more clientOut, have client send it's own server a failure message :)
 
         # TODO: Ping all drones
         for drone in drone_list:
@@ -329,7 +338,11 @@ class Interdrone:
         self.networking.queue_client_message(message)
 
     def get_cmd_msg(self) -> CMD_MSG:
+        # NOTE May want to set to None after returning it
         return self.cmd_msg
+
+    def set_cmd_msg(self, cmd_msg: CMD_MSG) -> None:
+        self.cmd_msg = cmd_msg
 
     # Start client code and call the client_loop()
     async def start_interdrone(self):

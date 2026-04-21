@@ -1,17 +1,6 @@
-import asyncio
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
 
-
-@dataclass
-class PersistentConnection:
-    """
-    Wraps an asyncio network connection containing a timestap in order to track the usage
-    """
-
-    reader: asyncio.StreamReader
-    writer: asyncio.StreamWriter
-    lastUsed: float  # timestamp of the last communication
+from state_machine.flight_settings import FlightSettings
 
 
 @dataclass
@@ -21,33 +10,38 @@ class DroneState:
     Tracks hardware, network address, and specific flags.
     """
 
-    def __init__(self, drone_id=None, drone_ip=None):
+    def __init__(self, flight_settings: FlightSettings):
+        # --- Flight Settings Values
+        self.flight_settings: FlightSettings = flight_settings
+
         # --- Physical Identity variables
-        self.drone_id = drone_id
-        self.drone_ip = drone_ip
+        self._drone_id: int = self.flight_settings.current_drone_ID
+        self._drone_ip: str = self.flight_settings.drone_info[self.drone_id - 1]["IP"]
 
         # --- Safety/Power flags
-        self.armed = False  # True if motors are on
-        self.takeoff = False  # True if drone is off the ground
+        self._armed: bool = False  # True if motors are on
+        self._takeoff: bool = False  # True if drone is off the ground
 
         # --- Connectivity Monitoring ---
-        self.ping_response = None  # Stores the latest latency
+        self._ping_response: dict[
+            int, bool
+        ] = {}  # Stores the latest ping response status
 
         # --- Mission Control Flags ---
-        self.demo_start = False  # Flag for pre-programmed demonstration mode
-        self.mission_start = False  # Flag for autonomous mission execution
-        self.list_of_waypoints = []  # Collection of GPS/coordinate targets
+        self._demo_start: bool = False  # Flag for pre-programmed demonstration mode
+        self._mission_start: bool = False  # Flag for autonomous mission execution
+        self._list_of_waypoints = []  # Collection of GPS/coordinate targets TODO GIVE ME A TYPE
 
     # --- Property Accessors ---
     # These provide a controlled interface for reading/writing internal attributes
 
     # Drone ID: Unique identifier for the drone
     @property
-    def drone_id(self):
+    def drone_id(self) -> int:
         return self._drone_id
 
     @drone_id.setter
-    def drone_id(self, value):
+    def drone_id(self, value) -> None:
         self._drone_id = value
 
     # Drone IP: The network address used for communication
