@@ -39,8 +39,11 @@ async def run(self: Start) -> State:
         logging.info("Start state running")
 
         await self.drone.connect_drone()
-        await self.drone.arm()
 
+        # Continue pinging drones until all are connected
+        while not await self.interdrone.ping_drones():
+            await asyncio.sleep(0.1)
+        await self.drone.arm()
         logging.info("Start state complete")
         return Takeoff(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
