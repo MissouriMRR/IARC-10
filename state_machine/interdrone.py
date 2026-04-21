@@ -19,11 +19,21 @@ from interdrone_communication.networking_thread import NetworkingThread
 from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
+from state_machine.mission_config import DroneInfo
+from enum import Enum
 
 if TYPE_CHECKING:
     # If this import is left outside of the TYPE_CHECKING check,
     # it causes a circular import.
     from state_machine.states.state import State
+
+
+class CMD_MSG(Enum):
+    NONE = 0
+    ARM = 1
+    TAKEOFF = 2
+    DEMO = 3
+    MISSION = 4
 
 
 class Interdrone:
@@ -47,6 +57,8 @@ class Interdrone:
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings = flight_settings
         self.drone = drone
+        self.network_config = NetworkConfig(flight_settings=flight_settings)
+        self.cmd_msg: CMD_MSG = CMD_MSG.NONE
 
         # Create interdrone resources
         # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
@@ -102,6 +114,8 @@ class Interdrone:
         self._current_state = state
 
     async def ping_drones(self) -> bool:
+        # NOTE TO MATT: YOU NEED TO FINISH IMPLEMENTING THIS
+
         """
         All drones run this function.
         Sets ping_response flag in droneState to false for all drones.
@@ -111,11 +125,10 @@ class Interdrone:
         If they are, return true, otherwise return false.
         """
         # TODO: Get all the drones
-        drone_list = []
+        drone_list: list[DroneInfo] = self.network_config.get_other_drones()
+        drone_response: dict[int, bool] = {drone["id"]: False for drone in drone_list}
 
-        # TODO: Set ping_response flag to False for all drones
-        for drone in drone_list:
-            pass
+        # TODO NEXT STEP: SCAFFOLD ALL MESSAGES AND THEN BEGIN IMPLEMENTING.
 
         # TODO: Ping all drones
         for drone in drone_list:
@@ -309,6 +322,9 @@ class Interdrone:
         # ADDS A NEW MESSAGE TO QUEUE
         raise NotImplementedError
 
+    def get_cmd_msg(self) -> CMD_MSG:
+        return self.cmd_msg
+
     # Start client code and call the client_loop()
     async def start_interdrone(self):
         await self.interdrone_loop()
@@ -330,7 +346,7 @@ class Interdrone:
         msgNum = 0  # Used for testing
         startTime = time.time()
         try:
-            while True:
+            while True:  # TODO COMMENT THIS STUFF OUT ONCE STATE MACHINE IS GOING
                 # Check for server messages
                 serverMsg = self.networking.try_get_server_message(timeout=0.02)
                 if serverMsg is not None:

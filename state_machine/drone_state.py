@@ -5,29 +5,43 @@ from typing import List, Optional
 
 @dataclass
 class PersistentConnection:
+    """
+    Wraps an asyncio network connection containing a timestap in order to track the usage
+    """
+
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
-    lastUsed: float
+    lastUsed: float  # timestamp of the last communication
 
 
 @dataclass
 class DroneState:
+    """
+    Represents the status and information about a specific drone.
+    Tracks hardware, network address, and specific flags.
+    """
 
     def __init__(self, drone_id=None, drone_ip=None):
-        # Member Variables / Flags
-
+        # --- Physical Identity variables
         self.drone_id = drone_id
         self.drone_ip = drone_ip
-        self.armed = False
-        self.ping_response = None
-        self.takeoff = False
-        self.demo_start = False
-        self.mission_start = False
-        self.list_of_waypoints = []
 
-    # --- Functions ---
+        # --- Safety/Power flags
+        self.armed = False  # True if motors are on
+        self.takeoff = False  # True if drone is off the ground
 
-    # --- Drone ID ---
+        # --- Connectivity Monitoring ---
+        self.ping_response = None  # Stores the latest latency
+
+        # --- Mission Control Flags ---
+        self.demo_start = False  # Flag for pre-programmed demonstration mode
+        self.mission_start = False  # Flag for autonomous mission execution
+        self.list_of_waypoints = []  # Collection of GPS/coordinate targets
+
+    # --- Property Accessors ---
+    # These provide a controlled interface for reading/writing internal attributes
+
+    # Drone ID: Unique identifier for the drone
     @property
     def drone_id(self):
         return self._drone_id
@@ -36,7 +50,7 @@ class DroneState:
     def drone_id(self, value):
         self._drone_id = value
 
-    # --- Drone IP ---
+    # Drone IP: The network address used for communication
     @property
     def drone_ip(self):
         return self._drone_ip
@@ -45,7 +59,7 @@ class DroneState:
     def drone_ip(self, value):
         self._drone_ip = value
 
-    # --- Armed ---
+    # Armed Status: Controls the drone motors to spend
     @property
     def armed(self):
         return self._armed
@@ -54,7 +68,7 @@ class DroneState:
     def armed(self, value):
         self._armed = value
 
-    # --- Ping Response ---
+    # Ping Response: Used to monitor link latency
     @property
     def ping_response(self):
         return self._ping_response
@@ -63,7 +77,7 @@ class DroneState:
     def ping_response(self, value):
         self._ping_response = value
 
-    # --- Takeoff ---
+    # Takeoff: Tracks if the drone has transitioned to flight
     @property
     def takeoff(self):
         return self._takeoff
@@ -72,7 +86,7 @@ class DroneState:
     def takeoff(self, value):
         self._takeoff = value
 
-    # --- Demo Start ---
+    # Demo Mode: Used for testing
     @property
     def demo_start(self):
         return self._demo_start
@@ -81,7 +95,7 @@ class DroneState:
     def demo_start(self, value):
         self._demo_start = value
 
-    # --- Mission Start ---
+    # Mission Status: Indicates if the drone is executing its primary objective
     @property
     def mission_start(self):
         return self._mission_start
@@ -90,7 +104,7 @@ class DroneState:
     def mission_start(self, value):
         self._mission_start = value
 
-    # --- Waypoints ---
+    # Waypoints: A list of coordinates the drone must visit
     @property
     def list_of_waypoints(self):
         return self._list_of_waypoints
@@ -99,9 +113,17 @@ class DroneState:
     def list_of_waypoints(self, value):
         self._list_of_waypoints = value
 
+    # --- Logic Methods ---
+
     def update_state(self):
+        """
+        Placeholder for logic that synchronizes local state
+        with incoming data from drone.
+        """
         pass
 
     def clear_waypoints(self):
-
+        """
+        Resets the mission path by emptying the waypoint list.
+        """
         self.list_of_waypoints = []
