@@ -1,13 +1,12 @@
 import sys, os
 sys.path.append(os.path.abspath(".."))
 
-from typing import Callable
+from typing import Callable # Type hinting a function (parameter(s)) -> return value(s)
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
 import time
 import gc
-from . import path_calculation
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from enum import Enum
 
@@ -97,7 +96,6 @@ class seg(Enum):
 class Connection:
     field:'Field'=None #must be initialized on startup
     def __init__(self,node1: 'Node',node2: 'Node'):
-        
         self.node1=node1
         self.node2=node2
         
@@ -117,8 +115,7 @@ class Connection:
         self.distance=self.updateDistance()
 
         #checking for a valid path and updating the graph must be done manually
-        
-        # DISTANCE
+    # DISTANCE
     def updateDistance(self):
         distance = 0.0
         
@@ -189,6 +186,79 @@ class Connection:
         x2 = float(self.node2.x)
         y2 = float(self.node2.y)
         field = self.field
+
+
+
+
+        """
+        Check if the the current connection's nodes are within
+        field boundries.
+        """
+        #  Node landing outside of field boundaries
+        """
+                               p2
+                            `     `   n2
+                        `           `
+                   Up                  Ri                                       
+               `           n1            `
+           `                                `
+         p1                                   `
+            `                                  p4
+               `                             `
+                  `                        `
+                     Le                  Lo
+                        `              `
+                          `         `
+                             `   `   
+                               p3(Origin)
+        """
+        # Node 1 boundary check
+        if (self.node1.nType == "default"):
+            # Left line check
+            if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x1,y1))):
+                print(x1,y1)
+                self.node1.labeled = True
+                return False
+            # Right line check
+            if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x1,y1))):
+                print(x1,y1)
+                # self.node1.labeled = True
+                return False
+            # Upper line check
+            if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x1,y1))):
+                print(x1,y1)
+                # self.node1.labeled = True
+                return False
+            # Lower line check
+            if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x1,y1))):
+                print(x1,y1)
+                # self.node1.labeled = True
+                return False
+        # Node 2 boundary check
+        if (self.node2.nType == "default"):
+            # Left line check
+            if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x2,y2))):
+                print(x2,y2)
+                self.node1.labeled = True
+                return False
+            # Right line check
+            if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x2,y2))):
+                print(x2,y2)
+                # self.node1.labeled = True
+                return False
+            # Upper line check
+            if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x2,y2))):
+                print(x2,y2)
+                # self.node1.labeled = True
+                return False
+            # Lower line check
+            if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x2,y2))):
+                print(x2,y2)
+                # self.node1.labeled = True
+                return False
+        
+
+        
         # Connection intersecting mine test
         if self.connectionType == seg.LINE:
             for mine in Connection.field.mines:
@@ -331,58 +401,6 @@ class Connection:
             if(firstNodeAngle<intersectionPointAngle2<secondNodeAngle):
                 return False
         return True
-    
-    def isInFieldBoundaries(self):
-        """
-        Check if the the current connection's nodes are within
-        field boundries.
-        """
-        #  Node landing outside of field boundaries
-        """
-                               p2
-                            `     `   n2
-                        `           `
-                   Up                  Ri                                       
-               `           n1            `
-           `                                `
-         p1                                   `
-            `                                  p4
-               `                             `
-                  `                        `
-                     Le                  Lo
-                        `              `
-                          `         `
-                             `   `   
-                               p3(Origin)
-        """
-        field = self.field
-        x1 = self.node1.x
-        y1 = self.node1.y
-        x2 = self.node2.x
-        y2 = self.node2.y
-        # Behold massive if statement
-        node1Valid = True
-        node2Valid = True
-        if (self.node1.type != "start" or self.node1.type !="end"):
-            print(f"Checking if {self.node1} is within boundaries")
-            if (not((field.isPointRightofLine(field.leftLine,field.leftSlope,(x1,y1))) and # Right Check (x1,y1)
-                (field.isPointLeftofLine(field.rightLine,field.rightSlope,(x1,y1))) and    # Left Check
-                (field.isPointBelowLine(field.upperLine,(x1,y1))) and                      # Lower Check
-                (field.isPointAboveLine(field.lowerLine,(x1,y1))))):                       # Upper Check
-                print(f"It is not within bounds at {(x1,y1)}")
-                node1Valid = False
-        if (self.node2.type != "start" or self.node2.type != "end"):
-            print(f"Checking if {self.node2} is within boundaries")
-            if not((field.isPointRightofLine(field.leftLine,field.leftSlope,(x2,y2))) and # Right Check (x2,y2)
-                (field.isPointLeftofLine(field.rightLine,field.rightSlope,(x2,y2))) and   # Left Check
-                (field.isPointBelowLine(field.upperLine,(x2,y2))) and                     # Lower Check
-                (field.isPointAboveLine(field.lowerLine,(x2,y2)))):                       # Upper Check
-                print(f"It is not within bounds at {(x2,y2)}")
-                node2Valid = False
-        
-        if not(node1Valid and node2Valid):
-            return False
-        return True
             
     """Generating the points where mines intersect"""
     @staticmethod # Used for logic elsewhere in this class, but does not need stuff from an instance
@@ -418,8 +436,8 @@ class Field:
     # fieldCorners = arbitrary corners that might not form a rectangle
     def __init__(self,simFieldSize:list,fieldCorners:list):
         """
-        simFieldSize = simulated size of field, a rectangle.
-        \nfieldCorners = arbitrary corners of field, a quadrilateral
+        simFieldSize = simulated size of field, a rectangle's [width,height].
+        \nfieldCorners = arbitrary corners of field, a quadrilateral of four corners
         """
         self.nodeGraph={}
         
@@ -482,7 +500,7 @@ class Field:
         start = self.addFloatingNode(xVal,yVal,"start")
         return start    
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
-    def placeEndNodes(self, yVal: float, density: int):
+    def placeEndNodesLine(self, yVal: float, density: int):
         """
         Given a y-value and density amount of nodes, places the end Nodes onto the field
         """
@@ -494,7 +512,16 @@ class Field:
         else:
             returnList.append(self.addFloatingNode((self.xMin+self.xMax)/2,yVal,"end"))
         return returnList
-
+    
+    def placeEndNodesPositions(self,position: list[tuple[float,float]]):
+        """
+        Given a list positions [(x,y)..]
+        \nPlace end Nodes at those points
+        """
+        returnList = []
+        for pos in position:
+            returnList.append(self.addFloatingNode(pos[0],pos[1],"end"))
+        return returnList
     def addMine(self,centerX:float,centerY:float,radius:int,color:str=''):
         """
         Given the simulated local coordinates, radius, and optional color;
@@ -653,31 +680,35 @@ class Field:
     
     # Given a line function and a point, detects if the point
     @staticmethod # lies above the line
-    def isPointAboveLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], point:tuple[float,float]):
+    def isPointAboveLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]],slope:float, point:tuple[float,float]):
         """
         Given a line function, point, and slope;
         Check if the point lies above the line
         """
         x = point[0]
         y = point[1]
+        if slope == "undef": # Vertical line
+            return True
         if (y > line(x)):
             return True
         return False
     # Given a line function and a point, detects if the point
     @staticmethod # lies below the line
-    def isPointBelowLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], point:tuple[float,float]):
+    def isPointBelowLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]],slope:float, point:tuple[float,float]):
         """
         Given a line function, point, and slope;
         Check if the point lies below the line
         """
         x = point[0]
         y = point[1]
+        if slope == "undef": # Vertical line
+            return None
         if (y < line(x)):
             return True
         return False
     
     # Purely for debugging
-    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="Mines and Potential Paths",xlabel:str="") -> None:
+    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="") -> None:
         """
         Using the matplotlib library and various optional labelling, plots the current iteration of the field
         """
@@ -687,7 +718,9 @@ class Field:
         padding = 10
         plt.xlim(self.xMin-padding,self.xMax+padding)
         plt.ylim(self.yMin-padding,self.yMax+padding)
-        
+
+        if len(title) <= 0:
+            title = f"Mines({len(self.mines)}) and Potential Paths"
         # Create a list of circles representing mines, centered to their correlated mine's center
 
         circles = [plt.Circle(Mine.mines[i].getPos(),Mine.mines[i].getRadius(),color=Mine.mines[i].color) for i in range(len(Mine.mines))]
@@ -729,8 +762,7 @@ class Field:
         xlabel += "\nX = Mines' centers"
         # If a path is passed in, display the path as a black line
         if len(path) > 0:
-            if len(xlabel) <= 0:
-                xlabel += "\nBlack = A* path"
+            xlabel += "\nBlack = A* path"
             for i, node in enumerate(path):
                 if (i < len(path)-1):
                     nextNode = path[i+1]
