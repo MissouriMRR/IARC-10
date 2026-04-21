@@ -44,16 +44,15 @@ def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z d
         [0, cos(roll), -sin(roll)],
         [0, sin(roll),  cos(roll)]
     ])
-
-    return Rz @ Ry @ Rx
+    return Rx @ Ry @ Rz
 
 
 # Geometrics
 
 def meters_to_latlon(deltax, deltay, lat):  #coverts meters into latitude and longitude coordinates
     earth_radius = 6378137.0
-    dlat = deltay / earth_radius    #dlat and dlong are measured in radians; this is the arc length formula s=rtheta
-    dlon = deltax / (earth_radius * cos(radians(lat)))
+    dlat = deltax / earth_radius    #dlat and dlong are measured in radians; this is the arc length formula s=rtheta
+    dlon = deltay / (earth_radius * cos(radians(lat)))
     return degrees(dlat), degrees(dlon)
 
 def compute_offset_from_target(lat, lon, target: TargetCoordinates):
@@ -65,6 +64,7 @@ def compute_offset_from_target(lat, lon, target: TargetCoordinates):
         dy: meters north (+) / south (-)
     """
     dx, dy = latlon_to_meters(lat, lon, target.lat, target.lon)
+
     return dx, dy
 def latlon_to_meters(lat1, lon1, lat2, lon2):
     earth_radius = 6378137.0
@@ -74,8 +74,8 @@ def latlon_to_meters(lat1, lon1, lat2, lon2):
 
     avg_lat = radians((lat1 + lat2) / 2)
 
-    mx = dlon * earth_radius * cos(avg_lat)
-    my = dlat * earth_radius
+    mx = dlat * earth_radius
+    my = dlon * earth_radius * cos(avg_lat)
 
     return mx, my
 
@@ -108,14 +108,12 @@ def pixel_to_geocoord_gimbal(
     x = (px - image_width / 2) / (image_width / 2)
     y = -(py - image_height / 2) / (image_height / 2)
 
-    #h_fov = radians(h_fov)
-    #v_fov = radians(v_fov)
-
     ray_camera = np.array([
         x * tan(h_fov / 2),
         y * tan(v_fov / 2),
         -1
     ])
+
     ray_camera /= np.linalg.norm(ray_camera)
 
     # ---- Rotations ----
@@ -160,9 +158,10 @@ if __name__ == "__main__":
         lon=91
     )
 
+    # Gimbal stabilizes roll & pitch, points slightly forward
     gimbal_pose = GimbalPose(
-        yaw=0,
-        pitch=0,
+        yaw=0,       # locked forward--- (0,0,0) is camera pointing directly downwards
+        pitch=-90,   # nadir view
         roll=0
     )
 
