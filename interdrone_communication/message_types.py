@@ -8,7 +8,6 @@ import warnings
 from typing import cast, get_args, get_origin
 import types
 
-
 class MessageType(Enum):
     UNKNOWN = 0
     # App
@@ -28,6 +27,17 @@ class MessageType(Enum):
     SERVER_DEFAULT_RESPONSE = 505
     SPEED_TEST_REQUEST = 513
     SPEED_TEST_RESPONSE = 514
+    ARM = 520
+    ARM_ACK = 521
+    ARM_NACK = 522
+    PING = 534
+    PING_ACK = 535
+    START_TAKEOFF = 542
+    START_TAKEOFF_ACK = 543
+    START_DEMO = 552
+    START_DEMO_ACK = 553
+    START_MISSION = 562
+    START_MISSION_ACK = 563
 
 
 SchemaFieldType: TypeAlias = (
@@ -130,8 +140,62 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "downloadRttMs": float,
         "downloadThroughputKbps": float,
     },
+    MessageType.ARM: {
+        "id": MessageType.ARM,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.ARM_ACK: {
+        "id": MessageType.ARM_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.ARM_NACK: {
+        "id": MessageType.ARM_NACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.PING: {
+        "id": MessageType.PING,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.PING_ACK: {
+        "id": MessageType.PING_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_TAKEOFF: {
+        "id": MessageType.START_TAKEOFF,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_TAKEOFF_ACK: {
+        "id": MessageType.START_TAKEOFF_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_DEMO: {
+        "id": MessageType.START_DEMO,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_DEMO_ACK: {
+        "id": MessageType.START_DEMO_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_MISSION: {
+        "id": MessageType.START_MISSION,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
+    MessageType.START_MISSION_ACK: {
+        "id": MessageType.START_MISSION_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "droneSenderID": int,
+    },
 }
-
 
 def _matches_type(value: object, expected_type: object) -> bool:
     # Treat Any as a wildcard
