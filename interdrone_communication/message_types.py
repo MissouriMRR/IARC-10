@@ -38,8 +38,15 @@ class MessageType(Enum):
     START_TAKEOFF_ACK = 531
     START_DEMO = 535
     START_DEMO_ACK = 536
+    DEMO_DONE = 537
     START_MISSION = 540
     START_MISSION_ACK = 541
+    NEW_WAYPOINTS = 545
+    NEW_WAYPOINTS_ACK = 546
+    REACHED_WAYPOINTS = 550
+    EMERGENCY_LAND = 555
+    LAND = 556
+    RECONFIRM_WAYPOINTS = 560
 
 
 SchemaFieldType: TypeAlias = (
@@ -205,6 +212,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },
+    MessageType.DEMO_DONE: {
+        "id": MessageType.DEMO_DONE,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
     MessageType.START_MISSION: {
         "id": MessageType.START_MISSION,
         "dronesToSendData": tuple[int, ...],
@@ -215,6 +227,41 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },
+    MessageType.NEW_WAYPOINTS: {
+        "id": MessageType.NEW_WAYPOINTS,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+        "newWaypoints": Any, # TODO give it a type
+    },
+    MessageType.NEW_WAYPOINTS_ACK: {
+        "id": MessageType.NEW_WAYPOINTS_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
+    MessageType.REACHED_WAYPOINTS: {
+        "id": MessageType.REACHED_WAYPOINTS,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+        "reachedWaypointIds": tuple[int, ...],
+    },
+    MessageType.EMERGENCY_LAND: {
+        "id": MessageType.EMERGENCY_LAND,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
+    MessageType.LAND: {
+        "id": MessageType.LAND,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
+    MessageType.RECONFIRM_WAYPOINTS: {
+        "id": MessageType.RECONFIRM_WAYPOINTS,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+        "allWaypoints": tuple[Any], # TODO #metoo
+        "response": bool,
+    },
+
 }
 
 
