@@ -59,7 +59,9 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         self.drone_states: list[DroneState] = drone_states
@@ -90,7 +92,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -133,11 +137,15 @@ class Interdrone:
         """
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
-        ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
+        ping_by_id: dict[int, bool | None] = {
+            state.drone_id: None for state in self.drone_states
+        }
 
         ping_message: Message = Message.create(
             id=MessageType.PING,
-            dronesToSendData=(),
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
@@ -149,7 +157,9 @@ class Interdrone:
             updated = False
 
             try:
-                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
+                ack: Message = self.interdrone_messages[
+                    MessageType.PING_ACK
+                ].get_nowait()
                 if ack.senderId in ping_by_id:
                     ping_by_id[ack.senderId] = True
                     updated = True
@@ -157,7 +167,9 @@ class Interdrone:
                 pass
 
             try:
-                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
+                nack: Message = self.interdrone_messages[
+                    MessageType.PING_NACK
+                ].get_nowait()
                 if nack.senderId in ping_by_id:
                     ping_by_id[nack.senderId] = False
                     updated = True
@@ -178,21 +190,50 @@ class Interdrone:
         print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
         return all_ack
 
-    async def send_ARM(self, drone_id: int) -> None:
+    async def send_ARM(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 520
-        Send an arm message to the drone id passed as a parameter.
+        Sends an arm message to all other drones in mission.
+        Only used by drone 1.
         """
-        # TODO: Send message ID 430 (arm drones) to drone_id
+        arm_message: Message = Message.create(
+            id=MessageType.ARM,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(arm_message)
 
         return
 
     async def send_arm_ack(self) -> None:
         """
-        Sends arm_ack message.
+        Sends arm_ack message to drone 1.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send arm_ack message
+        arm_ack_message: Message = Message.create(
+            id=MessageType.ARM_ACK,
+            dronesToSendData=(1,),  # Only need to send to drone 1
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+        self.send(arm_ack_message)
+
+        return
+
+    async def send_arm_nack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Sends arm_nack message to drone 1.
+        Not used by drone 1, only recieved.
+        """
+        arm_ack_message: Message = Message.create(
+            id=MessageType.ARM_NACK,
+            dronesToSendData=dronesToSendData,  # Only need to send to drone 1
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+        self.send(arm_ack_message)
 
         return
 
@@ -203,10 +244,11 @@ class Interdrone:
         Loop through all droneState objects to see if they are armed.
         Return true they are, false otherwise.
         """
-        # TODO: Check if all droneState objects are armed
-        armed = True  # actually check if they are
+        # Treat empty list as "not ready"
+        if not self.drone_states:
+            return False
 
-        return armed
+        return all(state.armed is True for state in self.drone_states)
 
     async def all_takeoff(self) -> bool:
         """
@@ -233,7 +275,7 @@ class Interdrone:
         Used by drone one
         Loop through all droneState objects to see if they have started demo
         """
-        # TODO: Check if all droneState objects have started demo
+        # TODO: Figure out where this is called
         started_demo = True  # actually check if they are
 
         return started_demo
@@ -343,7 +385,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -390,16 +434,66 @@ class Interdrone:
         try:
             while True:  # TODO COMMENT THIS STUFF OUT ONCE STATE MACHINE IS GOING
                 # Check for server messages
-                serverMsg = self.networking.try_get_server_message(timeout=0.02)
-                if serverMsg is not None:
+                message = self.networking.try_get_server_message(timeout=0.02)
+                if message is not None:
                     # Adds the new message to its respective message queue
-                    print(serverMsg)
-                    self.interdrone_messages.setdefault(serverMsg.id, queue.Queue()).put(serverMsg)
-                    match serverMsg.id:
+                    print(message)
+                    self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
+                        message
+                    )  # TODO GET RID OF THIS SOON
+                    match message.id:
+                        # NOTE could move this functionality to a receive function. That would be a cleanup item though
                         case MessageType.ARM:
-                            # Then update CMD_MSG here
-                            self.cmd_msg = CMD_MSG.ARM
+                            # Drone is able to arm if vehicle is armable and ping response to other drones is true
+                            if self.drone.vehicle.is_armable and all(
+                                state.ping_response is True
+                                for state in self.drone_states
+                            ):
+                                # if all(
+                                #     state.ping_response is True
+                                #     for state in self.drone_states
+                                # ): # Extra if used for local testing
+                                # Set cmd_msg to arm (signals to state machine to arm the drone)
+                                self.cmd_msg = CMD_MSG.ARM
+                                if self.flight_settings.current_drone_ID == 1:
+                                    # Drone 1 distributes message to other drones in the mission
+                                    await self.send_ARM(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                # Other drones send ACK
+                                else:
+                                    await self.send_arm_ack()
+                            # Send ARM_NACK if drone can't arm
+                            else:
+                                await self.send_arm_nack(
+                                    dronesToSendData=(message.senderId,)
+                                )
 
+                        case MessageType.ARM_ACK:
+                            # When drone 1 receives an ACK, set others drone arm state to true
+                            state = next(
+                                (
+                                    s
+                                    for s in self.drone_states
+                                    if s.drone_id == message.senderId
+                                ),
+                                None,
+                            )
+
+                            if state is not None:
+                                state.armed = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}. Something is ary!"
+                                )
+                        case MessageType.ARM_NACK:
+                            # Try and resend ARM to drone that sent NACK
+                            print(
+                                f"Drone {message.senderId} failed to arm. Resending message."
+                            )
+                            await self.send_ARM(dronesToSendData=(message.senderId,))
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")

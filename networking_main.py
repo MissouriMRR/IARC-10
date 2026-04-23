@@ -13,16 +13,20 @@ async def main():
     args = parser.parse_args()
 
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(
+        self_id=args.id
+    )
     # Create drone_state to access state of other drones in the test
-    drone_states: list[DroneState] = (
-        []
-    )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+    drone_states: list[
+        DroneState
+    ] = []  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
     for id in flight_settings.other_drones_in_mission:
         drone_states.append(
             DroneState(
                 drone_id=id,
-                drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+                drone_ip=next(
+                    d["IP"] for d in flight_settings.drone_info if d["id"] == id
+                ),
             )
         )
     interdrone: Interdrone = Interdrone(
@@ -39,6 +43,17 @@ async def main():
         else:
             print("Ping failed. Trying again")
         await asyncio.sleep(0.1)
+    # Try to arm once ping works
+    if flight_settings.current_drone_ID == 1:
+        print("trying to send arm")
+        await interdrone.send_ARM(
+            dronesToSendData=tuple(
+                interdrone.flight_settings.other_drones_in_mission,
+            )
+        )
+        while not interdrone.all_armed():
+            await asyncio.sleep(0.1)
+        print("All drones are armed!")
     try:
         # Keep the networking loop alive
         while True:
