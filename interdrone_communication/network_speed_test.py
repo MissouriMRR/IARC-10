@@ -156,7 +156,6 @@ def log_data(
                 float(r.data["downloadThroughputKbps"]) for r in speedResults
             ]
             downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
-            # TODO investigate issue with 250ms+ times in first couple sends
             for i in range(len(downloadRttMs)):
                 if downloadRttMs[i] > 1:
                     pass
