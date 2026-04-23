@@ -59,7 +59,9 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         self.drone_states: list[DroneState] = drone_states
@@ -90,7 +92,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -133,7 +137,9 @@ class Interdrone:
         """
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
-        ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
+        ping_by_id: dict[int, bool | None] = {
+            state.drone_id: None for state in self.drone_states
+        }
 
         ping_message: Message = Message.create(
             id=MessageType.PING,
@@ -151,7 +157,9 @@ class Interdrone:
             updated = False
 
             try:
-                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
+                ack: Message = self.interdrone_messages[
+                    MessageType.PING_ACK
+                ].get_nowait()
                 if ack.senderId in ping_by_id:
                     ping_by_id[ack.senderId] = True
                     updated = True
@@ -159,7 +167,9 @@ class Interdrone:
                 pass
 
             try:
-                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
+                nack: Message = self.interdrone_messages[
+                    MessageType.PING_NACK
+                ].get_nowait()
                 if nack.senderId in ping_by_id:
                     ping_by_id[nack.senderId] = False
                     updated = True
@@ -282,12 +292,18 @@ class Interdrone:
 
         return all(state.takeoff is True for state in self.drone_states)
 
-    async def send_start_demo(self, drone_id: int) -> None:
+    async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a start demo message to the drone id passed as a parameter
         """
-        # TODO: Send message id xxx (start demo) to drone_id
-        # TODO: actually make a message id for start demo
+        demo_message: Message = Message.create(
+            id=MessageType.START_DEMO,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(demo_message)
 
         return
 
@@ -296,7 +312,14 @@ class Interdrone:
         Sends demo_ack message.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send demo_ack message
+        demo_ack_message: Message = Message.create(
+            id=MessageType.START_DEMO_ACK,
+            dronesToSendData=(1,),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(demo_ack_message)
 
         return
 
@@ -310,12 +333,18 @@ class Interdrone:
 
         return all(state.demo_start is True for state in self.drone_states)
 
-    async def send_start_mission(self, drone_id: int) -> None:
+    async def send_start_mission(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a start mission message to the drone id passed as a parameter.
         """
-        # TODO: Send message id xxx (start mission) to drone_id
-        # TODO: actually make a message id for start mission
+        mission_message: Message = Message.create(
+            id=MessageType.START_MISSION,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_message)
 
         return
 
@@ -324,7 +353,14 @@ class Interdrone:
         Sends mission_ack message.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send mission_ack message
+        mission_ack_message: Message = Message.create(
+            id=MessageType.START_MISSION_ACK,
+            dronesToSendData=(1,),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_ack_message)
 
         return
 
@@ -388,7 +424,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -439,7 +477,8 @@ class Interdrone:
                             #     for state in self.drone_states
                             # ):
                             if all(
-                                state.ping_response is True for state in self.drone_states
+                                state.ping_response is True
+                                for state in self.drone_states
                             ):  # Extra if used for local testing
                                 # Set cmd_msg to arm (signals to state machine to arm the drone)
                                 self.cmd_msg = CMD_MSG.ARM
@@ -455,12 +494,18 @@ class Interdrone:
                                     await self.send_arm_ack()
                             # Send ARM_NACK if drone can't arm
                             else:
-                                await self.send_arm_nack(dronesToSendData=(message.senderId,))
+                                await self.send_arm_nack(
+                                    dronesToSendData=(message.senderId,)
+                                )
 
                         case MessageType.ARM_ACK:
                             # When drone 1 receives an ACK, set others drone arm state to true
                             state = next(
-                                (s for s in self.drone_states if s.drone_id == message.senderId),
+                                (
+                                    s
+                                    for s in self.drone_states
+                                    if s.drone_id == message.senderId
+                                ),
                                 None,
                             )
 
@@ -472,7 +517,9 @@ class Interdrone:
                                 )
                         case MessageType.ARM_NACK:
                             # Try and resend ARM to drone that sent NACK
-                            print(f"Drone {message.senderId} failed to arm. Resending message.")
+                            print(
+                                f"Drone {message.senderId} failed to arm. Resending message."
+                            )
                             await self.send_ARM(dronesToSendData=(message.senderId,))
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
@@ -491,12 +538,70 @@ class Interdrone:
                                     await self.send_takeoff_ack()
                         case MessageType.START_TAKEOFF_ACK:
                             state = next(
-                                (s for s in self.drone_states if s.drone_id == message.senderId),
+                                (
+                                    s
+                                    for s in self.drone_states
+                                    if s.drone_id == message.senderId
+                                ),
                                 None,
                             )
 
                             if state is not None:
                                 state.takeoff = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}! Something is ary!"
+                                )
+                        case MessageType.START_DEMO:
+                            if self.cmd_msg == CMD_MSG.ARM:
+                                self.cmd_msg = CMD_MSG.DEMO
+                                if self.flight_settings.current_drone_ID == 1:
+                                    await self.send_start_demo(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                else:
+                                    await self.send_demo_ack()
+                        case MessageType.START_DEMO_ACK:
+                            state = next(
+                                (
+                                    s
+                                    for s in self.drone_states
+                                    if s.drone_id == message.senderId
+                                ),
+                                None,
+                            )
+
+                            if state is not None:
+                                state.demo_start = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}! Something is ary!"
+                                )
+                        case MessageType.START_MISSION:
+                            if self.cmd_msg == CMD_MSG.ARM:
+                                self.cmd_msg = CMD_MSG.MISSION
+                                if self.flight_settings.current_drone_ID == 1:
+                                    await self.send_start_mission(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                else:
+                                    await self.send_mission_ack()
+                        case MessageType.START_MISSION_ACK:
+                            state = next(
+                                (
+                                    s
+                                    for s in self.drone_states
+                                    if s.drone_id == message.senderId
+                                ),
+                                None,
+                            )
+
+                            if state is not None:
+                                state.mission_start = True
                             else:
                                 print(
                                     f"No DroneState found for drone_id={message.senderId}! Something is ary!"
