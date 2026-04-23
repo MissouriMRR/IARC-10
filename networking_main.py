@@ -51,9 +51,19 @@ async def main():
                 interdrone.flight_settings.other_drones_in_mission,
             )
         )
-        while not interdrone.all_armed():
+        while not await interdrone.all_armed():
             await asyncio.sleep(0.1)
         print("All drones are armed!")
+
+        print("Trying to takeoff")
+        await interdrone.send_takeoff(
+            dronesToSendData=tuple(
+                interdrone.flight_settings.other_drones_in_mission,
+            )
+        )
+        while not await interdrone.all_takeoff():
+            await asyncio.sleep(0.1)
+        print("All drones have taken off!")
     try:
         # Keep the networking loop alive
         while True:
