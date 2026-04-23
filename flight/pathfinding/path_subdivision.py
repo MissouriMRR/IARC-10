@@ -41,7 +41,7 @@ class Path:
         
     #altitude in feet
     #returns distance covered by image in feet.
-    def ground_covered_image(altitude: float, fovDeg: float): 
+    def ground_covered_image(self, altitude: float, fovDeg: float): 
         fovRad = m.radians(fovDeg)
         return 2 * altitude * m.tan(fovRad/2)
         
@@ -53,8 +53,8 @@ class Path:
 
         # number of side by side waypoints
         x_temp = m.ceil((path_width-image_size*(horizontal_image_overlap+2*scan_edge_overlap))/(image_size*(1-horizontal_image_overlap)))
-        x = x_temp + (x_temp + 1) % 2 # Makes sure number of waypoints is on in order to have a waypoint on the path
-        step = (x*image_size*(1 - horizontal_image_overlap) + image_size*horizontal_image_overlap) * (1-vertical_image_overlap) # distance between goto points (FEET)
+        num_image = x_temp + (x_temp + 1) % 2 # Makes sure number of waypoints is on in order to have a waypoint on the path
+        step = image_size * (1-vertical_image_overlap) # distance between goto points (FEET)
         horizontal_separation = image_size - horizontal_image_overlap*image_size
         #finalGotoList = []
         #segmentedList = []
@@ -75,11 +75,15 @@ class Path:
                 for x, y in zip(x_vals, y_vals):
                     path_angle = m.atan2(n2.y - n1.y, n2.x - n1.x)
                     node_addition_angle = path_angle + m.pi/2
+                    print(path_angle)
+                    print(node_addition_angle)
+                    print((node_addition_angle-path_angle)/m.pi)
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
                     self.finalGotoList.append((float(x), float(y), path_angle))
                     self.segmentedList.append([(n1), (n2), isArc])
-                    for i in range(1, (x//2) + 1):
+                    
+                    for i in range(1, (num_image//2) + 1):
                         self.finalGotoList.append((float(x) + i*adjusted_vector[0], float(y) + i*direction_unit_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
                         self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*direction_unit_vector[1], path_angle))
@@ -122,7 +126,7 @@ class Path:
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
                     self.finalGotoList.append((float(x), float(y), path_angle))
                     self.segmentedList.append([(n1), (n2), isArc])
-                    for i in range(1, (x//2) + 1):
+                    for i in range(1, (num_image//2) + 1):
                         self.finalGotoList.append((float(x) + i*adjusted_vector[0], float(y) + i*direction_unit_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
                         self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*direction_unit_vector[1], path_angle))
@@ -145,7 +149,7 @@ class Path:
 #set up 
 if __name__ == "__main__":
         
-    field = Field(0, 200, 0, 200)
+    field = Field([200, 200], [[0, 200], [200, 200], [0, 0], [200, 0]])
 
     field.addMine(80, 30, 20) 
     field.addMine(70, 90, 20) 
@@ -192,7 +196,7 @@ if __name__ == "__main__":
 
     #Function Calls
     pathObj = Path()
-    finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 0.3, 64)  
+    finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 64, 10, 30)  
 
     pathWidth = Mine.getRadius(Mine)
     print("radius", pathWidth)
@@ -214,8 +218,10 @@ if __name__ == "__main__":
     #Display
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
+    plt.xlim(-10,210)
+    plt.ylim(-10,210)
 
-    plt.plot(goto_x, goto_y, marker='o', color='red', linestyle='-', markersize=4, label='Goto Points')
+    plt.plot(goto_x, goto_y, marker='*', color='red', linestyle='None', markersize=4, label='Goto Points')
 
     for node in nodeList:
         plt.plot(node.x, node.y, marker='o', color='blue', markersize= 4, label='Node')
