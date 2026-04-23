@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from state_machine.flight_settings import FlightSettings
-
 
 @dataclass
 class DroneState:
@@ -10,13 +8,11 @@ class DroneState:
     Tracks hardware, network address, and specific flags.
     """
 
-    def __init__(self, flight_settings: FlightSettings):
-        # --- Flight Settings Values
-        self.flight_settings: FlightSettings = flight_settings
+    def __init__(self, drone_id: int, drone_ip: str):
 
         # --- Physical Identity variables
-        self._drone_id: int = self.flight_settings.current_drone_ID
-        self._drone_ip: str = self.flight_settings.drone_info[self.drone_id - 1]["IP"]
+        self._drone_id: int = drone_id
+        self._drone_ip: str = drone_ip
 
         # --- Safety/Power flags
         self._armed: bool = False  # True if motors are on
@@ -24,7 +20,7 @@ class DroneState:
 
         # --- Connectivity Monitoring ---
         # Stores the latest ping response status. None = No response yet, False = PING_NACK, True = PING_ACK
-        self._ping_response: dict[int, bool | None] = {}
+        self._ping_response: bool = False
 
         # --- Mission Control Flags ---
         self._demo_start: bool = False  # Flag for pre-programmed demonstration mode
@@ -63,11 +59,11 @@ class DroneState:
 
     # Ping Response: Used to monitor link latency
     @property
-    def ping_response(self) -> dict[int, bool | None]:
+    def ping_response(self) -> bool:
         return self._ping_response
 
     @ping_response.setter
-    def ping_response(self, value: dict[int, bool | None]) -> None:
+    def ping_response(self, value: bool) -> None:
         self._ping_response = value
 
     # Takeoff: Tracks if the drone has transitioned to flight

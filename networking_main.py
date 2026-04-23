@@ -1,6 +1,7 @@
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
+from state_machine.drone_state import DroneState
 import asyncio
 import argparse
 
@@ -12,8 +13,25 @@ async def main():
     args = parser.parse_args()
 
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
-    interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(
+        self_id=args.id
+    )
+    # Create drone_state to access state of other drones in the test
+    drone_states: list[
+        DroneState
+    ] = []  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+    for id in flight_settings.other_drones_in_mission:
+        drone_states.append(
+            DroneState(
+                drone_id=id,
+                drone_ip=next(
+                    d["IP"] for d in flight_settings.drone_info if d["id"] == id
+                ),
+            )
+        )
+    interdrone: Interdrone = Interdrone(
+        flight_settings=flight_settings, drone=drone, drone_states=drone_states
+    )
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
     # Call ping here and get response
 

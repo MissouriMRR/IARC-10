@@ -20,7 +20,6 @@ from interdrone_communication.networking_interface import NetworkingInterface
 from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
-from state_machine.mission_config import DroneInfo
 from state_machine.drone_state import DroneState
 from enum import Enum
 
@@ -53,17 +52,26 @@ class Interdrone:
         The callback function to be called when the state machine needs to be restarted.
     """
 
-    def __init__(self, flight_settings: FlightSettings, drone: Drone):
+    def __init__(
+        self,
+        flight_settings: FlightSettings,
+        drone: Drone,
+        drone_states: list[DroneState],
+    ):
         from interdrone_communication.network_config import NetworkConfig
         from interdrone_communication.networking_thread import NetworkingThread
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
+            None
+        )
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
-        self.network_config: NetworkConfig = NetworkConfig(flight_settings=flight_settings)
-        self.droneState: DroneState = DroneState(flight_settings=flight_settings)
+        self.drone_states: list[DroneState] = drone_states
+        self.network_config: NetworkConfig = NetworkConfig(
+            flight_settings=flight_settings
+        )
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
 
         # Store messages that each function may need
@@ -91,7 +99,9 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
+    def register_state_machine(
+        self, callback: Callable[["State | None"], Awaitable[None]]
+    ) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -129,22 +139,15 @@ class Interdrone:
     async def ping_drones(self) -> bool:
         """
         All drones run this function.
-        Sets ping_response flag in droneState to None for all drones.
-        Loops through all drones and pings them.
-        Whenever we recieve a ping_ack we set the ping_response flag to true.
-        If we receive a ping_nack we set the flag to false (communication not available)
-        Wait x seconds and check if all of the ping_response flags are set.
-        If they are, return true, otherwise return false.
+        Sends PING and waits until every other drone has ACK/NACK.
+        Returns True only if all responded with ACK.
         """
-        # Get all other drones and set value of ping response to None
-        drone_list: list[DroneInfo] = (
-            self.network_config.get_other_drones()
-        )  # TODO UPDATE WITH WAY TO DO LESS THAN 3 OTHER DRONES
-        self.droneState.ping_response = {drone["id"]: None for drone in drone_list}
 
-        # Idea, since no more clientOut, have client send it's own server a failure message (ping nack) :) Could also just have it put in serverOut from client
+        # Track responses by drone id: None=not received yet, True=ACK, False=NACK
+        ping_by_id: dict[int, bool | None] = {
+            state.drone_id: None for state in self.drone_states
+        }
 
-        # Ping all drones
         ping_message: Message = Message.create(
             id=MessageType.PING,
             dronesToSendData=(),
@@ -153,26 +156,27 @@ class Interdrone:
         )
         self.send(ping_message)
 
-        print(
-            f"Pings have been sent. Current state of ping respone is {self.droneState.ping_response}"
-        )
-
-        # Wait until all drones have responded to ping (ACK or NACK)
-        while None in self.droneState.ping_response.values():
+        print(f"Pings have been sent. Current ping response state is {ping_by_id}")
+        # TODO may move this functionality down to the interdrone loop and just wait up here. TBD. Keep this ok solution for now
+        while None in ping_by_id.values():
             updated = False
 
             try:
-                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
-                if ack.senderId in self.droneState.ping_response:
-                    self.droneState.ping_response[ack.senderId] = True
+                ack: Message = self.interdrone_messages[
+                    MessageType.PING_ACK
+                ].get_nowait()
+                if ack.senderId in ping_by_id:
+                    ping_by_id[ack.senderId] = True
                     updated = True
             except queue.Empty:
                 pass
 
             try:
-                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
-                if nack.senderId in self.droneState.ping_response:
-                    self.droneState.ping_response[nack.senderId] = False
+                nack: Message = self.interdrone_messages[
+                    MessageType.PING_NACK
+                ].get_nowait()
+                if nack.senderId in ping_by_id:
+                    ping_by_id[nack.senderId] = False
                     updated = True
             except queue.Empty:
                 pass
@@ -180,17 +184,20 @@ class Interdrone:
             if not updated:
                 await asyncio.sleep(0.05)
 
-        # Check if all actually drones acknowledged ping
-        all_ack: bool = False not in self.droneState.ping_response.values()
+        # Copy results back into DroneState objects
+        for state in self.drone_states:
+            result = ping_by_id.get(state.drone_id)
+            if result is not None:
+                state.ping_response = result
 
-        print(
-            f"Return {all_ack} from ping_drones. \nPing status is : {self.droneState.ping_response}"
-        )
+        all_ack: bool = all(result is True for result in ping_by_id.values())
+
+        print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
         return all_ack
 
     async def send_ARM(self, drone_id: int) -> None:
         """
-        Message ID = 430
+        Message ID = 520
         Send an arm message to the drone id passed as a parameter.
         """
         # TODO: Send message ID 430 (arm drones) to drone_id
@@ -353,7 +360,9 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError("Cannot restart state machine without a registered callback")
+            raise RuntimeError(
+                "Cannot restart state machine without a registered callback"
+            )
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -404,7 +413,14 @@ class Interdrone:
                 if serverMsg is not None:
                     # Adds the new message to its respective message queue
                     print(serverMsg)
-                    self.interdrone_messages.setdefault(serverMsg.id, queue.Queue()).put(serverMsg)
+                    self.interdrone_messages.setdefault(
+                        serverMsg.id, queue.Queue()
+                    ).put(serverMsg)
+                    match serverMsg.id:
+                        case MessageType.ARM:
+                            # Then update CMD_MSG here
+                            self.cmd_msg = CMD_MSG.ARM
+
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")
