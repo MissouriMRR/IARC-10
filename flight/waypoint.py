@@ -1,8 +1,10 @@
 from typing import NamedTuple
 
+
 class WaypointGroups(NamedTuple):
     drone1_waypoints: tuple[Waypoint, Waypoint]
     drone2_waypoints: tuple[Waypoint, Waypoint]
+
 
 class Line:
     def __init__(self, start: Waypoint, end: Waypoint):
