@@ -59,9 +59,7 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
-            None
-        )
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         self.drone_states: list[DroneState] = drone_states
@@ -92,9 +90,7 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(
-        self, callback: Callable[["State | None"], Awaitable[None]]
-    ) -> None:
+    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -137,9 +133,7 @@ class Interdrone:
         """
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
-        ping_by_id: dict[int, bool | None] = {
-            state.drone_id: None for state in self.drone_states
-        }
+        ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
 
         ping_message: Message = Message.create(
             id=MessageType.PING,
@@ -155,9 +149,7 @@ class Interdrone:
             updated = False
 
             try:
-                ack: Message = self.interdrone_messages[
-                    MessageType.PING_ACK
-                ].get_nowait()
+                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
                 if ack.senderId in ping_by_id:
                     ping_by_id[ack.senderId] = True
                     updated = True
@@ -165,9 +157,7 @@ class Interdrone:
                 pass
 
             try:
-                nack: Message = self.interdrone_messages[
-                    MessageType.PING_NACK
-                ].get_nowait()
+                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
                 if nack.senderId in ping_by_id:
                     ping_by_id[nack.senderId] = False
                     updated = True
@@ -353,9 +343,7 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError(
-                "Cannot restart state machine without a registered callback"
-            )
+            raise RuntimeError("Cannot restart state machine without a registered callback")
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -406,9 +394,7 @@ class Interdrone:
                 if serverMsg is not None:
                     # Adds the new message to its respective message queue
                     print(serverMsg)
-                    self.interdrone_messages.setdefault(
-                        serverMsg.id, queue.Queue()
-                    ).put(serverMsg)
+                    self.interdrone_messages.setdefault(serverMsg.id, queue.Queue()).put(serverMsg)
                     match serverMsg.id:
                         case MessageType.ARM:
                             # Then update CMD_MSG here
