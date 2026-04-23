@@ -53,9 +53,7 @@ class Server:
                 except EOFError:
                     break
 
-                message: Message = JsonMessageUtilities.message_from_json(
-                    byteMessage.decode()
-                )
+                message: Message = JsonMessageUtilities.message_from_json(byteMessage.decode())
                 # If message was read in, begin processing
                 if not message:
                     continue
@@ -69,9 +67,7 @@ class Server:
                         self.flight_settings.app_IP = str(message.data["IP"])
                         self.flight_settings.app_port = int(message.data["Port"])
                     case MessageType.APP_DEBUG:
-                        writer.write(
-                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
-                        )
+                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
                         await writer.drain()
                     case MessageType.REQUEST_DRONE_LOCATIONS:
                         # Send back response message with two drones locations
@@ -103,9 +99,7 @@ class Server:
                             dronesToSendData=(message.senderId,),
                             senderId=self.flight_settings.current_drone_ID,
                             data={
-                                "initialUploadTime": message.data.get(
-                                    "initialUploadTime", 0.0
-                                ),
+                                "initialUploadTime": message.data.get("initialUploadTime", 0.0),
                                 "finalUploadTime": finalUploadTime,
                                 "initialDownloadTime": 0.0,
                                 "targetId": self.flight_settings.current_drone_ID,
@@ -116,9 +110,7 @@ class Server:
                                 "payload": message.data["payload"],
                             },
                         )  # From here update processing response and then go onto making sure responseMessage is sent to server
-                        responseMessage.data["initialDownloadTime"] = (
-                            time.perf_counter()
-                        )
+                        responseMessage.data["initialDownloadTime"] = time.perf_counter()
                         # Send response message to server
                     # Receive response data, calculate values, and return to serverOutData
                     case MessageType.SPEED_TEST_RESPONSE:
@@ -126,9 +118,7 @@ class Server:
                         receiveTime = time.perf_counter()
 
                         if "initialUploadTime" not in message.data:
-                            print(
-                                "SPEED_TEST_RESPONSE missing initialUploadTime, skipping"
-                            )
+                            print("SPEED_TEST_RESPONSE missing initialUploadTime, skipping")
                             continue
 
                         # Calculate Server Processing Time (Delta on Server Clock)
@@ -150,9 +140,7 @@ class Server:
                         downloadTime = estimatedOneWayTime
 
                         uploadSizeBytes = len(
-                            (
-                                JsonMessageUtilities.message_to_json(message=message)
-                            ).encode("utf-8")
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
                         )  # TODO change this actual uploaded message (difference is negligible)
                         uploadThroughputKbps = (
                             (uploadSizeBytes * 8 / 1000) / uploadTime
@@ -161,9 +149,7 @@ class Server:
                         )
 
                         downloadSizeBytes = len(
-                            (
-                                JsonMessageUtilities.message_to_json(message=message)
-                            ).encode("utf-8")
+                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
                         )
                         downloadThroughputKbps = (
                             (downloadSizeBytes * 8 / 1000) / downloadTime
@@ -172,13 +158,9 @@ class Server:
                         )
 
                         message.data["uploadRttMs"] = round(uploadTime * 1000, 2)
-                        message.data["uploadThroughputKbps"] = round(
-                            uploadThroughputKbps, 2
-                        )
+                        message.data["uploadThroughputKbps"] = round(uploadThroughputKbps, 2)
                         message.data["downloadRttMs"] = round(downloadTime * 1000, 2)
-                        message.data["downloadThroughputKbps"] = round(
-                            downloadThroughputKbps, 2
-                        )
+                        message.data["downloadThroughputKbps"] = round(downloadThroughputKbps, 2)
                         await self.serverOutData.put(item=message)
                     case MessageType.PING:
                         # Respond to ping with PING_ACK
