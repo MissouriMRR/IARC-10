@@ -4,9 +4,6 @@ and allows for the cancellation and starting of states based on message data.
 """
 
 # Outside Imports
-from interdrone_communication.network_config import NetworkConfig
-
-
 import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
@@ -58,7 +55,6 @@ class Interdrone:
         drone: Drone,
         drone_states: list[DroneState],
     ):
-        from interdrone_communication.network_config import NetworkConfig
         from interdrone_communication.networking_thread import NetworkingThread
 
         self._current_task: Task | None = None
@@ -69,9 +65,6 @@ class Interdrone:
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         self.drone_states: list[DroneState] = drone_states
-        self.network_config: NetworkConfig = NetworkConfig(
-            flight_settings=flight_settings
-        )
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
 
         # Store messages that each function may need
@@ -89,7 +82,7 @@ class Interdrone:
         # Start networking thread
         networkingThread = threading.Thread(
             target=networkingThreadClassInstance.run_networking_thread,
-            args=(resourcesReady, NetworkConfig(self.flight_settings)),
+            args=(resourcesReady, self.flight_settings),
             daemon=True,
         )
         networkingThread.start()
@@ -151,7 +144,7 @@ class Interdrone:
         ping_message: Message = Message.create(
             id=MessageType.PING,
             dronesToSendData=(),
-            senderId=self.network_config.get_self_id(),
+            senderId=self.flight_settings.current_drone_ID,
             data={},
         )
         self.send(ping_message)

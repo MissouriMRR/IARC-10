@@ -6,9 +6,9 @@ import time
 import asyncio
 
 # Interdrone Imports
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.message_types import Message, MessageType
 from interdrone_communication.json_message_utilities import JsonMessageUtilities
+from state_machine.flight_settings import FlightSettings
 
 
 # Used by connectionPool to store TCP connections to other servers.
@@ -24,14 +24,15 @@ class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        networkConfig: NetworkConfig,
+        flight_settings: FlightSettings,
         clientInData: Queue[Message],
+        range_test_toggle: bool = False,
     ):
-        self.networkConfig: NetworkConfig = networkConfig
+        self.flight_settings: FlightSettings = flight_settings
         self.clientInData: Queue[Message] = clientInData
 
         # Check for droneId from flag in main.py
-        self.droneId: int = networkConfig.get_self_id()
+        self.droneId: int = flight_settings.current_drone_ID
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -50,18 +51,14 @@ class Client:
 
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
-        # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
-        for i in range(1, self.networkConfig.get_number_of_drones() + 1):
-            # If drone is self (drone running this script) don't add them otherDrones list
-            if i != self.droneId:
-                # Add other drones IP and Ports to their respective lists
-                self.otherDronesIps.append(self.networkConfig.get_drone_ip(droneId=i))
-                self.otherDronesPorts.append(self.networkConfig.get_drone_port(droneId=i))
-                tempOtherDronesIds.append(i)
+        # Loop through other drones to get IPs, Ports, and IDs of drones to connect to
+        for drone in flight_settings.other_drone_info:
+            self.otherDronesIps.append(str(drone["IP"]))
+            self.otherDronesPorts.append(int(drone["port"]))
+            tempOtherDronesIds.append(drone["id"])
         # Update otherDronesIds tuple with tempOtherDronesIds values
         self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
-        # Get range test toggle variable
-        self.rangeTestEnabled: bool = self.networkConfig.get_range_test_toggle()
+        self.rangeTestEnabled: bool = range_test_toggle
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -137,8 +134,8 @@ class Client:
         if sendToApp:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.networkConfig.get_app_ip(),
-                    serverPort=self.networkConfig.get_app_port(),
+                    serverIP=self.flight_settings.app_IP,
+                    serverPort=self.flight_settings.app_port,
                     message=message,
                 )
             )
@@ -147,8 +144,8 @@ class Client:
         elif sendToSelf:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.networkConfig.get_drone_ip(self.droneId),
-                    serverPort=self.networkConfig.get_drone_port(self.droneId),
+                    serverIP=str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
+                    serverPort=int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
                     message=message,
                 )
             )
@@ -209,7 +206,7 @@ class Client:
 
             if self.rangeTestEnabled:
                 print(
-                    f"Timeout error sending data from drone #{self.networkConfig.get_self_id()} to #{serverPort - 5000}"
+                    f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{serverPort - 5000}"
                 )
 
         except Exception as e:

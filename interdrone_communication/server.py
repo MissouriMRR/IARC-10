@@ -5,32 +5,32 @@ from asyncio import StreamReader, StreamWriter
 import time
 
 # Interdrone Imports
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.json_message_utilities import JsonMessageUtilities
 from interdrone_communication.message_types import Message, MessageType
+from state_machine.flight_settings import FlightSettings
 
 
 class Server:
     # Server Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        networkConfig: NetworkConfig,
+        flight_settings: FlightSettings,
         serverOutData: Queue[Message],
         clientInData: Queue[Message],
     ):
-        self.networkConfig: NetworkConfig = networkConfig
+        self.flight_settings: FlightSettings = flight_settings
         self.serverOutData: Queue[Message] = serverOutData
         self.clientInData: Queue[Message] = clientInData
 
         # Check for droneId from flag in main.py
-        self.droneId: int = networkConfig.get_self_id()
+        self.droneId: int = flight_settings.current_drone_ID
 
     # Async server startup
     async def start_server_async(self):
         server = await asyncio.start_server(
             self.handle_client,
-            self.networkConfig.get_drone_ip(self.droneId),
-            self.networkConfig.get_drone_port(self.droneId),
+            str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
+            int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
         )
 
         try:
@@ -53,7 +53,9 @@ class Server:
                 except EOFError:
                     break
 
-                message: Message = JsonMessageUtilities.message_from_json(byteMessage.decode())
+                message: Message = JsonMessageUtilities.message_from_json(
+                    byteMessage.decode()
+                )
                 # If message was read in, begin processing
                 if not message:
                     continue
@@ -66,10 +68,12 @@ class Server:
                     case MessageType.APP_TEST:
                         await self.serverOutData.put(item=message)
                     case MessageType.APP_CONFIG:
-                        self.networkConfig.set_app_ip(newIP=str(message.data["IP"]))
-                        self.networkConfig.set_app_port(newPort=int(message.data["Port"]))
+                        self.flight_settings.app_IP = str(message.data["IP"])
+                        self.flight_settings.app_port = int(message.data["Port"])
                     case MessageType.APP_DEBUG:
-                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
+                        writer.write(
+                            (str(message.data["embeddedDebugMessage"]) + "\n").encode()
+                        )
                         await writer.drain()
                     case MessageType.REQUEST_DRONE_LOCATIONS:
                         # Send back response message with two drones locations
@@ -78,7 +82,7 @@ class Server:
                         responseMessage = Message.create(
                             id=MessageType.SEND_DRONE_LOCATIONS,
                             dronesToSendData=(message.senderId,),
-                            senderId=self.networkConfig.get_self_id(),
+                            senderId=self.flight_settings.current_drone_ID,
                             # TODO FIGURE OUT PATHFINDINGS COORD SYSTEM (please write docs)
                             data={
                                 "drone1Data": {
@@ -99,12 +103,14 @@ class Server:
                         responseMessage = Message.create(
                             id=MessageType.SPEED_TEST_RESPONSE,
                             dronesToSendData=(message.senderId,),
-                            senderId=self.networkConfig.get_self_id(),
+                            senderId=self.flight_settings.current_drone_ID,
                             data={
-                                "initialUploadTime": message.data.get("initialUploadTime", 0.0),
+                                "initialUploadTime": message.data.get(
+                                    "initialUploadTime", 0.0
+                                ),
                                 "finalUploadTime": finalUploadTime,
                                 "initialDownloadTime": 0.0,
-                                "targetId": self.networkConfig.get_self_id(),
+                                "targetId": self.flight_settings.current_drone_ID,
                                 "uploadRttMs": 0.0,
                                 "uploadThroughputKbps": 0.0,
                                 "downloadRttMs": 0.0,
@@ -112,7 +118,9 @@ class Server:
                                 "payload": message.data["payload"],
                             },
                         )  # From here update processing response and then go onto making sure responseMessage is sent to server
-                        responseMessage.data["initialDownloadTime"] = time.perf_counter()
+                        responseMessage.data["initialDownloadTime"] = (
+                            time.perf_counter()
+                        )
                         # Send response message to server
                     # Receive response data, calculate values, and return to serverOutData
                     case MessageType.SPEED_TEST_RESPONSE:
@@ -120,7 +128,9 @@ class Server:
                         receiveTime = time.perf_counter()
 
                         if "initialUploadTime" not in message.data:
-                            print("SPEED_TEST_RESPONSE missing initialUploadTime, skipping")
+                            print(
+                                "SPEED_TEST_RESPONSE missing initialUploadTime, skipping"
+                            )
                             continue
 
                         # Calculate Server Processing Time (Delta on Server Clock)
@@ -142,7 +152,9 @@ class Server:
                         downloadTime = estimatedOneWayTime
 
                         uploadSizeBytes = len(
-                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                            (
+                                JsonMessageUtilities.message_to_json(message=message)
+                            ).encode("utf-8")
                         )  # TODO change this actual uploaded message (difference is negligible)
                         uploadThroughputKbps = (
                             (uploadSizeBytes * 8 / 1000) / uploadTime
@@ -151,7 +163,9 @@ class Server:
                         )
 
                         downloadSizeBytes = len(
-                            (JsonMessageUtilities.message_to_json(message=message)).encode("utf-8")
+                            (
+                                JsonMessageUtilities.message_to_json(message=message)
+                            ).encode("utf-8")
                         )
                         downloadThroughputKbps = (
                             (downloadSizeBytes * 8 / 1000) / downloadTime
@@ -160,16 +174,20 @@ class Server:
                         )
 
                         message.data["uploadRttMs"] = round(uploadTime * 1000, 2)
-                        message.data["uploadThroughputKbps"] = round(uploadThroughputKbps, 2)
+                        message.data["uploadThroughputKbps"] = round(
+                            uploadThroughputKbps, 2
+                        )
                         message.data["downloadRttMs"] = round(downloadTime * 1000, 2)
-                        message.data["downloadThroughputKbps"] = round(downloadThroughputKbps, 2)
+                        message.data["downloadThroughputKbps"] = round(
+                            downloadThroughputKbps, 2
+                        )
                         await self.serverOutData.put(item=message)
                     case MessageType.PING:
                         # Respond to ping with PING_ACK
                         responseMessage = Message.create(
                             id=MessageType.PING_ACK,
                             dronesToSendData=(message.senderId,),
-                            senderId=(self.networkConfig.get_self_id()),
+                            senderId=(self.flight_settings.current_drone_ID),
                             data={},
                         )
                     case MessageType.PING_ACK:

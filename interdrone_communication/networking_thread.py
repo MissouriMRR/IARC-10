@@ -6,10 +6,10 @@ import asyncio
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.server import Server
 from interdrone_communication.client import Client
+from state_machine.flight_settings import FlightSettings
 
 
 # The NetworkingThread class contains methods to start the networking on a seperate thread and generate the NetworkingInterface
@@ -18,7 +18,8 @@ class NetworkingThread:
     def run_networking_thread(
         self,
         resourcesReady: queue.Queue[NetworkingInterface],
-        networkConfig: NetworkConfig,
+        flight_settings: FlightSettings,
+        range_test_toggle: bool = False,
     ) -> None:
         loop: AbstractEventLoop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -39,7 +40,8 @@ class NetworkingThread:
             self.start_networking(
                 clientInData=clientIn,
                 serverOutData=serverOut,
-                networkConfig=networkConfig,
+                flight_settings=flight_settings,
+                range_test_toggle=range_test_toggle,
             )
         )
         # Async networking entry point - runs server and client
@@ -48,17 +50,19 @@ class NetworkingThread:
         self,
         clientInData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
-        networkConfig: NetworkConfig,
+        flight_settings: FlightSettings,
+        range_test_toggle: bool = False,
     ) -> None:
         # Instantiate Server and Client
         serverInstance = Server(
-            networkConfig=networkConfig,
+            flight_settings=flight_settings,
             serverOutData=serverOutData,
             clientInData=clientInData,
         )
         clientInstance = Client(
-            networkConfig=networkConfig,
+            flight_settings=flight_settings,
             clientInData=clientInData,
+            range_test_toggle=range_test_toggle,
         )
 
         # Run both concurrently

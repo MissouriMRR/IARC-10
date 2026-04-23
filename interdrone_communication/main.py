@@ -6,7 +6,6 @@ import time
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message, MessageType
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
 from interdrone_communication.networking_thread import NetworkingThread
 from state_machine.flight_settings import FlightSettings
@@ -22,8 +21,7 @@ def main() -> None:
 
     # Load config with full drone_info populated from mission_config.json
     flight_settings = FlightSettings.from_mission_config(self_id=args.id)
-    networkConfig = NetworkConfig(flight_settings)
-    droneId = networkConfig.get_self_id()
+    droneId = flight_settings.current_drone_ID
     # parallel
     # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
     networkingThreadClassInstance: NetworkingThread = NetworkingThread()
@@ -31,7 +29,7 @@ def main() -> None:
     # Start networking thread
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, networkConfig),
+        args=(resourcesReady, flight_settings),
         daemon=True,
     )
     networkingThread.start()

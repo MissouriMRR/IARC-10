@@ -488,6 +488,12 @@ class FlightSettings:
             The path to the JSON file containing the boundary data.
         """
 
+    def get_drone_by_id(self, drone_id: int) -> mission_config.DroneInfo:
+        for drone in self.__drone_info:
+            if drone["id"] == drone_id:
+                return drone
+        raise ValueError(f"Drone ID {drone_id} not found in drone_info")
+
     @property
     def yolo_status(self) -> Event:
         """

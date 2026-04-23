@@ -12,9 +12,11 @@ import subprocess
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message, MessageType
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_thread import NetworkingThread
 from interdrone_communication.networking_interface import NetworkingInterface
+from state_machine.flight_settings import FlightSettings
+
+SPEED_TEST_PAYLOAD_KB: int = 16
 
 
 """
@@ -116,7 +118,7 @@ async def main():
 
     args = parser.parse_args()
     # Load config
-    networkConfig = NetworkConfig()
+    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
 
     # Declare flag variables
     droneId: int
@@ -126,12 +128,7 @@ async def main():
     uwbEnabled: bool
     continuousTesting: bool
 
-    # Get drone ID
-    if args.id is not None:
-        droneId = args.id
-        networkConfig.set_self_id(droneId)
-    else:
-        droneId = int(networkConfig.get_self_id())
+    droneId = flight_settings.current_drone_ID
 
     # TODO decide how I want to set up num drones / other drones
     if args.targets is not None:
@@ -182,7 +179,8 @@ async def main():
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, networkConfig),
+        args=(resourcesReady, flight_settings),
+        kwargs={"range_test_toggle": True},
         daemon=True,
     )
     networkingThread.start()
@@ -200,10 +198,10 @@ async def main():
         senderId=droneId,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
+            "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
             "payload": "X"
             * (
-                networkConfig.get_speed_test_data_size() * 1024
+                SPEED_TEST_PAYLOAD_KB * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
@@ -242,7 +240,7 @@ async def main():
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
-                                networkConfig,
+                                flight_settings,
                                 current_test_num,
                                 logTitle,
                                 fileName,
@@ -258,7 +256,7 @@ async def main():
                         task.add_done_callback(backgroundTasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
+                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {targetId}"
                         )
                         # If all drones in range tests tests have finished
                         if sum(testsFinishedPerTarget) >= numDrones:
@@ -299,7 +297,7 @@ async def main():
 
 def log_data(
     speedResults: list[Message],
-    networkConfig: NetworkConfig,
+    flight_settings: FlightSettings,
     testNumber: int,
     logTitle: str,
     fileName: str,
@@ -439,7 +437,7 @@ def log_data(
 
         print("\n" + "=" * 70)
         print(
-            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {networkConfig.get_self_id()} -> {targetDrone}"
+            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {flight_settings.current_drone_ID} -> {targetDrone}"
         )
         print("=" * 70)
 
