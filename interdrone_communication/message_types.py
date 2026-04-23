@@ -232,7 +232,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.NEW_WAYPOINTS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "newWaypoints": Waypoint
+        "newWaypoints": Waypoint,
     },
     MessageType.NEW_WAYPOINTS_ACK: {
         "id": MessageType.NEW_WAYPOINTS_ACK,
@@ -262,7 +262,6 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "allWaypoints": list[Waypoint],
         "response": bool,
     },
-
 }
 
 
