@@ -3,6 +3,7 @@ from typing import Any, Final, override
 from enum import Enum
 from typing import TypeAlias
 from dataclasses import dataclass, field
+from flight.waypoint import Waypoint
 import json
 import warnings
 from typing import cast, get_args, get_origin
@@ -231,7 +232,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.NEW_WAYPOINTS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "newWaypoints": Any,  # TODO give it a type
+        "newWaypoints": Waypoint
     },
     MessageType.NEW_WAYPOINTS_ACK: {
         "id": MessageType.NEW_WAYPOINTS_ACK,
@@ -258,9 +259,10 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.RECONFIRM_WAYPOINTS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "allWaypoints": tuple[Any],  # TODO #metoo
+        "allWaypoints": list[Waypoint],
         "response": bool,
     },
+
 }
 
 
