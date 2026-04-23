@@ -310,9 +310,7 @@ class FlightSettings:
     @property
     def other_drones_in_mission(self) -> list[int]:
         return [
-            drone_id
-            for drone_id in self.__drones_in_mission
-            if drone_id != self.__current_drone_ID
+            drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
         ]
 
     @property
