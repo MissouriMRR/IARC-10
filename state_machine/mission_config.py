@@ -74,6 +74,7 @@ class MissionConfig(TypedDict):
     simple_takeoff: bool
     app_opperable: bool
     self_id: int
+    drones_in_mission: list[int]
     drone_info: list[DroneInfo]
     app_info: AppInfo
     speed_test_kb_data_size: int

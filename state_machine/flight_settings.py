@@ -83,6 +83,7 @@ class FlightSettings:
         title: str = DEFAULT_RUN_TITLE,
         description: str = DEFAULT_RUN_DESCRIPTION,
         drone_ID: int = 1,
+        drones_in_mission: list[int] = [1, 2, 3, 4],
         drone_info: list[mission_config.DroneInfo] = [],
         app_IP: str = "",
         app_port: int = 0,
@@ -115,6 +116,7 @@ class FlightSettings:
         self.__app_IP: str = app_IP
         self.__app_port: int = app_port
         self.__current_drone_ID = drone_ID
+        self.__drones_in_mission: list[int] = list(drones_in_mission)
         self.__drone_info: list[mission_config.DroneInfo] = list(drone_info)
         self.__mission_field_corners: list[dict[str, float]] = mission_corners or []
         self.__max_flight_height: float = max_height
@@ -303,6 +305,23 @@ class FlightSettings:
             New ID for the current drone
         """
         self.__current_drone_ID = drone_ID
+
+    # Other drones in mission_is_used to get other drones ids
+    @property
+    def other_drones_in_mission(self) -> list[int]:
+        return [
+            drone_id
+            for drone_id in self.__drones_in_mission
+            if drone_id != self.__current_drone_ID
+        ]
+
+    @property
+    def drones_in_mission(self) -> list[int]:
+        return self.__drones_in_mission
+
+    @drones_in_mission.setter
+    def drones_in_mission(self, drones_in_mission: list[int]) -> None:
+        self.__drones_in_mission = list(drones_in_mission)
 
     @property
     def drone_info(self) -> list[mission_config.DroneInfo]:
