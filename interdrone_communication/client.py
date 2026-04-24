@@ -144,12 +144,8 @@ class Client:
         elif sendToSelf:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=str(
-                        self.flight_settings.get_drone_by_id(self.droneId)["IP"]
-                    ),
-                    serverPort=int(
-                        self.flight_settings.get_drone_by_id(self.droneId)["port"]
-                    ),
+                    serverIP=str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
+                    serverPort=int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
                     message=message,
                 )
             )
@@ -171,17 +167,15 @@ class Client:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
     # Takes Message and sends it to passed in server
-    async def send_data_async(
-        self, serverIP: str, serverPort: int, message: Message
-    ) -> None:
+    async def send_data_async(self, serverIP: str, serverPort: int, message: Message) -> None:
         try:
-            clientMessageDump: str = JsonMessageUtilities.message_to_json(
-                message=message
-            )
+            clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+            async with (
+                conn.lock
+            ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
 
@@ -262,10 +256,7 @@ class Client:
         keysToClose: list[tuple[str, int]] = []
         for key, conn in self.connectionPool.items():
             # If connection is closing or is over idle time, flag connection to be closed
-            if (
-                conn.writer.is_closing()
-                or (now - conn.lastUsed) > self.connectionIdleTimeoutSec
-            ):
+            if conn.writer.is_closing() or (now - conn.lastUsed) > self.connectionIdleTimeoutSec:
                 keysToClose.append(key)
 
         # Close all connections flagged above
