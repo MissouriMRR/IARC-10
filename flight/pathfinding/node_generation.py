@@ -122,7 +122,23 @@ class Connection:
         distance = 0.0
 
         if self.connectionType == seg.ARC:  # Nodes are on the same mine
-            angleTheta = abs(self.node1.angle - self.node2.angle)
+
+
+
+                
+            if(self.node1.order > self.node2.order): #Gets so node 2 is counter clockwise to node 1, if not, swap them
+                self.node1, self.node2 = self.node2, self.node1
+            #This way node 2 has a greater angle than node 1
+            
+            if(self.node2.order - self.node1.order > 1): #Travels over angle 0, must reverse the order of the nodes to get the correct angle
+                
+                angleTheta = (np.pi*2-self.node2.angle) + self.node1.angle
+            else:
+                angleTheta = self.node2.angle - self.node1.angle
+            
+
+            
+            
 
             mineRadius = self.node1.parentMine.radius
 
@@ -689,23 +705,33 @@ class Mine:
 
     def removeNode(self, node):
         self.nodes.remove(node)
+    
+    def sortNodes(self):
+        #Sort nodes counter clockwise starting from the positive x axis.
+        self.nodes.sort(key=lambda node: node.angle)
+    
+    def assignNodeOrder(self):
+        #Assigns the order of the nodes on the mine, increasing counterclockwise. Used for determining if a connection is clockwise or counterclockwise.
+        for i in range(len(self.nodes)):
+            self.nodes[i].mineOrder = i
 
     def connectMineNodes(self):
 
-        sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
-        if len(sortedNodes) == 0:
+        self.sortNodes()
+        if len(self.nodes) == 0:
             return 0
 
-        for i in range(len(sortedNodes) - 1):
+        for i in range(len(self.nodes) - 1):
 
-            arcConnection = Connection(sortedNodes[i], sortedNodes[i + 1])
+            arcConnection = Connection(self.nodes[i], self.nodes[i + 1])
             if arcConnection.validPath():
                 arcConnection.addGraph()
-        arcConnection = Connection(sortedNodes[len(sortedNodes) - 1], sortedNodes[0])
+        arcConnection = Connection(self.nodes[len(self.nodes) - 1], self.nodes[0])
         if arcConnection.validPath():
             arcConnection.addGraph()
 
-        # TODO: validate that path doesn't run through another mine. Validation isn't setup yet
+        self.assignNodeOrder()
+
 
         return getrefcount(self)
 
@@ -823,6 +849,7 @@ class MineNode(Node):
         self.angle = 0.0
         self.connected = False
         self.plotted = False  # To prevent hopefully duplicate plotting
+        self.mineOrder= -1 #Order of the node on the mine, increasing counterclockwise.
         self.targetMine = targetMine
         self.terminate = (
             False  # If node would be generated illegally, mark for termination/ignoring
