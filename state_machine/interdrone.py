@@ -364,6 +364,18 @@ class Interdrone:
 
         return all(state.mission_start is True for state in self.drone_states)
 
+    async def add_waypoints(self, waypoints: list[Waypoint]) -> None:
+        """
+        Send new_waypoints message to all drones
+        """
+        # TODO: Literally send them new_waypoints message
+
+        return
+
+    async def reached_waypoint(self, waypoint: Waypoint) -> None:
+        #TODO: Yes
+        return
+
     async def cancel_state(self) -> None:
         """
         Cancels the current state being executed.
