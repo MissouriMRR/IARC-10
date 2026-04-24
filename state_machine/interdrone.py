@@ -367,7 +367,7 @@ class Interdrone:
         """
         Send new_waypoints message to all drones
         """
-        # TODO: Literally send 
+        # TODO: Literally send
 
         return
 
