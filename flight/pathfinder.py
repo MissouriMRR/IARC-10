@@ -80,6 +80,8 @@ class Pathfinder:
 
         self.seen_tracker = seen_by_drone.SightTracker(self.arb_field_size)
 
+        self.seen_tracker.note_field_borders(self.arb_corner_coords)
+        
         self.best_node_List = []
         self.best_way_points_latlon = []  # stores best path
         self.best_way_points_local = []
@@ -103,7 +105,12 @@ class Pathfinder:
             local_corners.append([x, y])
         self.seen_tracker.note_pic(local_corners)
 
-    # returns final goto list
+
+    def increase_radius(self, mine_radius_increment):
+        self.mine_radius += mine_radius_increment
+        self.field.increaseRadius(mine_radius_increment)
+
+    #returns final goto list    
     def get_way_points_latlon(self):
 
         # what coords do I give here
