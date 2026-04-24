@@ -163,9 +163,6 @@ class Client:
                     messageTasks.append(messageTask)
 
         # Run all messageTasks concurrently
-        # NOTE: If we await here, we block the loop. This is fine if we want to throttle sending to connection speed.
-        # But if we want to send fast, we should not await. However, if we don't await, we might spawn too many tasks.
-        # TODO: Look into what to do here. Could be optimizations
         if messageTasks:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 

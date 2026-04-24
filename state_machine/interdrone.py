@@ -227,7 +227,6 @@ class Interdrone:
 
         return
 
-    # Function name might change
     async def all_armed(self) -> bool:
         """
         Used by drone one.
@@ -240,7 +239,6 @@ class Interdrone:
 
         return all(state.armed is True for state in self.drone_states)
 
-    # I'm lowkey guessing on descriptions from here until the async cancel_state
     async def send_takeoff(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a takeoff message to the drones passed as a parameter
