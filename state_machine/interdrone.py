@@ -379,7 +379,8 @@ class Interdrone:
 
         self.send(new_waypoints_message)
 
-        #TODO: Sets all other droneState waypoint_up_to_date flag to false.
+        for state in self.drone_states:
+            state.waypoint_up_to_date = False
 
         return
 
@@ -399,7 +400,8 @@ class Interdrone:
 
         self.send(reached_waypoint_message)
 
-        #TODO: Sets all other droneState waypoint_up_to_date flag to false.
+        for state in self.drone_states:
+            state.waypoint_up_to_date = False
 
         return
 
