@@ -1,0 +1,36 @@
+{
+    "Set 1": [
+        {
+            "name": "Waypoint 1 S1",
+            "latitude": 37.94970571278862,
+            "longitude": -91.78265322660997
+        },
+        {
+            "name": "Waypoint 2 S1",
+            "latitude": 37.94986054106148,
+            "longitude": -91.78440875317372
+        },
+        {
+            "name": "Waypoint 3 S1",
+            "latitude": 37.94980707111064,
+            "longitude": -91.78573377499113
+        }
+    ],
+    "Set 2": [
+        {
+            "name": "Waypoint 1 S2",
+            "latitude": 37.95113451833583,
+            "longitude": -91.78568499215623
+        },
+        {
+            "name": "Waypoint 2 S2",
+            "latitude": 37.94924821463032,
+            "longitude": -91.78466022940276
+        },
+        {
+            "name": "Waypoint 3 S2",
+            "latitude": 37.94891837935707,
+            "longitude": -91.78301360863829
+        }
+    ]
+}
