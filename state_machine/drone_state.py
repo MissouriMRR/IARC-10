@@ -27,9 +27,7 @@ class DroneState:
         # --- Mission Control Flags ---
         self._demo_start: bool = False  # Flag for pre-programmed demonstration mode
         self._mission_start: bool = False  # Flag for autonomous mission execution
-        self._list_of_waypoints: list[
-            Waypoint
-        ] = []  # Collection of GPS/coordinate targets
+        self._list_of_waypoints: list[Waypoint] = []  # Collection of GPS/coordinate targets
         self._waypoint_up_to_date: bool = False
 
     # --- Property Accessors ---
