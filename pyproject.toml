@@ -7,8 +7,9 @@ requires-python = ">=3.14"
 dependencies = [
     "dronekit>=2.9.2",
     "future>=1.0.0",
-    "matplotlib>=3.10.8",
-    "picamera2>=0.3.34",
-    "pyqt5>=5.15.11",
     "utm>=0.7.0",
+    "numpy >= 1.0.0",
+    "matplotlib>=3.10.8",
+    "pyqt5>=5.15.11; platform_machine != 'aarch64'",
+    
 ]
