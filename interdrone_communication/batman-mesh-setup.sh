@@ -107,7 +107,10 @@ log_message "Loaded batman-adv module"
 # Configure the interface
 log_message "Setting $UAIN to unmanaged mode..."
 nmcli device set "$UAIN" managed no
-
+# For Pi 1, ensure wlan0 stays unmanaged after setup
+if [ "$PI_NUMBER" = "1" ]; then
+    nmcli device set wlan0 managed no
+fi
 log_message "Bringing $UAIN down..."
 ip link set "$UAIN" down
 
