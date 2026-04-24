@@ -41,26 +41,39 @@ class Path:
         self.total_path_length = 0
         self.finalGotoList = []
         self.segmentedList = []
-        
-    #altitude in feet
-    #returns distance covered by image in feet.
-    def ground_covered_image(self, altitude: float, fovDeg: float): 
+
+    # altitude in feet
+    # returns distance covered by image in feet.
+    def ground_covered_image(self, altitude: float, fovDeg: float):
         fovRad = m.radians(fovDeg)
-        return 2 * altitude * m.tan(fovRad/2)
-        
-    
-    #overlap is percent
-    def generate_goto_points(self, nodeList: tuple[Node], altitude: float, fovDeg: float, path_width: float, vertical_image_overlap: float = 0.1, horizontal_image_overlap: float = 0.1, scan_edge_overlap: float = 0.3):
-        
+        return 2 * altitude * m.tan(fovRad / 2)
+
+    # overlap is percent
+    def generate_goto_points(
+        self,
+        nodeList: tuple[Node],
+        altitude: float,
+        fovDeg: float,
+        path_width: float,
+        vertical_image_overlap: float = 0.1,
+        horizontal_image_overlap: float = 0.1,
+        scan_edge_overlap: float = 0.3,
+    ):
+
         image_size = self.ground_covered_image(altitude, fovDeg)
 
         # number of side by side waypoints
-        x_temp = m.ceil((path_width-image_size*(horizontal_image_overlap+2*scan_edge_overlap))/(image_size*(1-horizontal_image_overlap)))
-        num_image = x_temp + (x_temp + 1) % 2 # Makes sure number of waypoints is on in order to have a waypoint on the path
-        step = image_size * (1-vertical_image_overlap) # distance between goto points (FEET)
-        horizontal_separation = image_size - horizontal_image_overlap*image_size
-        #finalGotoList = []
-        #segmentedList = []
+        x_temp = m.ceil(
+            (path_width - image_size * (horizontal_image_overlap + 2 * scan_edge_overlap))
+            / (image_size * (1 - horizontal_image_overlap))
+        )
+        num_image = (
+            x_temp + (x_temp + 1) % 2
+        )  # Makes sure number of waypoints is on in order to have a waypoint on the path
+        step = image_size * (1 - vertical_image_overlap)  # distance between goto points (FEET)
+        horizontal_separation = image_size - horizontal_image_overlap * image_size
+        # finalGotoList = []
+        # segmentedList = []
         isArc = False
         for i in range(len(nodeList) - 1):
             n1 = nodeList[i]  # first node
@@ -70,35 +83,45 @@ class Path:
             # linear gotos or floating points
             # if n1.parentMine!=n2.parentMine or n1.floating or n2.floating:
             if connect.connectionType == seg.LINE:
-    
+
                 self.total_lin_distance += connect.distance
                 numPoints = max(1, int(connect.distance / step))
                 x_vals = np.linspace(n1.x, n2.x, numPoints)
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
                 for x, y in zip(x_vals, y_vals):
                     path_angle = m.atan2(n2.y - n1.y, n2.x - n1.x)
-                    node_addition_angle = path_angle + m.pi/2
+                    node_addition_angle = path_angle + m.pi / 2
                     print(path_angle)
                     print(node_addition_angle)
-                    print((node_addition_angle-path_angle)/m.pi)
+                    print((node_addition_angle - path_angle) / m.pi)
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
                     self.finalGotoList.append((float(x), float(y), path_angle))
                     self.segmentedList.append([(n1), (n2), isArc])
-                    
-                    for i in range(1, (num_image//2) + 1):
-                        self.finalGotoList.append((float(x) + i*adjusted_vector[0], float(y) + i*direction_unit_vector[1], path_angle))
+
+                    for i in range(1, (num_image // 2) + 1):
+                        self.finalGotoList.append(
+                            (
+                                float(x) + i * adjusted_vector[0],
+                                float(y) + i * direction_unit_vector[1],
+                                path_angle,
+                            )
+                        )
                         self.segmentedList.append([(n1), (n2), isArc])
-                        self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*direction_unit_vector[1], path_angle))
+                        self.finalGotoList.append(
+                            (
+                                float(x) - i * adjusted_vector[0],
+                                float(y) - i * direction_unit_vector[1],
+                                path_angle,
+                            )
+                        )
                         self.segmentedList.append([(n1), (n2), isArc])
 
-
-            
-            #arc gotos
+            # arc gotos
             elif connect.connectionType == seg.ARC:
                 isArc = True
-                
-                #get center coords
+
+                # get center coords
                 mine = n1.parentMine
                 cx, cy = mine.getPos()
                 r = mine.getRadius()
@@ -123,26 +146,45 @@ class Path:
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
-                    path_angle = angle1 + delta_theta + m.pi/2
-                    node_addition_angle = path_angle + m.pi/2
+                    path_angle = angle1 + delta_theta + m.pi / 2
+                    node_addition_angle = path_angle + m.pi / 2
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
                     self.finalGotoList.append((float(x), float(y), path_angle))
                     self.segmentedList.append([(n1), (n2), isArc])
-                    for i in range(1, (num_image//2) + 1):
-                        self.finalGotoList.append((float(x) + i*adjusted_vector[0], float(y) + i*direction_unit_vector[1], path_angle))
+                    for i in range(1, (num_image // 2) + 1):
+                        self.finalGotoList.append(
+                            (
+                                float(x) + i * adjusted_vector[0],
+                                float(y) + i * direction_unit_vector[1],
+                                path_angle,
+                            )
+                        )
                         self.segmentedList.append([(n1), (n2), isArc])
-                        self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*direction_unit_vector[1], path_angle))
+                        self.finalGotoList.append(
+                            (
+                                float(x) - i * adjusted_vector[0],
+                                float(y) - i * direction_unit_vector[1],
+                                path_angle,
+                            )
+                        )
                         self.segmentedList.append([(n1), (n2), isArc])
-                
-        print(step)    
-        self.total_path_length = self.total_lin_distance + self.total_arc_length       
-        return self.finalGotoList, self.segmentedList 
-    
-    #optimumPath: path center-line length in feet
-    #pathWidth: narrowest width of path in feet
-    def num_score_points(self, flightMin: int, minesMissed: int, optimumPath: float, pathWidth: float, droneWeight: float ): 
-        if (flightMin > 7): 
+
+        print(step)
+        self.total_path_length = self.total_lin_distance + self.total_arc_length
+        return self.finalGotoList, self.segmentedList
+
+    # optimumPath: path center-line length in feet
+    # pathWidth: narrowest width of path in feet
+    def num_score_points(
+        self,
+        flightMin: int,
+        minesMissed: int,
+        optimumPath: float,
+        pathWidth: float,
+        droneWeight: float,
+    ):
+        if flightMin > 7:
             score = 0
         else:
             score = (150000 * pathWidth) / (
@@ -153,7 +195,7 @@ class Path:
 
 # set up
 if __name__ == "__main__":
-        
+
     field = Field([200, 200], [[0, 200], [200, 200], [0, 0], [200, 0]])
 
     field.addMine(80, 30, 20)
@@ -200,7 +242,7 @@ if __name__ == "__main__":
 
     # Function Calls
     pathObj = Path()
-    finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 64, 10, 30)  
+    finalPath, segmentedList = pathObj.generate_goto_points(nodeList, 64, 10, 30)
 
     pathWidth = Mine.getRadius(Mine)
     print("radius", pathWidth)
@@ -219,11 +261,13 @@ if __name__ == "__main__":
 
     # Display
     fig, ax = plt.subplots()
-    ax.set_aspect('equal')
-    plt.xlim(-10,210)
-    plt.ylim(-10,210)
+    ax.set_aspect("equal")
+    plt.xlim(-10, 210)
+    plt.ylim(-10, 210)
 
-    plt.plot(goto_x, goto_y, marker='*', color='red', linestyle='None', markersize=4, label='Goto Points')
+    plt.plot(
+        goto_x, goto_y, marker="*", color="red", linestyle="None", markersize=4, label="Goto Points"
+    )
 
     for node in nodeList:
         plt.plot(node.x, node.y, marker="o", color="blue", markersize=4, label="Node")

@@ -2,7 +2,7 @@ import sys, os
 
 sys.path.append(os.path.abspath(".."))
 
-from typing import Callable # Type hinting a function (parameter(s)) -> return value(s)
+from typing import Callable  # Type hinting a function (parameter(s)) -> return value(s)
 import matplotlib.pyplot as pyplot
 import numpy as np
 import random
@@ -54,7 +54,7 @@ KEY FIELD ATTRIBUTES/METHODS:
  = Class Variable: nodeGraph -> a dictionary containing Connection objects
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
  - Field.plotField(labeled:bool,path:list["Node"],title:str,xlabel:str) -> Using matplotlib, plots the field.
-                                    plot key: 
+                                    plot key:
                                         NID = Node ID;
                                         MID = Mine ID;
                                         CID = [Parent Mine ID].[Node ID];
@@ -75,7 +75,7 @@ I suggest you create mines and nodes via the Field class.
      - simFieldSize = simulated size of field, a rectangle.
      - fieldCorners = arbitrary corners that might not form a rectangle.
 
-Ex: A basic setup of 3 Mines with start and end nodes. 
+Ex: A basic setup of 3 Mines with start and end nodes.
 Coordinates are example only, may not actually display accurately.
 
     field = Field(simFieldSize, fieldCorners)
@@ -98,13 +98,14 @@ class seg(Enum):
 
 
 class Connection:
-    field:'Field'=None #must be initialized on startup
-    def __init__(self,node1: 'Node',node2: 'Node'):
-        self.node1=node1
-        self.node2=node2
-        
-        if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
-            self.connectionType=seg.LINE
+    field: "Field" = None  # must be initialized on startup
+
+    def __init__(self, node1: "Node", node2: "Node"):
+        self.node1 = node1
+        self.node2 = node2
+
+        if node1.parentMine != node2.parentMine or node1.floating or node2.floating:
+            self.connectionType = seg.LINE
         else:
             self.connectionType = seg.ARC
 
@@ -120,7 +121,8 @@ class Connection:
 
         # checking for a valid path and updating the graph must be done manually
 
-        #checking for a valid path and updating the graph must be done manually
+        # checking for a valid path and updating the graph must be done manually
+
     # DISTANCE
     def updateDistance(self):
         distance = 0.0
@@ -211,9 +213,6 @@ class Connection:
         y2 = float(self.node2.y)
         field = self.field
 
-
-
-
         """
         Check if the the current connection's nodes are within
         field boundries.
@@ -223,7 +222,7 @@ class Connection:
                                p2
                             `     `   n2
                         `           `
-                   Up                  Ri                                       
+                   Up                  Ri
                `           n1            `
            `                                `
          p1                                   `
@@ -233,56 +232,54 @@ class Connection:
                      Le                  Lo
                         `              `
                           `         `
-                             `   `   
+                             `   `
                                p3(Origin)
         """
         # Node 1 boundary check
-        if (self.node1.nType == "default"):
+        if self.node1.nType == "default":
             # Left line check
-            if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x1,y1))):
-                print(x1,y1)
+            if not (field.isPointRightofLine(field.leftLine, field.leftSlope, (x1, y1))):
+                print(x1, y1)
                 self.node1.labeled = True
                 return False
             # Right line check
-            if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x1,y1))):
-                print(x1,y1)
+            if not (field.isPointLeftofLine(field.rightLine, field.rightSlope, (x1, y1))):
+                print(x1, y1)
                 # self.node1.labeled = True
                 return False
             # Upper line check
-            if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x1,y1))):
-                print(x1,y1)
+            if not (field.isPointBelowLine(field.upperLine, field.upperSlope, (x1, y1))):
+                print(x1, y1)
                 # self.node1.labeled = True
                 return False
             # Lower line check
-            if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x1,y1))):
-                print(x1,y1)
+            if not (field.isPointAboveLine(field.lowerLine, field.lowerSlope, (x1, y1))):
+                print(x1, y1)
                 # self.node1.labeled = True
                 return False
         # Node 2 boundary check
-        if (self.node2.nType == "default"):
+        if self.node2.nType == "default":
             # Left line check
-            if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x2,y2))):
-                print(x2,y2)
+            if not (field.isPointRightofLine(field.leftLine, field.leftSlope, (x2, y2))):
+                print(x2, y2)
                 self.node1.labeled = True
                 return False
             # Right line check
-            if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x2,y2))):
-                print(x2,y2)
+            if not (field.isPointLeftofLine(field.rightLine, field.rightSlope, (x2, y2))):
+                print(x2, y2)
                 # self.node1.labeled = True
                 return False
             # Upper line check
-            if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x2,y2))):
-                print(x2,y2)
+            if not (field.isPointBelowLine(field.upperLine, field.upperSlope, (x2, y2))):
+                print(x2, y2)
                 # self.node1.labeled = True
                 return False
             # Lower line check
-            if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x2,y2))):
-                print(x2,y2)
+            if not (field.isPointAboveLine(field.lowerLine, field.lowerSlope, (x2, y2))):
+                print(x2, y2)
                 # self.node1.labeled = True
                 return False
-        
 
-        
         # Connection intersecting mine test
         if self.connectionType == seg.LINE:
             for mine in Connection.field.mines:
@@ -338,8 +335,7 @@ class Connection:
                 else:
                     print("Something went really wrong with midpoint & intersectionpoints")
             return validEdge
-        
-       
+
         return True
 
     # checks if a path collides with a specific mine
@@ -425,9 +421,12 @@ class Connection:
         if intersectionPointAngle2 < 0:
             intersectionPointAngle2 += np.pi * 2
 
-        #First if handles case where the hugging edge travels over angle=0.
-        if(firstNodeAngle>secondNodeAngle):
-            if(intersectionPointAngle1>firstNodeAngle and intersectionPointAngle1<secondNodeAngle+np.pi*2):
+        # First if handles case where the hugging edge travels over angle=0.
+        if firstNodeAngle > secondNodeAngle:
+            if (
+                intersectionPointAngle1 > firstNodeAngle
+                and intersectionPointAngle1 < secondNodeAngle + np.pi * 2
+            ):
                 return False
             elif (
                 intersectionPointAngle1 < secondNodeAngle
@@ -441,18 +440,20 @@ class Connection:
             if firstNodeAngle < intersectionPointAngle2 < secondNodeAngle:
                 return False
         return True
-            
+
     """Generating the points where mines intersect"""
 
     @staticmethod  # Used for logic elsewhere in this class, but does not need stuff from an instance
     def generateIntersectionPoints(mine1: "Mine", mine2: "Mine") -> list[float]:
         distance: float = np.sqrt((mine1.x - mine2.x) ** 2 + (mine1.y - mine2.y) ** 2)
         # Fraction of the area of each mine that is not overlapping
-        if (distance != 0):
-            radicalLineDistance: float = ((mine1.radius**2 - mine2.radius**2 + distance**2))/(2*distance)
+        if distance != 0:
+            radicalLineDistance: float = (
+                (mine1.radius**2 - mine2.radius**2 + distance**2)
+            ) / (2 * distance)
         else:
             radicalLineDistance: float = 0
-       
+
         # Plus and minus this angle to get the angle at which the circles overlap
         offsetAngle = np.arccos(radicalLineDistance / mine1.radius)
         intersectionAngle = np.atan2(mine2.y - mine1.y, mine2.x - mine1.x)
@@ -479,55 +480,65 @@ class Connection:
 # Field generates nodes off of mines, generates mines too
 class Field:
     mines = []
-    debugPoints = [] # purely for debuging and testing, field will plot these points
+    debugPoints = []  # purely for debuging and testing, field will plot these points
 
     # simFieldSize = simulated size of field, a rectangle.
     # fieldCorners = arbitrary corners that might not form a rectangle
-    def __init__(self,simFieldSize:list,fieldCorners:list):
+    def __init__(self, simFieldSize: list, fieldCorners: list):
         """
         simFieldSize = simulated size of field, a rectangle's [width,height].
         \nfieldCorners = arbitrary corners of field, a quadrilateral of four corners
         """
-        self.nodeGraph={}
-        
-        simCorners = [(0,simFieldSize[1]),
-              (simFieldSize[0],simFieldSize[1]),
-              (0,0),
-              (simFieldSize[0],0)]
+        self.nodeGraph = {}
+
+        simCorners = [
+            (0, simFieldSize[1]),
+            (simFieldSize[0], simFieldSize[1]),
+            (0, 0),
+            (simFieldSize[0], 0),
+        ]
         self.rawCorners = fieldCorners
 
         # For simulation bounded view
-        self.simVertPairLeft = [simCorners[0],simCorners[2]]
-        self.simVertPairRight = [simCorners[1],simCorners[3]]
-        self.simHorzPairUpper = [simCorners[2],simCorners[3]]
-        self.simHorzPairLower = [simCorners[0],simCorners[1]]
+        self.simVertPairLeft = [simCorners[0], simCorners[2]]
+        self.simVertPairRight = [simCorners[1], simCorners[3]]
+        self.simHorzPairUpper = [simCorners[2], simCorners[3]]
+        self.simHorzPairLower = [simCorners[0], simCorners[1]]
         # For field bounds
-        self.fieldVertPairLeft = [self.rawCorners[0],self.rawCorners[2]]
-        self.fieldVertPairRight = [self.rawCorners[1],self.rawCorners[3]]
-        self.fieldHorzPairUpper = [self.rawCorners[0],self.rawCorners[1]]
-        self.fieldHorzPairLower = [self.rawCorners[2],self.rawCorners[3]]
-        
-        self.xMin = min(simCorners[0][0],simCorners[2][0])
-        self.xMax = max(simCorners[1][0],simCorners[3][0])
-        self.yMin = min(simCorners[2][1],simCorners[3][1])
-        self.yMax = min(simCorners[0][1],simCorners[1][1])
+        self.fieldVertPairLeft = [self.rawCorners[0], self.rawCorners[2]]
+        self.fieldVertPairRight = [self.rawCorners[1], self.rawCorners[3]]
+        self.fieldHorzPairUpper = [self.rawCorners[0], self.rawCorners[1]]
+        self.fieldHorzPairLower = [self.rawCorners[2], self.rawCorners[3]]
+
+        self.xMin = min(simCorners[0][0], simCorners[2][0])
+        self.xMax = max(simCorners[1][0], simCorners[3][0])
+        self.yMin = min(simCorners[2][1], simCorners[3][1])
+        self.yMax = min(simCorners[0][1], simCorners[1][1])
 
         # To be used for comparing if nodes are within the valid field
-        self.leftLine, self.leftSlope = Field.getLine(self.fieldVertPairLeft[0],self.fieldVertPairLeft[1])
-        self.rightLine, self.rightSlope = Field.getLine(self.fieldVertPairRight[0],self.fieldVertPairRight[1])
-        self.upperLine, self.upperSlope = Field.getLine(self.fieldHorzPairUpper[0],self.fieldHorzPairUpper[1])
-        self.lowerLine, self.lowerSlope = Field.getLine(self.fieldHorzPairLower[0],self.fieldHorzPairLower[1])
-        
+        self.leftLine, self.leftSlope = Field.getLine(
+            self.fieldVertPairLeft[0], self.fieldVertPairLeft[1]
+        )
+        self.rightLine, self.rightSlope = Field.getLine(
+            self.fieldVertPairRight[0], self.fieldVertPairRight[1]
+        )
+        self.upperLine, self.upperSlope = Field.getLine(
+            self.fieldHorzPairUpper[0], self.fieldHorzPairUpper[1]
+        )
+        self.lowerLine, self.lowerSlope = Field.getLine(
+            self.fieldHorzPairLower[0], self.fieldHorzPairLower[1]
+        )
+
         self.mines = []
         Connection.field = self
 
     # This type of node will not have a parent mine, primarily used for start/end points
-    def addFloatingNode(self,x:float,y:float,ndType:str=None) ->'Node':
+    def addFloatingNode(self, x: float, y: float, ndType: str = None) -> "Node":
         """
         Given a coordinate position, place a floating node onto the field
         """
-        fNode = Node(x,y,True,nType=ndType) # Floating Node
-        
+        fNode = Node(x, y, True, nType=ndType)  # Floating Node
+
         for mine in Connection.field.mines:
             mineNodePrimary = MineNode(
                 parentMine=mine, floatingNode=fNode, primary=True, connectedToFloating=True
@@ -544,45 +555,47 @@ class Field:
             if len(self.nodeGraph[fNode]) == 0:
                 del self.nodeGraph[fNode]
         return fNode
-    
-    #Due to the current node stucture, right now this only modifies the nodeGraph
-    def placeStartNode(self,xVal:float ,yVal:float ) -> 'Node':
+
+    # Due to the current node stucture, right now this only modifies the nodeGraph
+    def placeStartNode(self, xVal: float, yVal: float) -> "Node":
         """
         Given a coordinate, place a start node onto the field
         """
-        start = self.addFloatingNode(xVal,yVal,"start")
-        return start    
+        start = self.addFloatingNode(xVal, yVal, "start")
+        return start
+
     # Places density amount of end nodes equidistance along the y coordinate and between xMin and xMax
     def placeEndNodesLine(self, yVal: float, density: int):
         """
         Given a y-value and density amount of nodes, places the end Nodes onto the field
         """
-        returnList=[]
+        returnList = []
         if density > 1:
             xVals = [
                 self.xMin + (i * ((self.xMax - self.xMin) / density - 1)) for i in range(density)
             ]
             for x in xVals:
-                returnList.append(self.addFloatingNode(x,yVal,"end"))
+                returnList.append(self.addFloatingNode(x, yVal, "end"))
         else:
-            returnList.append(self.addFloatingNode((self.xMin+self.xMax)/2,yVal,"end"))
+            returnList.append(self.addFloatingNode((self.xMin + self.xMax) / 2, yVal, "end"))
         return returnList
-    
-    def placeEndNodesPositions(self,position: list[tuple[float,float]]):
+
+    def placeEndNodesPositions(self, position: list[tuple[float, float]]):
         """
         Given a list positions [(x,y)..]
         \nPlace end Nodes at those points
         """
         returnList = []
         for pos in position:
-            returnList.append(self.addFloatingNode(pos[0],pos[1],"end"))
+            returnList.append(self.addFloatingNode(pos[0], pos[1], "end"))
         return returnList
-    def addMine(self,centerX:float,centerY:float,radius:int,color:str=''):
+
+    def addMine(self, centerX: float, centerY: float, radius: int, color: str = ""):
         """
         Given the simulated local coordinates, radius, and optional color;
         add a new Mine object centered at the coordinates to the field and generate/regenerate nodes and connections
         """
-        newMine = Mine(centerX,centerY,radius,color=color)
+        newMine = Mine(centerX, centerY, radius, color=color)
         self.mines.append(newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
         for pair in mineCombo:
@@ -634,8 +647,8 @@ class Field:
                 connection = Connection(node1, node2)
                 if connection.mineCollision(newMine):
                     connection.deleteConnection()
-         
-    @staticmethod #Given two points, get the line equation and slope (to determine negative or positive slope)
+
+    @staticmethod  # Given two points, get the line equation and slope (to determine negative or positive slope)
     def getLine(point1: tuple, point2: tuple) -> tuple:
         """
         Given two points as a tuple of floats each, get a line function and its slope
@@ -645,25 +658,31 @@ class Field:
         x2 = point2[0]
         y2 = point2[1]
         try:
-            slope = (y2-y1)/(x2-x1)
-        except ZeroDivisionError: # Infinite/Vertical slope
+            slope = (y2 - y1) / (x2 - x1)
+        except ZeroDivisionError:  # Infinite/Vertical slope
             # x means nothing in this case, for all values of Y, its x is x1 and x2
-            return (lambda x: x1 + 0*x, "undef") 
+            return (lambda x: x1 + 0 * x, "undef")
 
-        offset = y2-slope*x2
+        offset = y2 - slope * x2
 
-        f = lambda x: (slope*x)+offset
-        return (f,slope)
-    
-    # Given a line function and a point, detect if the point   
-    @staticmethod # lies to the left of the line
-    def isPointLeftofLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], slope:float, point: tuple[float,float]) -> bool:
+        f = lambda x: (slope * x) + offset
+        return (f, slope)
+
+    # Given a line function and a point, detect if the point
+    @staticmethod  # lies to the left of the line
+    def isPointLeftofLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ) -> bool:
         """
         Given a line function, point, and slope;
         Check if the point lies to the left of the line
         """
         """
-        If the slope between p1 and p2 is negative, p3's y-value must be 
+        If the slope between p1 and p2 is negative, p3's y-value must be
         below the line for it to be to the left of line
         p1
          `
@@ -674,40 +693,47 @@ class Field:
               `
               p2
         The logic will be adjusted for positive and undefined(vertical line) slope.
-        
+
         """
         x = point[0]
         y = point[1]
 
-        if slope < 0: # Negative slope
-            if (y < line(x)):
+        if slope < 0:  # Negative slope
+            if y < line(x):
                 return True
-        elif slope > 0: # Positive slope
-            if (y > line(x)):
+        elif slope > 0:  # Positive slope
+            if y > line(x):
                 return True
-        elif slope == "undef": # Verticle line
-            if (x < line(x)):
+        elif slope == "undef":  # Verticle line
+            if x < line(x):
                 return True
         else:
-        # If the points are horizontal, and since this is checking a *line*
-        # A point will always be within the line <-----*--->
-        # So technically cant be left of the line
+            # If the points are horizontal, and since this is checking a *line*
+            # A point will always be within the line <-----*--->
+            # So technically cant be left of the line
             return False
         return False
+
     # Given a line function and a point, detects if the point
-    @staticmethod # lies to the right of the line
-    def isPointRightofLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]], slope:float, point: tuple[float,float]) -> bool:
+    @staticmethod  # lies to the right of the line
+    def isPointRightofLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ) -> bool:
         """
         Given a line function, point, and slope;
         Check if the point lies to the right of the line
         """
         """
-        If the slope between p1 and p2 is negative, p3's y-value must be 
+        If the slope between p1 and p2 is negative, p3's y-value must be
         above the line for it to be to the right of line
         p1
          `
           ` p3
-           ` 
+           `
             `
              `
               `
@@ -718,59 +744,74 @@ class Field:
         x = point[0]
         y = point[1]
 
-        if slope < 0: # Negative Slope
-            if (y > line(x)):
+        if slope < 0:  # Negative Slope
+            if y > line(x):
                 return True
-        elif slope > 0: # Positive Slope
-            if (y < line(x)):
+        elif slope > 0:  # Positive Slope
+            if y < line(x):
                 return True
-        elif slope == "undef": # Verticle line
-            if (x > line(x)):
+        elif slope == "undef":  # Verticle line
+            if x > line(x):
                 return True
-        else: # Horizontal
+        else:  # Horizontal
             return False
         return False
-    
+
     # Given a line function and a point, detects if the point
-    @staticmethod # lies above the line
-    def isPointAboveLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]],slope:float, point:tuple[float,float]):
+    @staticmethod  # lies above the line
+    def isPointAboveLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ):
         """
         Given a line function, point, and slope;
         Check if the point lies above the line
         """
         x = point[0]
         y = point[1]
-        if slope == "undef": # Vertical line
+        if slope == "undef":  # Vertical line
             return True
-        if (y > line(x)):
+        if y > line(x):
             return True
         return False
+
     # Given a line function and a point, detects if the point
-    @staticmethod # lies below the line
-    def isPointBelowLine(line:Callable[[tuple[float,float],tuple[float,float]],tuple[Callable[[float],float],float]],slope:float, point:tuple[float,float]):
+    @staticmethod  # lies below the line
+    def isPointBelowLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ):
         """
         Given a line function, point, and slope;
         Check if the point lies below the line
         """
         x = point[0]
         y = point[1]
-        if slope == "undef": # Vertical line
+        if slope == "undef":  # Vertical line
             return None
-        if (y < line(x)):
+        if y < line(x):
             return True
         return False
-    
+
     # Purely for debugging
-    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="") -> None:
+    def plotField(
+        self, labeled: bool = False, path: list["Node"] = [], title: str = "", xlabel: str = ""
+    ) -> None:
         """
         Using the matplotlib library and various optional labelling, plots the current iteration of the field
         """
         plt = pyplot
         fig, ax = plt.subplots()
-        ax.set_aspect('equal')
+        ax.set_aspect("equal")
         padding = 10
-        plt.xlim(self.xMin-padding,self.xMax+padding)
-        plt.ylim(self.yMin-padding,self.yMax+padding)
+        plt.xlim(self.xMin - padding, self.xMax + padding)
+        plt.ylim(self.yMin - padding, self.yMax + padding)
 
         if len(title) <= 0:
             title = f"Mines({len(self.mines)}) and Potential Paths"
@@ -826,7 +867,7 @@ class Field:
                                 [node.x, connectedNode.x], [node.y, connectedNode.y], nodeSymbol
                             )
                         except AttributeError:
-                            plt.plot([node.x],[node.y],nodeSymbol)
+                            plt.plot([node.x], [node.y], nodeSymbol)
         xlabel += "KEY:\n"
         xlabel += "Colors = Potential Paths"
         xlabel += "\nLight Gray = Simulated Boundary"
@@ -843,14 +884,24 @@ class Field:
         if len(Field.debugPoints) > 0:  # Points that are plotted for debugging only
             print("Plotting debug points")
             for point in Field.debugPoints:
-                plt.plot(point[0],point[1],"o",color=(0,0,0))
+                plt.plot(point[0], point[1], "o", color=(0, 0, 0))
 
         # Plot simulation boundaries
-        for pair in [self.simHorzPairUpper,self.simHorzPairLower,self.simVertPairLeft,self.simVertPairRight]:
-            plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.5,0.5,0.5))
+        for pair in [
+            self.simHorzPairUpper,
+            self.simHorzPairLower,
+            self.simVertPairLeft,
+            self.simVertPairRight,
+        ]:
+            plt.plot([pair[0][0], pair[1][0]], [pair[0][1], pair[1][1]], color=(0.5, 0.5, 0.5))
         # Plot field boundaries
-        for pair in [self.fieldVertPairLeft,self.fieldVertPairRight,self.fieldHorzPairUpper,self.fieldHorzPairLower]:
-            plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.3,0.3,0.3))
+        for pair in [
+            self.fieldVertPairLeft,
+            self.fieldVertPairRight,
+            self.fieldHorzPairUpper,
+            self.fieldHorzPairLower,
+        ]:
+            plt.plot([pair[0][0], pair[1][0]], [pair[0][1], pair[1][1]], color=(0.3, 0.3, 0.3))
         print("Done plotting")
         print("Displaying field...")
 
@@ -874,13 +925,13 @@ class Field:
         else:
             print("Node graph is empty")
 
-    def increaseRadius(self,step:int):
+    def increaseRadius(self, step: int):
         """
-        Manually increases radius of all mines by a step 
-        and recalculates connections accordingly 
+        Manually increases radius of all mines by a step
+        and recalculates connections accordingly
         """
-        shallowCopy=self.nodeGraph.copy()
-        #Delete all arc connections
+        shallowCopy = self.nodeGraph.copy()
+        # Delete all arc connections
         for node1 in shallowCopy.keys():
             deepCopy = shallowCopy[node1].copy()
             for node2 in deepCopy:
@@ -1021,11 +1072,20 @@ class Mine:
 class Node:
     nodeNum = 0
     connectionList = []
-    
-    def __init__(self, xPosition: float, yPosition:float,floating:bool,angle:float=0,name:str="",labeled:bool=False, nType:str="default"):
+
+    def __init__(
+        self,
+        xPosition: float,
+        yPosition: float,
+        floating: bool,
+        angle: float = 0,
+        name: str = "",
+        labeled: bool = False,
+        nType: str = "default",
+    ):
         """
         Create node based off of (x,y) coordinate, whether or not it is floating,
-        its angle, optional name, whether or not it is named, labeled, 
+        its angle, optional name, whether or not it is named, labeled,
         and the kind of Node it is(for selective elimination purposes)
         \nTypes(case sensitive): "default","start","end"
         """
@@ -1038,11 +1098,11 @@ class Node:
         self.labeled = labeled  # Purely for debugging and visually isolating nodes
         self.x = xPosition
         self.y = yPosition
-        self.plotted = False # To prevent hopefully duplicate plotting
-        #self.nodeGraph.update({self:None})
-        self.parentMine=None
-        self.floating=floating
-        self.angle = angle # will stay 0 if node doesnt have an angle, AKA it is floating
+        self.plotted = False  # To prevent hopefully duplicate plotting
+        # self.nodeGraph.update({self:None})
+        self.parentMine = None
+        self.floating = floating
+        self.angle = angle  # will stay 0 if node doesnt have an angle, AKA it is floating
 
         # For selective elimination(dont want to delete end or start nodes)
         # Types:
@@ -1094,6 +1154,7 @@ class Node:
 
     def __gt__(self, node1: "Node"):
         return self.y > node1.y
+
 
 # MineNode class, subclass of Node, keeps track of node and corresponding mines
 class MineNode(Node):
