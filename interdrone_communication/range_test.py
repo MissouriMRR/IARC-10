@@ -30,7 +30,6 @@ Waits for user to prompt for next one
 
 (spreadsheet can be created from JSON in a separate file)
 """
-# TODO update logging to be more readable when no spreadsheet
 
 
 def parse_bool_flag(value: str) -> bool:
@@ -130,7 +129,6 @@ async def main():
 
     droneId = flight_settings.current_drone_ID
 
-    # TODO decide how I want to set up num drones / other drones
     if args.targets is not None:
         dronesToSendData = args.targets
         if args.numDrones is not None and len(dronesToSendData) != args.numDrones:

@@ -8,6 +8,7 @@ import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from flight.waypoint import Waypoint
 import queue
 import threading
 import time
@@ -227,7 +228,6 @@ class Interdrone:
 
         return
 
-    # Function name might change
     async def all_armed(self) -> bool:
         """
         Used by drone one.
@@ -240,7 +240,6 @@ class Interdrone:
 
         return all(state.armed is True for state in self.drone_states)
 
-    # I'm lowkey guessing on descriptions from here until the async cancel_state
     async def send_takeoff(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a takeoff message to the drones passed as a parameter
@@ -363,6 +362,18 @@ class Interdrone:
             return False
 
         return all(state.mission_start is True for state in self.drone_states)
+
+    async def add_waypoints(self, waypoints: list[Waypoint]) -> None:
+        """
+        Send new_waypoints message to all drones
+        """
+        # TODO: Literally send
+
+        return
+
+    async def reached_waypoint(self, waypoint: Waypoint) -> None:
+        # TODO: Yes
+        return
 
     async def cancel_state(self) -> None:
         """

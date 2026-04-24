@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from flight.waypoint import Waypoint
+
 
 @dataclass
 class DroneState:
@@ -25,7 +27,8 @@ class DroneState:
         # --- Mission Control Flags ---
         self._demo_start: bool = False  # Flag for pre-programmed demonstration mode
         self._mission_start: bool = False  # Flag for autonomous mission execution
-        self._list_of_waypoints = []  # Collection of GPS/coordinate targets TODO GIVE ME A TYPE
+        self._list_of_waypoints: list[Waypoint] = []  # Collection of GPS/coordinate targets
+        self._waypoint_up_to_date: bool = False
 
     # --- Property Accessors ---
     # These provide a controlled interface for reading/writing internal attributes
@@ -95,12 +98,20 @@ class DroneState:
 
     # Waypoints: A list of coordinates the drone must visit
     @property
-    def list_of_waypoints(self):
+    def list_of_waypoints(self) -> list[Waypoint]:
         return self._list_of_waypoints
 
     @list_of_waypoints.setter
-    def list_of_waypoints(self, value):
+    def list_of_waypoints(self, value: list[Waypoint]) -> None:
         self._list_of_waypoints = value
+
+    @property
+    def waypoint_up_to_date(self) -> bool:
+        return self._waypoint_up_to_date
+
+    @waypoint_up_to_date.setter
+    def waypoint_up_to_date(self, value) -> None:
+        self._waypoint_up_to_date = value
 
     # --- Logic Methods ---
 
