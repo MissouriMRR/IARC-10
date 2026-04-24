@@ -29,7 +29,7 @@ class Server:
     async def start_server_async(self):
         server = await asyncio.start_server(
             self.handle_client,
-            str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
+            "0.0.0.0",
             int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
         )
 
