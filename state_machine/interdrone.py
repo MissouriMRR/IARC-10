@@ -8,6 +8,7 @@ import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from flight.waypoint import Waypoint
 import queue
 import threading
 import time
@@ -366,7 +367,7 @@ class Interdrone:
         """
         Send new_waypoints message to all drones
         """
-        # TODO: Literally send them new_waypoints message
+        # TODO: Literally send 
 
         return
 
