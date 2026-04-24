@@ -363,16 +363,44 @@ class Interdrone:
 
         return all(state.mission_start is True for state in self.drone_states)
 
-    async def add_waypoints(self, waypoints: list[Waypoint]) -> None:
+    async def add_waypoints(self, dronesToSendData: tuple[int, ...], waypoints: list[Waypoint]) -> None:
         """
+        Message ID = 545
         Send new_waypoints message to all drones
         """
-        # TODO: Literally send 
+        new_waypoints_message: Message = Message.create(
+            id=MessageType.NEW_WAYPOINTS,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={
+                "newWaypoints": waypoints,
+            },
+        )
+
+        self.send(new_waypoints_message)
+
+        #TODO: Sets all other droneState waypoint_up_to_date flag to false.
 
         return
 
-    async def reached_waypoint(self, waypoint: Waypoint) -> None:
-        # TODO: Yes
+    async def reached_waypoint(self, dronesToSendData: tuple[int, ...], waypoint: Waypoint) -> None:
+        """
+        Message ID = 550
+        Send reached_waypoint message to all drones
+        """
+        reached_waypoint_message: Message = Message.create(
+            id=MessageType.REACHED_WAYPOINT,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={
+                "reachedWaypointId": waypoint.waypoint_id,
+            },
+        )
+
+        self.send(reached_waypoint_message)
+
+        #TODO: Sets all other droneState waypoint_up_to_date flag to false.
+
         return
 
     async def cancel_state(self) -> None:
