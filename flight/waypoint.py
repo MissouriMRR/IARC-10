@@ -1,6 +1,7 @@
 from typing import NamedTuple
 import json
 
+
 class WaypointGroups(NamedTuple):
     drone1_waypoints: tuple[Waypoint, Waypoint]
     drone2_waypoints: tuple[Waypoint, Waypoint]
@@ -14,7 +15,7 @@ class Line:
     @property
     def dx(self) -> float:
         return self.end._get_longitude() - self.start._get_longitude()
-    
+
     @property
     def dy(self) -> float:
         return self.end._get_latitude() - self.start._get_latitude()
@@ -26,13 +27,13 @@ class Waypoint:
         self.drone_id = drone_id
         self.lat = lat
         self.long = long
-        
-        self.name = name # Optional name for the waypoint, can be used for easier identification
+
+        self.name = name  # Optional name for the waypoint, can be used for easier identification
 
         self.has_visited = False
         self.has_to_wait = False
         self.waypoints_to_reach: list[Waypoint] = []
-        
+
     def __str__(self) -> str:
         return f"Waypoint(id={self.waypoint_id}, drone_id={self.drone_id}, lat={self.lat}, long={self.long}, name='{self.name}')"
 
@@ -112,8 +113,12 @@ class Waypoint:
 
                 denom_is_positive: bool = denom > 0
 
-                s02_x: float = drone1_lines[i].start._get_longitude() - drone2_lines[j].start._get_longitude()
-                s02_y: float = drone1_lines[i].start._get_latitude() - drone2_lines[j].start._get_latitude()
+                s02_x: float = (
+                    drone1_lines[i].start._get_longitude() - drone2_lines[j].start._get_longitude()
+                )
+                s02_y: float = (
+                    drone1_lines[i].start._get_latitude() - drone2_lines[j].start._get_latitude()
+                )
 
                 s_numer: float = (s1_x * s02_y) - (s1_y * s02_x)
 
@@ -137,25 +142,32 @@ class Waypoint:
                 )
         return waypoint_groups
 
+
 # Testing code
 if __name__ == "__main__":
     with open("./data/waypoints_test.json", "r") as f:
         data = json.load(f)
-    
+
     id = 0
     waypoints_1 = []
-    
-    for waypoint in data['Set 1']:
-        waypoints_1.append(Waypoint(id, id + 1, waypoint['latitude'], waypoint['longitude'], name=waypoint['name']))
+
+    for waypoint in data["Set 1"]:
+        waypoints_1.append(
+            Waypoint(id, id + 1, waypoint["latitude"], waypoint["longitude"], name=waypoint["name"])
+        )
         id += 1
-    
+
     id = 0
     waypoints_2 = []
-    
-    for waypoint in data['Set 2']:
-        waypoints_2.append(Waypoint(id, id + 1, waypoint['latitude'], waypoint['longitude'], name=waypoint['name']))
+
+    for waypoint in data["Set 2"]:
+        waypoints_2.append(
+            Waypoint(id, id + 1, waypoint["latitude"], waypoint["longitude"], name=waypoint["name"])
+        )
         id += 1
-    
+
     waypoint_groups = Waypoint.check_for_collision(waypoints_1, waypoints_2)
     for group in waypoint_groups:
-        print(f"Collision detected between ({group.drone1_waypoints[0]}, {group.drone1_waypoints[1]}) and ({group.drone2_waypoints[0]}, {group.drone2_waypoints[1]})")
+        print(
+            f"Collision detected between ({group.drone1_waypoints[0]}, {group.drone1_waypoints[1]}) and ({group.drone2_waypoints[0]}, {group.drone2_waypoints[1]})"
+        )
