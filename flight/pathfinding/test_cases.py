@@ -4,9 +4,10 @@ from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coo
 from random import randint, seed, uniform
 import math
 import time
+
 """
 Use this file for getting the node graph.
-This will generate 10 (or however many you want) mines that are placed. 
+This will generate 10 (or however many you want) mines that are placed.
 The output will be at the bottom.
 """
 # seed(2020) # make random or not
@@ -32,22 +33,22 @@ start and endNodes are directly across from each other, start node is centered a
 The given path showaces a sharp turn backwards for some reason.
 """
 
-if (len(recordedMineCoords) > 0):
+if len(recordedMineCoords) > 0:
     numMines = len(recordedMineCoords)
 
-pathFindingType = "A*"  # dijkstra OR A* OR both OR none 
+pathFindingType = "A*"  # dijkstra OR A* OR both OR none
 
-stepDebug = False # True if you want to step through mines being added, 
-                  # closing the generated window moves onto to the next step.
-                  # NOTE:In order to fully end the program you need to run ctrl+C in the terminal and focus onto the graph window
-                  # or fully iterate through numMines times
+stepDebug = False  # True if you want to step through mines being added,
+# closing the generated window moves onto to the next step.
+# NOTE:In order to fully end the program you need to run ctrl+C in the terminal and focus onto the graph window
+# or fully iterate through numMines times
 
 # Get converted dimensions of field
 
-lat_lon1 = [36.021683, -95.941831] # *
+lat_lon1 = [36.021683, -95.941831]  # *
 lat_lon1_alt = [36.021695, -95.941831]
-lat_lon2 = [36.020694, -95.941856] # **
-lat_lon3 = [36.021694, -95.942372] # ***
+lat_lon2 = [36.020694, -95.941856]  # **
+lat_lon3 = [36.021694, -95.942372]  # ***
 lat_lon4 = [36.020703, -95.942397]
 
 # converter = coordCon([lat_lon1,lat_lon2,lat_lon3,lat_lon4],360)
@@ -55,16 +56,23 @@ converter = coordCon([lat_lon1_alt, lat_lon2, lat_lon3, lat_lon4], 360)
 
 arbCorners = converter.get_arb_corners()
 # sim_field_size = [width, height]
-sim_field_size = [max([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]) - min([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]), max([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]]) - min([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]])]
-simCorners = [(0,sim_field_size[1]),
-              (sim_field_size[0],sim_field_size[1]),
-              (0,0),
-              (sim_field_size[0],0)]
+sim_field_size = [
+    max([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]])
+    - min([arbCorners[0][0], arbCorners[1][0], arbCorners[2][0], arbCorners[3][0]]),
+    max([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]])
+    - min([arbCorners[0][1], arbCorners[1][1], arbCorners[2][1], arbCorners[3][1]]),
+]
+simCorners = [
+    (0, sim_field_size[1]),
+    (sim_field_size[0], sim_field_size[1]),
+    (0, 0),
+    (sim_field_size[0], 0),
+]
 fieldSimCoords = {
     "xMin": simCorners[0][0],
     "xMax": simCorners[1][0],
     "yMin": simCorners[3][1],
-    "yMax": simCorners[1][1]
+    "yMax": simCorners[1][1],
 }
 genXMin = int(fieldSimCoords["xMin"])
 genXMax = int(fieldSimCoords["xMax"])
@@ -73,8 +81,8 @@ genYMax = int(fieldSimCoords["yMax"])
 
 field = Field(sim_field_size, arbCorners)
 
-position = [0,0]
-mineGenTolerance = 0*radius
+position = [0, 0]
+mineGenTolerance = 0 * radius
 step = 0
 labeled = False
 # Mine generation, do not add floating nodes before this point
@@ -85,30 +93,51 @@ only their nodes will be checked for elimination
 """
 for num in range(numMines):
     step += 1
-    if len(recordedMineCoords) <= 0: # Run normally if no mine cords have been inputted
+    if len(recordedMineCoords) <= 0:  # Run normally if no mine cords have been inputted
         if num != 0 and num != numMines:
             mineHistory += ", "
-        while True: # To make sure generated mines arent clipping off the edges of the field
-            position[0], position[1] = randint(genXMin,genXMax+1),randint(genYMin,genYMax+1)
+        while True:  # To make sure generated mines arent clipping off the edges of the field
+            position[0], position[1] = randint(genXMin, genXMax + 1), randint(genYMin, genYMax + 1)
             invalidPosition = False
             for mine in Mine.mines:
-                if (mine.getPos()[0] - mineGenTolerance <= position[0] <= mine.getPos()[0] + mineGenTolerance) and (mine.getPos()[1] - mineGenTolerance <= position[1] <= mine.getPos()[1] + mineGenTolerance):
+                if (
+                    mine.getPos()[0] - mineGenTolerance
+                    <= position[0]
+                    <= mine.getPos()[0] + mineGenTolerance
+                ) and (
+                    mine.getPos()[1] - mineGenTolerance
+                    <= position[1]
+                    <= mine.getPos()[1] + mineGenTolerance
+                ):
                     invalidPosition = True
                     break
             if invalidPosition:
                 continue
-            if position[0] <= fieldSimCoords["xMin"] + radius or position[0] >= fieldSimCoords["xMax"] - radius or position[1] <= fieldSimCoords["yMin"] + radius or position[1] >= fieldSimCoords["yMax"] - radius:
+            if (
+                position[0] <= fieldSimCoords["xMin"] + radius
+                or position[0] >= fieldSimCoords["xMax"] - radius
+                or position[1] <= fieldSimCoords["yMin"] + radius
+                or position[1] >= fieldSimCoords["yMax"] - radius
+            ):
                 continue
             break
-        
-        field.addMine(position[0],position[1],radius)
+
+        field.addMine(position[0], position[1], radius)
         mineHistory += "(" + str(position[0]) + "," + str(position[1]) + ")"
         print("added a mine")
     else:
         field.addMine(recordedMineCoords[num][0], recordedMineCoords[num][1], radius)
         print("added a mine")
     if stepDebug:
-        field.plotField(labeled=labeled,xlabel="[ctr+c] in the terminal to force end the program.\n(If it doesn't close initially, focus on the generated window)",title="Mines and Potential Paths:\n" + "Number of Mines: " + str(step) + "/" + str(numMines))
+        field.plotField(
+            labeled=labeled,
+            xlabel="[ctr+c] in the terminal to force end the program.\n(If it doesn't close initially, focus on the generated window)",
+            title="Mines and Potential Paths:\n"
+            + "Number of Mines: "
+            + str(step)
+            + "/"
+            + str(numMines),
+        )
     else:
         continue
 print("done adding mines\n")
@@ -119,13 +148,17 @@ if len(recordedMineCoords) <= 0:
     print(mineHistory)
     print()
 
-start = field.placeStartNode((simCorners[2][0]+simCorners[3][0])/2,((simCorners[2][1]-simCorners[3][1])/2)-5)
+start = field.placeStartNode(
+    (simCorners[2][0] + simCorners[3][0]) / 2, ((simCorners[2][1] - simCorners[3][1]) / 2) - 5
+)
 # Randomize endpoints, place endpoints along a horizontal line, or place endpoints manually
 # endPoints = field.placeEndNodesLine(fieldSimCoords["yMax"],1) # A density of one defaults to the end node at (x range midpoint,yVal)
 # endPoints = field.placeEndNodesPositions([(uniform(simCorners[0][0],simCorners[1][0]),simCorners[1][1]+5)])
-endPoints = field.placeEndNodesPositions([(start.x,((simCorners[0][1]+simCorners[1][1])/2)+5)])
+endPoints = field.placeEndNodesPositions(
+    [(start.x, ((simCorners[0][1] + simCorners[1][1]) / 2) + 5)]
+)
 
-#CONNECTS FLOATING NODES TOGETHER, DONT REMOVE
+# CONNECTS FLOATING NODES TOGETHER, DONT REMOVE
 for node in endPoints:
     node.connectNode(start)
 
@@ -137,50 +170,54 @@ for mine in field.mines:
 dijkstraPathLength = 0
 aStarPathLength = 0
 if pathFindingType == "dijkstra" or pathFindingType == "both":
-        print("Calculating dijkstra's")
-        pathSolve = Graph(field.nodeGraph)
-        temp = time.time()
-        path = pathSolve.shortest_path(start,endPoints)
-        dijkstraTime = time.time()-temp
-        print("optimal path:",path)
+    print("Calculating dijkstra's")
+    pathSolve = Graph(field.nodeGraph)
+    temp = time.time()
+    path = pathSolve.shortest_path(start, endPoints)
+    dijkstraTime = time.time() - temp
+    print("optimal path:", path)
 
-        dijkstraPathLength = 0
-        for i in range(len(path)-1):
-            dijkstraPathLength += math.hypot((path[i].x-path[i+1].x),(path[i].y-path[i+1].y))
+    dijkstraPathLength = 0
+    for i in range(len(path) - 1):
+        dijkstraPathLength += math.hypot((path[i].x - path[i + 1].x), (path[i].y - path[i + 1].y))
 
-        print(f"Dijkstra path length {dijkstraPathLength}")
-        print(f"Dijkstra path time {dijkstraTime}")
+    print(f"Dijkstra path length {dijkstraPathLength}")
+    print(f"Dijkstra path time {dijkstraTime}")
 else:
     path = []
 if pathFindingType == "A*" or pathFindingType == "both":
     print("Calculating A*")
+
     def yMax(node):
-        return (460-node.y)
+        return 460 - node.y
 
     aStarPathSolve = Graph(field.nodeGraph)
     temp = time.time()
-    aStarPath = aStarPathSolve.a_star(start,endPoints,yMax)
+    aStarPath = aStarPathSolve.a_star(start, endPoints, yMax)
 
-    aStarTime = time.time()-temp
-    print("A* path:",aStarPath)
-
+    aStarTime = time.time() - temp
+    print("A* path:", aStarPath)
 
     aStarPathLength = 0
-    for i in range(len(aStarPath)-1):
-        aStarPathLength += math.hypot((aStarPath[i].x-aStarPath[i+1].x),(aStarPath[i].y-aStarPath[i+1].y))
+    for i in range(len(aStarPath) - 1):
+        aStarPathLength += math.hypot(
+            (aStarPath[i].x - aStarPath[i + 1].x), (aStarPath[i].y - aStarPath[i + 1].y)
+        )
     print(f"A* path length {aStarPathLength}")
     print(f"A* path time {aStarTime}")
 else:
     aStarPath = []
-if pathFindingType=="both":
+if pathFindingType == "both":
     print(f" Best Path Length Difference: {(aStarPathLength-dijkstraPathLength)}")
     print(f"A* is {(aStarPathLength/dijkstraPathLength)*100-100:.3f}% longer")
-    print(f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}")
+    print(
+        f" Best Path Time: {dijkstraTime} \n A* time: {aStarTime} \n difference: {(dijkstraTime-aStarTime)}"
+    )
     print(f"A* is {(dijkstraTime/aStarTime-1):.1f} times faster")
 
 if not stepDebug:
     field.plotField(path=aStarPath)
 
 print(f"Increasing radius from {radius} to {radius*2}")
-field.increaseRadius(radius*2)
+field.increaseRadius(radius * 2)
 field.plotField()

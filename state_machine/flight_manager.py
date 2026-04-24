@@ -6,9 +6,11 @@ import logging
 import dronekit
 
 from state_machine.drone import Drone
+from state_machine.drone_state import DroneState
 from state_machine.state_machine import StateMachine
 from state_machine.states import Start
 from state_machine.flight_settings import FlightSettings
+from state_machine.interdrone import Interdrone
 
 
 class FlightManager:
@@ -56,18 +58,32 @@ class FlightManager:
         await self.drone.connect_drone()
 
         if flight_settings.sim_mode.AIRSIM:
-
             self.drone.remove_arming_check()
+
+        # Create drone_states to access state of other drones in the test
+        drone_states: list[DroneState] = (
+            []
+        )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+        for id in flight_settings.other_drones_in_mission:
+            drone_states.append(
+                DroneState(
+                    drone_id=id,
+                    drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+                )
+            )
+
+        interdrone_state: Interdrone = Interdrone(flight_settings, self.drone, drone_states)
 
         logging.info("Starting processes")
         state_machine_task: asyncio.Task[None] = asyncio.ensure_future(
             StateMachine(
-                Start(self.drone, flight_settings),
+                Start(self.drone, flight_settings, interdrone_state),
                 self.drone,
                 flight_settings,
+                interdrone_state,
             ).run()
         )
-
+        # TODO START INTERDRONE TASK IN STATE MACHINE TOO
         asyncio.ensure_future(self.kill_switch(state_machine_task))
 
         try:

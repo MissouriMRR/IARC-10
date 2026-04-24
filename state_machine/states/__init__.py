@@ -10,6 +10,5 @@ from state_machine.states.impl import (
     InitialCalcScanPath,
     Recall,
     Scan,
-
 )
 from state_machine.states.state import State

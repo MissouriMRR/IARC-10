@@ -83,10 +83,11 @@ class FlightSettings:
         title: str = DEFAULT_RUN_TITLE,
         description: str = DEFAULT_RUN_DESCRIPTION,
         drone_ID: int = 1,
-        app_IP: int = 0,
-        total_drones: int = 1,
-        other_drone_info: tuple[dict] = [],
-        mission_corners: tuple[dict, dict, dict, dict] = [],
+        drones_in_mission: list[int] = [1, 2, 3, 4],
+        drone_info: list[mission_config.DroneInfo] = [],
+        app_IP: str = "",
+        app_port: int = 0,
+        mission_corners: list[dict[str, float]] | None = None,
         max_height: float = 10,
         start_coord: dict = {},
         sim_mode: SimMode = SimMode.REAL,
@@ -112,11 +113,12 @@ class FlightSettings:
         self.__run_title: str = title
         self.__run_description: str = description
         self.__app_opperable: bool = app_opperable
-        self.__app_IP: int = app_IP
+        self.__app_IP: str = app_IP
+        self.__app_port: int = app_port
         self.__current_drone_ID = drone_ID
-        self.__number_of_total_drones: int = total_drones
-        self.__other_drone_info: tuple[dict] = other_drone_info
-        self.__mission_field_corners: tuple[dict, dict, dict, dict] = mission_corners
+        self.__drones_in_mission: list[int] = list(drones_in_mission)
+        self.__drone_info: list[mission_config.DroneInfo] = list(drone_info)
+        self.__mission_field_corners: list[dict[str, float]] = mission_corners or []
         self.__max_flight_height: float = max_height
         self.__start_coord: dict = start_coord
         self.__sim_mode: SimMode = sim_mode
@@ -124,10 +126,15 @@ class FlightSettings:
         self.__yolo_status: Event = Event()
 
     @staticmethod
-    def from_mission_config() -> "FlightSettings":
+    def from_mission_config(self_id: int | None = None) -> "FlightSettings":
         """
         Creates a new FlightSettings object from the mission config file and command line
         arguments
+
+        Parameters
+        ----------
+        self_id : int | None
+            Override for which drone ID is "self". Defaults to self_id in the config file.
 
         Returns
         -------
@@ -154,12 +161,26 @@ class FlightSettings:
             if airsim_flag
             else (config["sim_mode_config"] if sim_flag else config["real_mode_config"])
         )
+
+        resolved_id: int = self_id if self_id is not None else config["self_id"]
+        all_drones: list[mission_config.DroneInfo] = config["drone_info"]
+        if not any(d["id"] == resolved_id for d in all_drones):
+            raise ValueError(f"Drone ID {resolved_id} not found in drone_info")
+
         config_settings: FlightSettings = FlightSettings(
-            config["simple_takeoff"],
-            config["run_title"],
-            config["run_description"],
-            sim_mode,
-            sim_mode_config["mission_data_path"],
+            simple_takeoff=config["simple_takeoff"],
+            app_opperable=config["app_opperable"],
+            title=config["run_title"],
+            description=config["run_description"],
+            drone_ID=resolved_id,
+            drone_info=all_drones,
+            app_IP=config["app_info"]["ip"],
+            app_port=int(config["app_info"]["port"]),
+            mission_corners=config["mission_field_corners"],
+            max_height=config["max_flight_height"],
+            start_coord=config["start_coord"],
+            sim_mode=sim_mode,
+            mission_data_path=sim_mode_config["mission_data_path"],
         )
         return config_settings
 
@@ -187,7 +208,7 @@ class FlightSettings:
             Flag for vertical takeoff
         """
         self.__simple_takeoff = simple_takeoff
-    
+
     @property
     def app_opperable(self) -> bool:
         """
@@ -201,7 +222,7 @@ class FlightSettings:
         return self.__app_opperable
 
     @app_opperable.setter
-    def simple_takeoff(self, app_opperable: bool) -> None:
+    def app_opperable(self, app_opperable: bool) -> None:
         """
         Sets the flag for if app is opperational
 
@@ -271,7 +292,7 @@ class FlightSettings:
         current_drone_ID : int
             Integer ID for the current drone
         """
-        return self.__current_drone_ID
+        return int(self.__current_drone_ID)
 
     @current_drone_ID.setter
     def current_drone_ID(self, drone_ID: str) -> None:
@@ -285,14 +306,37 @@ class FlightSettings:
         """
         self.__current_drone_ID = drone_ID
 
+    # Other drones in mission_is_used to get other drones ids
     @property
-    def app_IP(self) -> int:
+    def other_drones_in_mission(self) -> list[int]:
+        return [
+            drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
+        ]
+
+    @property
+    def drones_in_mission(self) -> list[int]:
+        return self.__drones_in_mission
+
+    @drones_in_mission.setter
+    def drones_in_mission(self, drones_in_mission: list[int]) -> None:
+        self.__drones_in_mission = list(drones_in_mission)
+
+    @property
+    def drone_info(self) -> list[mission_config.DroneInfo]:
+        return self.__drone_info
+
+    @drone_info.setter
+    def drone_info(self, info: list[mission_config.DroneInfo]) -> None:
+        self.__drone_info = list(info)
+
+    @property
+    def app_IP(self) -> str:
         """
-        Returns the apps IP address
+        Returns the app's IP address
 
         Returns
         -------
-        app_IP : int
+        app_IP : str
             IP for the app that the drone tries to connect to
         """
         return self.__app_IP
@@ -304,128 +348,96 @@ class FlightSettings:
 
         Parameters
         ----------
-        app_IP : int
+        app_IP : str
             New IP for the app that the drone tries to connect to
         """
         self.__app_IP = app_IP
 
     @property
+    def app_port(self) -> int:
+        return self.__app_port
+
+    @app_port.setter
+    def app_port(self, port: int) -> None:
+        self.__app_port = port
+
+    @property
     def number_of_total_drones(self) -> int:
-        """
-        Returns the 
-
-        Returns
-        -------
-        number_of_total_drones : int
-            
-        """
-        return self.__number_of_total_drones
-
-    @number_of_total_drones.setter
-    def number_of_total_drones(self, total_drones: int) -> None:
-        """
-        Sets a new 
-
-        Parameters
-        ----------
-        number_of_total_drones : int
-            New 
-        """
-        self.__number_of_total_drones = total_drones
+        return len(self.__drone_info)
 
     @property
-    def other_drone_info(self) -> tuple[dict]:
-        """
-        Returns 
-
-        Returns
-        -------
-         : 
-            
-        """
-        return self.__other_drone_info
-
-    @other_drone_info.setter
-    def other_drone_info(self, other_info: tuple[dict]) -> None:
-        """
-        Sets a new 
-
-        Parameters
-        ----------
-         : 
-            New 
-        """
-        self.__other_drone_info = other_info
+    def other_drone_info(self) -> list[mission_config.DroneInfo]:
+        return [d for d in self.__drone_info if d["id"] != self.__current_drone_ID]
 
     @property
-    def mission_field_corners(self) -> tuple[dict, dict, dict, dict]:
+    def mission_field_corners(self) -> list[dict[str, float]]:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__mission_field_corners
 
     @mission_field_corners.setter
-    def mission_field_corners(self, field_corners: tuple[dict, dict, dict, dict]) -> None:
+    def mission_field_corners(self, field_corners: list[dict[str, float]]) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__mission_field_corners = field_corners
-    
+
     @property
     def start_coord(self) -> dict:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__start_coord
 
     @start_coord.setter
     def start_coord(self, start_coord: dict) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__start_coord = start_coord
 
     @property
-    def max_flight_height(self) -> dict:
+    def max_flight_height(self) -> float:
         """
-        Returns 
+        Returns
 
         Returns
         -------
-         : 
-            
+         :
+
         """
         return self.__max_flight_height
 
     @max_flight_height.setter
-    def max_flight_height(self, max_height: dict) -> None:
+    def max_flight_height(self, max_height: float) -> None:
         """
-        Sets a new 
+        Sets a new
 
         Parameters
         ----------
-         : 
-            New 
+         :
+            New
         """
         self.__max_flight_height = max_height
 
@@ -475,6 +487,12 @@ class FlightSettings:
         mission_data_path : str
             The path to the JSON file containing the boundary data.
         """
+
+    def get_drone_by_id(self, drone_id: int) -> mission_config.DroneInfo:
+        for drone in self.__drone_info:
+            if drone["id"] == drone_id:
+                return drone
+        raise ValueError(f"Drone ID {drone_id} not found in drone_info")
 
     @property
     def yolo_status(self) -> Event:
