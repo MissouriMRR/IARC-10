@@ -44,14 +44,19 @@ class MessageType(Enum):
     START_MISSION_ACK = 541
     NEW_WAYPOINTS = 545
     NEW_WAYPOINTS_ACK = 546
-    REACHED_WAYPOINTS = 550
+    REACHED_WAYPOINT = 550
     EMERGENCY_LAND = 555
     LAND = 556
     RECONFIRM_WAYPOINTS = 560
 
 
 SchemaFieldType: TypeAlias = (
-    type[int] | type[float] | type[str] | type[tuple[Any, ...]] | type[dict[str, Any]] | MessageType
+    type[int]
+    | type[float]
+    | type[str]
+    | type[tuple[Any, ...]]
+    | type[dict[str, Any]]
+    | MessageType
 )
 
 # If you need documentation for message types, see this document:
@@ -239,11 +244,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },
-    MessageType.REACHED_WAYPOINTS: {
-        "id": MessageType.REACHED_WAYPOINTS,
+    MessageType.REACHED_WAYPOINT: {
+        "id": MessageType.REACHED_WAYPOINT,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "reachedWaypointIds": tuple[int, ...],
+        "reachedWaypointId": int,
     },
     MessageType.EMERGENCY_LAND: {
         "id": MessageType.EMERGENCY_LAND,
@@ -301,7 +306,8 @@ def _matches_type(value: object, expected_type: object) -> bool:
         else:
             key_type, value_type = object, object
         return all(
-            _matches_type(k, key_type) and _matches_type(v, value_type) for k, v in mapping.items()
+            _matches_type(k, key_type) and _matches_type(v, value_type)
+            for k, v in mapping.items()
         )
 
     # tuple[T, ...] or tuple[T1, T2, ...]
