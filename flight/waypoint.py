@@ -24,12 +24,17 @@ class Line:
 
 
 class Waypoint:
-    def __init__(self, waypoint_id: int, drone_id: int, lat: float, long: float, name: str = ""):
-        self.waypoint_id = waypoint_id
+    def __init__(
+        self, drone_id: int, lat: float, long: float, waypoint_id: int = -1, name: str = ""
+    ):
+
         self.drone_id = drone_id
         self.lat = lat
         self.long = long
-        self.id = self.drone_id * 100000000 + random.randint(0, 1000000)
+        if waypoint_id != -1:
+            self.waypoint_id = waypoint_id
+        else:
+            self.waypoint_id = self.drone_id * 100000000 + random.randint(0, 1000000)
 
         self.name = name  # Optional name for the waypoint, can be used for easier identification
 
