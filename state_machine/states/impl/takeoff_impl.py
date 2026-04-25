@@ -54,8 +54,9 @@ async def run(self: Takeoff) -> State:
                         if id != self.drone.id:
                             self.interdrone.send_start_demo(id)
 
-                    while not self.interdrone.all_demo_start():
+                    while not await self.interdrone.all_demo_start():
                         logging.info("Waiting for all drones to start the demo...")
+                        print(f"drone id: {self.drone.id}")
                         await asyncio.sleep(0.1)
                 await self.drone.takeoff(5)  # Fix altitude later lol
                 await asyncio.sleep(5)
@@ -67,7 +68,7 @@ async def run(self: Takeoff) -> State:
                         if self.drone.id == 1 and id != self.drone.id:
                             self.interdrone.send_start_mission(id)
 
-                    while not self.interdrone.all_mission_start():
+                    while not await self.interdrone.all_mission_start():
 
                         logging.info("Waiting for all drones to start the mission...")
                         await asyncio.sleep(0.1)
@@ -75,13 +76,13 @@ async def run(self: Takeoff) -> State:
                 await self.drone.takeoff(5)  # Fix altitude later lol
                 await asyncio.sleep(5)
                 return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
-            if self.interdrone.CMD_MSG == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
+            if self.interdrone.get_cmd_msg() == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
                 if self.drone.id == 1:
                     for id in self.flight_settings.drones_in_mission:
                         if id != self.drone.id:
                             await self.interdrone.send_takeoff(id)
 
-                    while not self.interdrone.all_takeoff():
+                    while not await self.interdrone.all_takeoff():
                         logging.info("Waiting for all drones to takeoff...")
                         await asyncio.sleep(0.1)
                     break

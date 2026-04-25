@@ -263,7 +263,7 @@ class Interdrone:
         if not self.drone_states:
             return True
 
-        return all(state.armed is True for state in self.drone_states)
+        return all(state.armed is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_takeoff(self, dronesToSendData: tuple[int, ...]) -> None:
         """
@@ -304,7 +304,7 @@ class Interdrone:
         if not self.drone_states:
             return False
 
-        return all(state.takeoff is True for state in self.drone_states)
+        return all(state.takeoff is True for state in self.drone_states) or self.drone.id !=1
 
     async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
         """
@@ -343,9 +343,9 @@ class Interdrone:
         Loop through all droneState objects to see if they have started demo
         """
         if not self.drone_states:
-            return False
-
-        return all(state.demo_start is True for state in self.drone_states)
+            return True
+        print(f"Checking if all drones have started demo. Drone states: {self.drone_states}")
+        return all(state.demo_start is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_start_mission(self, dronesToSendData: tuple[int, ...]) -> None:
         """
