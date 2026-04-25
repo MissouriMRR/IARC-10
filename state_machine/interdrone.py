@@ -525,7 +525,7 @@ class Interdrone:
 
         startTime = time.time()
         try:
-            while True:  # TODO COMMENT THIS STUFF OUT ONCE STATE MACHINE IS GOING
+            while True:
                 # Check for server messages
                 message = self.networking.try_get_server_message(timeout=0.02)
                 if message is not None:
