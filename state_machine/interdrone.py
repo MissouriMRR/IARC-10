@@ -671,7 +671,7 @@ class Interdrone:
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if fake_checksum == message.data["senderDroneWaypointsChecksum"]:
+                                if checksum == message.data["senderDroneWaypointsChecksum"]:
                                     takeoff_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         dronesToSendData=(message.senderId,),
