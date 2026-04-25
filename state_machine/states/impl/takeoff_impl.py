@@ -16,6 +16,7 @@ from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 
+
 async def run(self: Takeoff) -> State:
     """
     Implements the run method for the Takeoff state.

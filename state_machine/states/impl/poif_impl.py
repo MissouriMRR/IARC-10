@@ -39,7 +39,7 @@ async def run(self: POIF) -> None:
         
         circleWaypoints=self.flight_settings.circle_waypoints(location, 10, 5, drone_id=self.drone.id)
         self.drone.add_waypoints(circleWaypoints[:5])
-        circleWaypoints=circleWaypoints[5:]
+        circleWaypoints = circleWaypoints[5:]
         for state in self.interdrone.other_drones_in_mission:
             self.drone.checkForCollision(state.list_of_waypoints)
 

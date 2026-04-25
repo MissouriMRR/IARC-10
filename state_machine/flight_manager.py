@@ -60,8 +60,6 @@ class FlightManager:
         if flight_settings.sim_mode.AIRSIM:
             self.drone.remove_arming_check()
 
-
-
         interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
 
         logging.info("Starting processes")

@@ -46,6 +46,7 @@ class Server:
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             while True:
+                print("Message received in client. Trying to read it in.")
                 try:
                     byteMessage = await reader.readuntil(b"\n")
                 except asyncio.IncompleteReadError:
@@ -56,7 +57,7 @@ class Server:
                 # If message was read in, begin processing
                 if not message:
                     continue
-
+                print(f"Message processed correctly. ID is {message.id}")
                 # If the received message requires a response inside of server, it's overwritten and sent via clientInData at the end of handle_client()
                 responseMessage: Message | None = None
                 print(f"Message received: {message.id}")
@@ -68,27 +69,6 @@ class Server:
                     case MessageType.APP_DEBUG:
                         writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
                         await writer.drain()
-                    case MessageType.REQUEST_DRONE_LOCATIONS:
-                        # Send back response message with two drones locations
-                        # NOTE in the future we will need to have state that fetches drone location to fill in the data here
-                        # This is temporary for app testing
-                        responseMessage = Message.create(
-                            id=MessageType.SEND_DRONE_LOCATIONS,
-                            dronesToSendData=(message.senderId,),
-                            senderId=self.flight_settings.current_drone_ID,
-                            # TODO FIGURE OUT PATHFINDINGS COORD SYSTEM (please write docs)
-                            data={
-                                "drone1Data": {
-                                    "latLong": [37.9586040775280, -91.771233861919],
-                                    "xYCoords": [100, 10],
-                                },
-                                "drone2Data": {
-                                    "latLong": [37.9586654649470, -91.772145189968],
-                                    "xYCoords": [10, 250],
-                                },
-                            },
-                        )
-                        print("Sending drone location response to app")
                     case MessageType.HEARTBEAT:
                         await self.serverOutData.put(item=message)
                     case MessageType.SPEED_TEST_REQUEST:

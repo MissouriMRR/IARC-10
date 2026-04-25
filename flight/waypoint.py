@@ -164,8 +164,6 @@ class Waypoint:
         return waypoint_groups
 
 
-
-
 # Testing code
 if __name__ == "__main__":
     with open("./data/waypoints_test.json", "r") as f:

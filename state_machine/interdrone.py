@@ -26,9 +26,11 @@ if TYPE_CHECKING:
     # it causes a circular import.
     from state_machine.states.state import State
 
+
 async def get_input(prompt: str) -> str:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, input, prompt)
+
 
 class CMD_MSG(Enum):
     NONE = 0
@@ -70,16 +72,14 @@ class Interdrone:
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         # Create drone_states to access state of other drones in the test
-        drone_states: list[DroneState] = (
-            []
-        )  
+        drone_states: list[DroneState] = []
         for id in flight_settings.other_drones_in_mission:
             drone_states.append(
                 DroneState(
                     drone_id=id,
                     drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+                )
             )
-        )
 
         self.drone_states: list[DroneState] = drone_states
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
@@ -402,9 +402,9 @@ class Interdrone:
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
                 # checksum = get_checksum(state.list_of_waypoints)
-                waypointsString=""
+                waypointsString = ""
                 for waypoint in waypoints:
-                    waypointsString+=waypoint.lat+","+waypoint.long+","+waypoint.id+";"
+                    waypointsString += waypoint.lat + "," + waypoint.long + "," + waypoint.id + ";"
 
                 checksum = 10
                 new_waypoints_message: Message = Message.create(
@@ -672,7 +672,6 @@ class Interdrone:
                                                 long=float(long),
                                             )
                                         )
-                                
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
@@ -724,7 +723,7 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message)
-                            
+
                             self.drone.checkForCollision(state.list_of_waypoints)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
 
