@@ -91,8 +91,6 @@ async def main():
             ),
         )
 
-        # TODO TEST WITH INCORRECT CHECKSUM
-
     try:
         # Keep the networking loop alive
         while True:

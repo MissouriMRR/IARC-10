@@ -131,6 +131,7 @@ dependencies = [
     { name = "dronekit" },
     { name = "future" },
     { name = "matplotlib" },
+    { name = "numpy" },
     { name = "pyqt5", marker = "platform_machine != 'aarch64'" },
     { name = "utm" },
 ]
@@ -140,6 +141,7 @@ requires-dist = [
     { name = "dronekit", specifier = ">=2.9.2" },
     { name = "future", specifier = ">=1.0.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "numpy", specifier = ">=1.0.0" },
     { name = "pyqt5", marker = "platform_machine != 'aarch64'", specifier = ">=5.15.11" },
     { name = "utm", specifier = ">=0.7.0" },
 ]
