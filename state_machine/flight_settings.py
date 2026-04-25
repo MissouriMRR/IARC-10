@@ -188,7 +188,7 @@ class FlightSettings:
             title=config["run_title"],
             description=config["run_description"],
             drone_ID=resolved_id,
-            drones_in_mission=[d["id"] for d in all_drones],
+            drones_in_mission=list(config["drones_in_mission"]),
             drone_info=all_drones,
             app_IP=config["app_info"]["ip"],
             app_port=int(config["app_info"]["port"]),
@@ -326,6 +326,7 @@ class FlightSettings:
     # Other drones in mission_is_used to get other drones ids
     @property
     def other_drones_in_mission(self) -> list[int]:
+        print()
         return [
             drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
         ]

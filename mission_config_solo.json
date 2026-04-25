@@ -13,10 +13,8 @@
   "simple_takeoff": false,
   "app_opperable": false,
   "self_id": 1,
-  "drones_in_missions": [1],
-  "drone_info": [
-    { "id": 1, "IP": "127.0.0.1", "port": 5001 }
-  ],
+  "drones_in_mission": [1],
+  "drone_info": [{ "id": 1, "IP": "127.0.0.1", "port": 5001 }],
   "app_info": {
     "ip": "127.0.0.8",
     "port": "1234"
@@ -34,6 +32,5 @@
     "lon": -95.941831
   },
   "max_flight_height": 10,
-  "mission_type" : "Prompted"
-
+  "mission_type": "Prompted"
 }
