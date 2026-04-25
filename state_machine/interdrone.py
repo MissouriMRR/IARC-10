@@ -305,7 +305,7 @@ class Interdrone:
         if not self.drone_states:
             return False
 
-        return all(state.takeoff is True for state in self.drone_states) or self.drone.id !=1
+        return all(state.takeoff is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
         print("sending message AHH")
@@ -591,7 +591,7 @@ class Interdrone:
                                     data={},
                                 )
                                 self.send(disarm_message)
-                            self.drone.vehicle.armed=False
+                            self.drone.vehicle.armed = False
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
                             # TODO MAKE SURE WE DON'T NEED A START_TAKEOFF_NACK
