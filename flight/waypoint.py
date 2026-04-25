@@ -28,9 +28,9 @@ class Waypoint:
         self, drone_id: int, lat: float, long: float, waypoint_id: int = -1, name: str = ""
     ):
 
-        self.drone_id = drone_id
-        self.lat = lat
-        self.long = long
+        self.drone_id: int = drone_id
+        self.lat: float = lat
+        self.long: float = long
         if waypoint_id != -1:
             self.waypoint_id = waypoint_id
         else:
@@ -106,7 +106,6 @@ class Waypoint:
 
     @staticmethod
     def getChecksum(waypoints: list[Waypoint]) -> int:
-
         return sum(wp._get_waypoint_id() for wp in waypoints)
 
     @staticmethod
