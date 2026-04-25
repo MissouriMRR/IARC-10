@@ -37,5 +37,5 @@
     "lon": -95.941831
   },
   "max_flight_height": 10,
-  "mission_type": "Automatic"
+  "mission_type": "Prompted"
 }

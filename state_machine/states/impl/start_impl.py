@@ -45,13 +45,18 @@ async def run(self: Start) -> State:
 
         await self.drone.connect_drone()
         self.drone.vehicle.mode = dronekit.VehicleMode("GUIDED")
-
+        print(self.drone._vehicle.is_armable)
+        ping_drones = await self.interdrone.ping_drones()
+        print(f"Ping drones: {ping_drones}")
         # Continue pinging drones until all are connected
         while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
             logging.info(
-                f"Armable: {await self.drone_vehicle.is_armable}, Ping: {await self.interdrone.ping_drones()}"
+                f"Armable: {self.drone._vehicle.is_armable}, Ping: {await self.interdrone.ping_drones()}"
             )
             await asyncio.sleep(0.1)
+        logging.info("All drones connected and armable")
+
+         # Wait until the drone has a global position estimate
         # ^Check if itself is ready to arm
         if self.flight_settings.mission_type == "Prompted":
             print("here")

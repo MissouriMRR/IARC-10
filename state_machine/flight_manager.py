@@ -72,6 +72,9 @@ class FlightManager:
                 interdrone_state,
             ).run()
         )
+        interdrone_state_task: asyncio.Task[None] = asyncio.ensure_future(
+            interdrone_state.start_interdrone()
+        )
         # TODO START INTERDRONE TASK IN STATE MACHINE TOO
         asyncio.ensure_future(self.kill_switch(state_machine_task))
 
