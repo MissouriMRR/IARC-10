@@ -128,7 +128,7 @@ class Connection:
             # Only use the smallest arc
             angleTheta = min(angle1, angle2)
             mineRadius=self.node1.parentMine.radius
-            distance = angle1*mineRadius
+            distance = angleTheta*mineRadius
 
         else: # Nodes are on seperate mines
             distance = np.sqrt((self.node1.x-self.node2.x)**2+(self.node1.y-self.node2.y)**2)
