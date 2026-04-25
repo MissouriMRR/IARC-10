@@ -405,9 +405,6 @@ class Interdrone:
         for target_drone in dronesToSendData:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
-                # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
-                # checksum = get_checksum(state.list_of_waypoints)
-
                 new_waypoints_message: Message = Message.create(
                     id=MessageType.NEW_WAYPOINTS,
                     dronesToSendData=(target_drone,),
@@ -418,9 +415,7 @@ class Interdrone:
                     },
                 )
                 self.send(new_waypoints_message)
-
-        for state in self.drone_states:
-            state.waypoint_up_to_date = False
+                state.waypoint_up_to_date = False
 
         return
 
@@ -440,8 +435,10 @@ class Interdrone:
 
         self.send(reached_waypoint_message)
 
-        for state in self.drone_states:
-            state.waypoint_up_to_date = False
+        for drone_id in dronesToSendData:
+            state = self.get_drone_state_from_id(drone_id)
+            if state is not None:
+                state.waypoint_up_to_date = False
 
         return
 
@@ -668,18 +665,18 @@ class Interdrone:
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
                                 checksum = Waypoint.getChecksum(state.list_of_waypoints)
                                 print(
-                                    f"Comparing checksum. message.checksum = {message.data['senderDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {fake_checksum}"
+                                    f"Comparing checksum. message.checksum = {message.data['senderDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {checksum}"
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
                                 if checksum == message.data["senderDroneWaypointsChecksum"]:
-                                    takeoff_ack_message: Message = Message.create(
+                                    waypoints_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         dronesToSendData=(message.senderId,),
                                         senderId=self.flight_settings.current_drone_ID,
                                         data={},
                                     )
-                                    self.send(takeoff_ack_message)
+                                    self.send(waypoints_ack_message)
                                 # If checksums don't match, send reconfirm waypoints message
                                 else:
                                     state.waypoint_up_to_date = False
@@ -694,15 +691,14 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message)
-
-                            self.drone.checkForCollision(state.list_of_waypoints)
+                                self.drone.checkForCollision(state.list_of_waypoints)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
 
                         case MessageType.NEW_WAYPOINTS_ACK:
                             state = self.get_drone_state_from_id(message.senderId)
                             if state is not None:
                                 state.waypoint_up_to_date = True
-                        case MessageType.REACHED_WAYPOINT:  # TODO MAYBE ADD ACK
+                        case MessageType.REACHED_WAYPOINT:
                             state = self.get_drone_state_from_id(message.senderId)
 
                             if state is not None:
@@ -716,7 +712,18 @@ class Interdrone:
                                     if wp.waypoint_id != reached_id
                                 ]
                                 print(f"State of waypoint list after: {state.list_of_waypoints} ")
+                                reached_waypoint_ack_message: Message = Message.create(
+                                    id=MessageType.REACHED_WAYPOINT_ACK,
+                                    dronesToSendData=(message.senderId,),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(reached_waypoint_ack_message)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
+                        case MessageType.REACHED_WAYPOINT_ACK:
+                            state = self.get_drone_state_from_id(message.senderId)
+                            if state is not None:
+                                state.waypoint_up_to_date = True
                         case MessageType.RECONFIRM_WAYPOINTS:
                             state = self.get_drone_state_from_id(message.senderId)
 

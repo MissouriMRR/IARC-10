@@ -327,9 +327,7 @@ class Drone:
                 await asyncio.sleep(0.1)
 
                 curWaypoint.check_wait()
-        await move_to(
-            self.vehicle, curWaypoint.lat, curWaypoint.long, 5
-        )
+        await move_to(self.vehicle, curWaypoint.lat, curWaypoint.long, 5)
 
         curWaypoint.has_visited = True
         logging.info(f"Reached waypoint {curWaypoint.waypoint_id}")

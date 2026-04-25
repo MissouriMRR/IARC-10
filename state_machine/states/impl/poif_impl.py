@@ -41,9 +41,7 @@ async def run(self: POIF) -> None:
             self.drone.vehicle.location.global_relative_frame.lon,
         )
 
-        circleWaypoints = circle_waypoints(
-            *location, 10,drone_id=self.drone.id
-        )
+        circleWaypoints = circle_waypoints(*location, 10, drone_id=self.drone.id)
         self.drone.updateWaypoints(circleWaypoints[:5])
         
         await self.interdrone.send_new_waypoints(tuple(self.flight_settings.other_drones_in_mission), circleWaypoints[:5])

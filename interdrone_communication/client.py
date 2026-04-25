@@ -198,6 +198,7 @@ class Client:
                 MessageType.START_MISSION,
                 MessageType.START_MISSION_ACK,
                 MessageType.REACHED_WAYPOINT,
+                MessageType.REACHED_WAYPOINT_ACK,
                 MessageType.RECONFIRM_WAYPOINTS,
                 MessageType.EMERGENCY_LAND,
                 MessageType.LAND,
