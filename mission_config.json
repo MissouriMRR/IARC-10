@@ -13,7 +13,7 @@
   "simple_takeoff": false,
   "app_opperable": false,
   "self_id": 1,
-  "drones_in_mission": [1],
+  "drones_in_mission": [1, 2],
   "drone_info": [
     { "id": 1, "IP": "127.0.0.1", "port": 5001 },
     { "id": 2, "IP": "127.0.0.2", "port": 5002 },
