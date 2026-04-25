@@ -37,21 +37,25 @@ async def run(self: POIF) -> None:
         self.drone.vehicle.airspeed = 20
         location=(self.drone.vehicle.location.global_relative_frame.lat,self.drone.vehicle.location.global_relative_frame.lon)
         
-        circleWaypoints=self.flight_settings.get_circle_waypoints(location, 10, 5)
+        circleWaypoints=self.flight_settings.circle_waypoints(location, 10, 5, drone_id=self.drone.id)
         self.drone.add_waypoints(circleWaypoints[:5])
         circleWaypoints=circleWaypoints[5:]
         for state in self.interdrone.other_drones_in_mission:
             self.drone.checkForCollision(state.list_of_waypoints)
 
         while True:
-            self.drone.gotoWaypoint()
-            self.drone.addWaypoints([circleWaypoints.pop(0)])
+            curWaypoint=self.drone.gotoWaypoint()
+            self.interdrone.reached_waypoint(curWaypoint.waypoint_id)
+            self.drone.updateWaypoints([circleWaypoints.pop(0)])
+            for drone in self.interdrone.other_drones_in_mission:
+                send_new_waypoints= drone.list_of_waypoints[drone.next_waypoint_index:]
+                self.drone.checkForCollision(drone.list_of_waypoints)
+            
             if len(circleWaypoints) == 0:
                 break
 
         return Land(self.drone, self.flight_settings, self.interdrone)
-        logging.info("Land state complete.")
-        return
+
     except asyncio.CancelledError as ex:
         logging.error("Land state canceled")
         raise ex
