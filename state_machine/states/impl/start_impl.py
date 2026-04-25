@@ -46,7 +46,9 @@ async def run(self: Start) -> State:
 
         # Continue pinging drones until all are connected
         while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
-            logging.info(f"Armable: {await self.drone_vehicle.is_armable}, Ping: {await self.interdrone.ping_drones()}")
+            logging.info(
+                f"Armable: {await self.drone_vehicle.is_armable}, Ping: {await self.interdrone.ping_drones()}"
+            )
             await asyncio.sleep(0.1)
         # ^Check if itself is ready to arm
         if self.flight_settings.mission_type == "Prompted":
