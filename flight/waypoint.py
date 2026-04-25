@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import Any, NamedTuple
 import json
 
 
@@ -72,6 +72,19 @@ class Waypoint:
 
     def _add_waypoints_to_reach(self, new_waypoint: Waypoint):
         self.waypoints_to_reach.append(new_waypoint)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "waypoint_id": self.waypoint_id,
+            "drone_id": self.drone_id,
+            "lat": self.lat,
+            "long": self.long,
+            "name": self.name,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Waypoint":
+        return cls(d["waypoint_id"], d["drone_id"], d["lat"], d["long"], d.get("name", ""))
 
     def check_wait(self) -> None:
         needs_to_wait: bool = False

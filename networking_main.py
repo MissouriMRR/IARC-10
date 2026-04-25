@@ -1,3 +1,4 @@
+from flight.waypoint import Waypoint
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
@@ -13,16 +14,20 @@ async def main():
     args = parser.parse_args()
 
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(
+        self_id=args.id
+    )
     # Create drone_state to access state of other drones in the test
-    drone_states: list[DroneState] = (
-        []
-    )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+    drone_states: list[
+        DroneState
+    ] = []  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
     for id in flight_settings.other_drones_in_mission:
         drone_states.append(
             DroneState(
                 drone_id=id,
-                drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+                drone_ip=next(
+                    d["IP"] for d in flight_settings.drone_info if d["id"] == id
+                ),
             )
         )
     interdrone: Interdrone = Interdrone(
@@ -59,7 +64,20 @@ async def main():
         )
         while not await interdrone.all_takeoff():
             await asyncio.sleep(0.1)
-        print("All drones have taken off!")
+        # TODO test start mission
+        # TODO test start demo
+        # Test waypoints
+        waypoints: list[Waypoint] = [
+            Waypoint(1, flight_settings.current_drone_ID, 1.0, 1.0),
+            Waypoint(2, flight_settings.current_drone_ID, 1.0, 1.0),
+            Waypoint(3, flight_settings.current_drone_ID, 1.0, 1.0),
+        ]
+        await interdrone.add_waypoints(
+            tuple(
+                flight_settings.other_drones_in_mission,
+            ),
+            waypoints=waypoints,
+        )
     try:
         # Keep the networking loop alive
         while True:
