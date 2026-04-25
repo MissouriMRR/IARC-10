@@ -64,9 +64,7 @@ class Interdrone:
 
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
-        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = (
-            None
-        )
+        self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
         self.drone_states: list[DroneState] = drone_states
@@ -97,9 +95,7 @@ class Interdrone:
             resourcesReady.get()
         )  # Used to interface with networking thread
 
-    def register_state_machine(
-        self, callback: Callable[["State | None"], Awaitable[None]]
-    ) -> None:
+    def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:
         """
         Registers a state machine with the run() method. This allows for the
         state machine to be restarted from the Interdrone object with any state.
@@ -145,9 +141,7 @@ class Interdrone:
         """
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
-        ping_by_id: dict[int, bool | None] = {
-            state.drone_id: None for state in self.drone_states
-        }
+        ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
 
         ping_message: Message = Message.create(
             id=MessageType.PING,
@@ -165,9 +159,7 @@ class Interdrone:
             updated = False
 
             try:
-                ack: Message = self.interdrone_messages[
-                    MessageType.PING_ACK
-                ].get_nowait()
+                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
                 if ack.senderId in ping_by_id:
                     ping_by_id[ack.senderId] = True
                     updated = True
@@ -175,9 +167,7 @@ class Interdrone:
                 pass
 
             try:
-                nack: Message = self.interdrone_messages[
-                    MessageType.PING_NACK
-                ].get_nowait()
+                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
                 if nack.senderId in ping_by_id:
                     ping_by_id[nack.senderId] = False
                     updated = True
@@ -415,9 +405,7 @@ class Interdrone:
 
         return
 
-    async def reached_waypoint(
-        self, dronesToSendData: tuple[int, ...], waypoint: Waypoint
-    ) -> None:
+    async def reached_waypoint(self, dronesToSendData: tuple[int, ...], waypoint: Waypoint) -> None:
         """
         Message ID = 550
         Send reached_waypoint message to all drones
@@ -488,9 +476,7 @@ class Interdrone:
             raise RuntimeError("Cannot restart state while a task is running")
 
         if not self._restart_callback:
-            raise RuntimeError(
-                "Cannot restart state machine without a registered callback"
-            )
+            raise RuntimeError("Cannot restart state machine without a registered callback")
 
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
@@ -541,8 +527,7 @@ class Interdrone:
                             #     for state in self.drone_states
                             # ):
                             if all(
-                                state.ping_response is True
-                                for state in self.drone_states
+                                state.ping_response is True for state in self.drone_states
                             ):  # Extra if used for local testing
                                 # Set cmd_msg to arm (signals to state machine to arm the drone)
                                 self.cmd_msg = CMD_MSG.ARM
@@ -558,18 +543,12 @@ class Interdrone:
                                     await self.send_arm_ack()
                             # Send ARM_NACK if drone can't arm
                             else:
-                                await self.send_arm_nack(
-                                    dronesToSendData=(message.senderId,)
-                                )
+                                await self.send_arm_nack(dronesToSendData=(message.senderId,))
 
                         case MessageType.ARM_ACK:
                             # When drone 1 receives an ACK, set others drone arm state to true
                             state = next(
-                                (
-                                    s
-                                    for s in self.drone_states
-                                    if s.drone_id == message.senderId
-                                ),
+                                (s for s in self.drone_states if s.drone_id == message.senderId),
                                 None,
                             )
 
@@ -581,9 +560,7 @@ class Interdrone:
                                 )
                         case MessageType.ARM_NACK:
                             # Try and resend ARM to drone that sent NACK
-                            print(
-                                f"Drone {message.senderId} failed to arm. Resending message."
-                            )
+                            print(f"Drone {message.senderId} failed to arm. Resending message.")
                             await self.send_ARM(dronesToSendData=(message.senderId,))
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
@@ -664,10 +641,7 @@ class Interdrone:
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if (
-                                    fake_checksum
-                                    == message.data["targetDroneWaypointsChecksum"]
-                                ):
+                                if fake_checksum == message.data["targetDroneWaypointsChecksum"]:
                                     takeoff_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         dronesToSendData=(message.senderId,),
