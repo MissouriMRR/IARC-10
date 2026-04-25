@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from flight.circlePath import circle_waypoints
 from state_machine.state_tracker import (
     update_state,
     update_drone,
@@ -40,19 +41,19 @@ async def run(self: POIF) -> None:
             self.drone.vehicle.location.global_relative_frame.lon,
         )
 
-        circleWaypoints = self.flight_settings.circle_waypoints(
-            location, 10, 5, drone_id=self.drone.id
+        circleWaypoints = circle_waypoints(
+            *location, 10,drone_id=self.drone.id
         )
-        self.drone.add_waypoints(circleWaypoints[:5])
+        self.drone.updateWaypoints(circleWaypoints[:5])
         circleWaypoints = circleWaypoints[5:]
-        for state in self.interdrone.other_drones_in_mission:
+        for state in self.interdrone.drone_states:
             self.drone.checkForCollision(state.list_of_waypoints)
 
         while True:
-            curWaypoint = self.drone.gotoWaypoint()
-            self.interdrone.reached_waypoint(curWaypoint.waypoint_id)
+            curWaypoint = await self.drone.gotoWaypoint()
+            await self.interdrone.reached_waypoint(curWaypoint)
             self.drone.updateWaypoints([circleWaypoints.pop(0)])
-            for drone in self.interdrone.other_drones_in_mission:
+            for drone in self.interdrone.drone_states:
                 send_new_waypoints = drone.list_of_waypoints[drone.next_waypoint_index :]
                 self.drone.checkForCollision(drone.list_of_waypoints)
 

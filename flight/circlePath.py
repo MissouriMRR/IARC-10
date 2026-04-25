@@ -7,7 +7,7 @@ For radii up to ~100km this is accurate to within a few meters.
 
 import math
 from typing import List, Tuple
-from waypoint import Waypoint
+from flight.waypoint import Waypoint
 
 EARTH_RADIUS_M = 6_378_137.0  # WGS-84 equatorial radius in meters
 

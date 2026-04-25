@@ -328,7 +328,7 @@ class Drone:
 
                 curWaypoint.check_wait()
         await move_to(
-            self.vehicle, curWaypoint.latitude, curWaypoint.longitude, curWaypoint.altitude
+            self.vehicle, curWaypoint.lat, curWaypoint.long, 5
         )
 
         curWaypoint.has_visited = True
