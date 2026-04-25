@@ -16,7 +16,7 @@ RUN python -m pip install --upgrade pip
 # INSTALL POETRY
 
 ENV POETRY_HOME=/etc/poetry \
-    POETRY_VERSION=1.8.5
+    POETRY_VERSION=2.2.1
 
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
@@ -27,13 +27,13 @@ RUN mkdir /pyenv
 WORKDIR /pyenv
 
 COPY ./pyproject.toml ./
-
+COPY pyproject.toml README.md ./
 # install stuff to global python environment instead of creating a virtualenv
 # the container is our virtual environment
 ENV POETRY_VIRTUALENVS_CREATE=false
 
 # this command takes approximately 10 years to run
-RUN poetry install --no-interaction -vv
+RUN poetry install --no-interaction -vv --no-root
 
 
 
