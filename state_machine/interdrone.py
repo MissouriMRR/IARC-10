@@ -412,7 +412,7 @@ class Interdrone:
                     senderId=self.flight_settings.current_drone_ID,
                     data={
                         "newWaypoints": waypoints,
-                        "targetDroneWaypointsChecksum": checksum,
+                        "senderDroneWaypointsChecksum": checksum,
                     },
                 )
                 self.send(new_waypoints_message)
@@ -666,11 +666,11 @@ class Interdrone:
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
                                 fake_checksum = 10
                                 print(
-                                    f"Comparing checksum. message.checksum = {message.data['targetDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {fake_checksum}"
+                                    f"Comparing checksum. message.checksum = {message.data['senderDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {fake_checksum}"
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if fake_checksum == message.data["targetDroneWaypointsChecksum"]:
+                                if fake_checksum == message.data["senderDroneWaypointsChecksum"]:
                                     takeoff_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         dronesToSendData=(message.senderId,),
