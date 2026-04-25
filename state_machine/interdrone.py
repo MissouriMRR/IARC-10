@@ -650,14 +650,22 @@ class Interdrone:
                             if state is not None:
                                 state.waypoint_up_to_date = True
                         case MessageType.REACHED_WAYPOINT:  # TODO MAYBE ADD ACK
-                            # Get state and set list_of_waypoints
                             state = self.get_drone_state_from_id(message.senderId)
-                            if state is not None:
-                                state.list_of_waypoints -= message.data[
-                                    "newWaypoints"
-                                ]  # TODO MAKE SURE THIS WORKS
-                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
 
+                            if state is not None:
+                                print(
+                                    f"Got reached waypoint. State of waypoint list before: {state.list_of_waypoints} "
+                                )
+                                reached_id = message.data["reachedWaypointId"]
+                                state.list_of_waypoints = [
+                                    wp
+                                    for wp in state.list_of_waypoints
+                                    if wp.waypoint_id != reached_id
+                                ]
+                                print(
+                                    f"State of waypoint list after: {state.list_of_waypoints} "
+                                )
+                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")

@@ -78,6 +78,19 @@ async def main():
             ),
             waypoints=waypoints,
         )
+
+        await interdrone.reached_waypoint(
+            tuple(
+                flight_settings.other_drones_in_mission,
+            ),
+            Waypoint(
+                waypoint_id=1,
+                drone_id=flight_settings.current_drone_ID,
+                lat=1.0,
+                long=1.0,
+            ),
+        )
+
     try:
         # Keep the networking loop alive
         while True:
