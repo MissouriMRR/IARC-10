@@ -124,6 +124,7 @@ class FlightSettings:
         self.__start_coord: dict = start_coord
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
+        self.__mission_type: str = mission_type
         self.__yolo_status: Event = Event()
 
     @staticmethod
@@ -200,8 +201,34 @@ class FlightSettings:
             mission_data_path=sim_mode_config["mission_data_path"],
         )
         return config_settings
+    
+    @property
+    def mission_type(self) -> str:
+        """
+        Returns the mission type
+
+        Returns
+        -------
+        mission_type : str
+            The mission type, either "Prompted" or "Automatic"
+        """
+        return self.__mission_type
+    @mission_type.setter
+    def mission_type(self, mission_type: str) -> None:
+        """
+        Sets the mission type
+
+        Parameters
+        ----------
+        mission_type : str
+            The mission type, either "Prompted" or "Automatic"
+        """
+        if mission_type not in ["Prompted", "Automatic"]:
+            raise ValueError("mission_type must be either 'Prompted' or 'Automatic'")
+        self.__mission_type = mission_type
 
     # ----- Takeoff Settings ----- #
+
     @property
     def simple_takeoff(self) -> bool:
         """

@@ -259,8 +259,9 @@ class Interdrone:
         Return true they are, false otherwise.
         """
         # Treat empty list as "not ready"
+        print(self.drone_states)
         if not self.drone_states:
-            return False
+            return True
 
         return all(state.armed is True for state in self.drone_states)
 

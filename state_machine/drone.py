@@ -222,6 +222,9 @@ class Drone:
         """
         Method to move vehicle above home location, then descend vertically.
         """
+        while self.vehicle.home_location is None:
+            logging.info("Waiting for home location to be set...")
+            await asyncio.sleep(0.5)
         home_loc = dronekit.LocationGlobalRelative(
             self.vehicle.home_location.lat, self.vehicle.home_location.lon, 23
         )  # Min alt should be in constants file
