@@ -166,9 +166,7 @@ class FlightSettings:
                 config_path = "mission_config.json"
 
         else:
-            logging.warning(
-                "--config flag passed without a path. Using default mission config."
-            )
+            logging.warning("--config flag passed without a path. Using default mission config.")
             config_path = "mission_config.json"
 
         config: MissionConfig = mission_config.get_mission_config(config_path)
@@ -329,9 +327,7 @@ class FlightSettings:
     @property
     def other_drones_in_mission(self) -> list[int]:
         return [
-            drone_id
-            for drone_id in self.__drones_in_mission
-            if drone_id != self.__current_drone_ID
+            drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
         ]
 
     @property
