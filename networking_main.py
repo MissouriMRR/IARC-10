@@ -14,22 +14,18 @@ async def main():
     args = parser.parse_args()
 
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(
-        self_id=args.id
-    )
+    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
     # Create drone_state to access state of other drones in the test
-    drone_states: list[
-        DroneState
-    ] = []  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+    drone_states: list[DroneState] = (
+        []
+    )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
     print(flight_settings.drones_in_mission)
     print(flight_settings.other_drones_in_mission)
     for id in flight_settings.other_drones_in_mission:
         drone_states.append(
             DroneState(
                 drone_id=id,
-                drone_ip=next(
-                    d["IP"] for d in flight_settings.drone_info if d["id"] == id
-                ),
+                drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
             )
         )
     interdrone: Interdrone = Interdrone(
