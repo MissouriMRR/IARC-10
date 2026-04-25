@@ -192,6 +192,7 @@ class Client:
                 MessageType.ARM,
                 MessageType.ARM_ACK,
                 MessageType.ARM_NACK,
+                MessageType.DISARM,
                 MessageType.START_DEMO,
                 MessageType.START_DEMO_ACK,
                 MessageType.DEMO_DONE,
