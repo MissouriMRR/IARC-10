@@ -639,9 +639,7 @@ class Interdrone:
                                     for wp in state.list_of_waypoints
                                     if wp.waypoint_id != reached_id
                                 ]
-                                print(
-                                    f"State of waypoint list after: {state.list_of_waypoints} "
-                                )
+                                print(f"State of waypoint list after: {state.list_of_waypoints} ")
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
