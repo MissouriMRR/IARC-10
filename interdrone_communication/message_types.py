@@ -45,6 +45,7 @@ class MessageType(Enum):
     NEW_WAYPOINTS = 545
     NEW_WAYPOINTS_ACK = 546
     REACHED_WAYPOINT = 550
+    REACHED_WAYPOINT_ACK = 551
     EMERGENCY_LAND = 555
     LAND = 556
     RECONFIRM_WAYPOINTS = 560
@@ -245,6 +246,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
         "reachedWaypointId": int,
+    },
+    MessageType.REACHED_WAYPOINT_ACK: {
+        "id": MessageType.REACHED_WAYPOINT_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
     },
     MessageType.EMERGENCY_LAND: {
         "id": MessageType.EMERGENCY_LAND,
