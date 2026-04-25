@@ -67,15 +67,17 @@ async def main():
         # TODO test start demo
         # Test waypoints
         waypoints: list[Waypoint] = [
-            Waypoint(1, flight_settings.current_drone_ID, 1.0, 1.0),
-            Waypoint(2, flight_settings.current_drone_ID, 1.0, 1.0),
-            Waypoint(3, flight_settings.current_drone_ID, 1.0, 1.0),
+            Waypoint(1, flight_settings.current_drone_ID, 1.0, 1),
+            Waypoint(2, flight_settings.current_drone_ID, 1.0, 1),
+            Waypoint(3, flight_settings.current_drone_ID, 1.0, 1),
         ]
+        fake_checksum = 10
         await interdrone.send_new_waypoints(
             dronesToSendData=tuple(
                 flight_settings.other_drones_in_mission,
             ),
             waypoints=waypoints,
+            checksum=fake_checksum,
         )
 
         await interdrone.reached_waypoint(

@@ -26,9 +26,7 @@ async def main():
                 drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
             )
         )
-    interdrone: Interdrone = Interdrone(
-        flight_settings=flight_settings, drone=drone, drone_states=drone_states
-    )
+    interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
     try:
         # Keep the networking loop alive
