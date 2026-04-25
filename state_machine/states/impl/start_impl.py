@@ -43,11 +43,13 @@ async def run(self: Start) -> State:
         await self.drone.connect_drone()
 
         # Continue pinging drones until all are connected
-        while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armed()):
+        while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
             await asyncio.sleep(0.1)
         # ^Check if itself is ready to arm
         if self.flight_settings.mission_type == "Prompted":
+            print("here")
             MSG = await get_input("Type 'arm' to arm the drone and start the mission: ")
+            print("not here")
             while MSG.lower() != "arm":
                 MSG = await get_input(
                     "Invalid input. Type 'arm' to arm the drone and start the mission: "
