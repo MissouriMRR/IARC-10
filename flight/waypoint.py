@@ -105,7 +105,7 @@ class Waypoint:
         self._set_has_to_wait(needs_to_wait)
 
     @staticmethod
-    def makeChecksum(waypoints: list[Waypoint]) -> int:
+    def getChecksum(waypoints: list[Waypoint]) -> int:
 
         return sum(wp._get_waypoint_id() for wp in waypoints)
 
