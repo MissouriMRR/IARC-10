@@ -17,6 +17,7 @@ from state_machine.states.takeoff import Takeoff
 from state_machine.interdrone import CMD_MSG, get_input
 import dronekit
 
+
 async def run(self: Start) -> State:
     """
     Implements the run method for the Start state.
