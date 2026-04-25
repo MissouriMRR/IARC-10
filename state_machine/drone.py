@@ -20,7 +20,9 @@ from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 import flight.pathfinding.node_generation as nodeGen
 from state_machine.flight_settings import SimMode
-
+from flight.waypoint import Waypoint
+import flight.collisionAvoidance
+from flight.pathfinding.utils.goto import move_to
 
 class Drone:
     """
@@ -98,6 +100,7 @@ class Drone:
         self.id = id
         self.start_node = None
         self.end_nodes = []
+        self.waypoints = []
         # TODO: add reference to mine and path data classes
 
     @property
@@ -262,40 +265,67 @@ class Drone:
             If `sim_mode` is not a valid SimMode.
         """
         self._sim_mode = sim_mode
-
+        port=5762 
+        
         match sim_mode:
             case SimMode.REAL:
                 self.address = "/dev/ttyUSB0"
                 self.baud = 57600
             case SimMode.SIM:
-                self.address = "tcp:127.0.0.1:5762"
+                logging.info(f"Using SIM mode settings with port {port}")
+                self.address = "tcp:127.0.0.1:"+str(port)
                 self.baud = None
             case SimMode.AIRSIM:
-                self.address = "tcp:127.0.0.1:5762"
+                port+= (self.id-1)*10 #IDs are assigned sequentially starting at 5762 and increasing by 10 for each drone.
+                logging.info(f"Using AIRSIM mode settings with port {port}")
+                self.address = "tcp:127.0.0.1:"+str(port)
                 self.baud = None
             case _:
                 raise ValueError("invalid sim mode")
 
-    def updateTasks(self, gotoCoords: tuple[tuple[int, int]]):
-        self.tasks = []
-        for i in range(len(gotoCoords)):
-            self.tasks.append(gotoCoords[i])
+    def updateWaypoints(self, waypoints):
+        for waypoint in waypoints:
+            self.waypoints.append(waypoint)
+        
 
-    def convert_goto(self, coords: tuple[int, int]):
-        pass
+    
+    def resetWaypoints(self,waypoints):
+        self.waypoints = waypoints
+    
+    def getWaypoints(self):
+        return self.waypoints
+    
+    def checkForCollision(self, other_waypoints):
+        collisions= Waypoint.checkForCollision(self.waypoints, other_waypoints)
+        for collision in collisions:
+            logging.info(f"Collision detected between waypoints {collision[0].waypoint_id} and {collision[1].waypoint_id}")
+            collision.drone1_waypoints[0].has_to_wait = True
+            if collision.drone2_waypoints[1] not in collision.drone1_waypoints[0].waypoints_to_reach:
+                if self.id<collision.drone2_waypoints[1].drone_id:
+                    collision.drone1_waypoints[0].waypoints_to_reach.append(collision.drone2_waypoints[1])
+
+    async def gotoWaypoint(self):
+
+        curWaypoint= self.waypoints[0]
+        if(curWaypoint.has_to_wait):
+            logging.info(f"Waiting for waypoints {curWaypoint.waypoints_to_reach} to be reached before proceeding to next waypoint...")
+            while True:
+                await asyncio.sleep(0.1)
+                
+                curWaypoint.check_wait()
+        await move_to(self.vehicle, curWaypoint.latitude, curWaypoint.longitude, curWaypoint.altitude)
+
+        curWaypoint.has_visited = True
+        logging.info(f"Reached waypoint {curWaypoint.waypoint_id}")
+        self.waypoints.pop(0)
+        return
+    
 
     def setFieldSize(self, xMin, xMax, yMin, yMax):
         self.field = nodeGen.Field(xMin, xMax, yMin, yMax)
 
-    def completeTasks(self):
-        for i in range(len(self.tasks)):
-            self.convert_goto(self.tasks[i])
-            photoStorage = self.takePhoto(
-                cameraLocal
-            )  # Small Placeholder should be self explainitory
-            self.addMines(
-                self.processPhoto(photoStorage)
-            )  # Big Placeholder (Will need to be in consideration with the current path and mine list)
+    
+
 
     # Smart landing sequence, Should be usable in final product!!
     async def recall(self):

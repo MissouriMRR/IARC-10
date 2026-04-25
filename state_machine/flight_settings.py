@@ -90,6 +90,7 @@ class FlightSettings:
         mission_corners: list[dict[str, float]] | None = None,
         max_height: float = 10,
         start_coord: dict = {},
+        mission_type: str  = "",
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
     ) -> None:
@@ -143,6 +144,8 @@ class FlightSettings:
         """
         sim_flag: bool = "-s" in sys.argv or "--sim" in sys.argv
         airsim_flag: bool = "-a" in sys.argv or "--airsim" in sys.argv
+        
+
         sim_mode: SimMode = (
             SimMode.AIRSIM if airsim_flag else SimMode.SIM if sim_flag else SimMode.REAL
         )
@@ -154,15 +157,30 @@ class FlightSettings:
                 " Pass -a or --airsim to run in airsim mode.",
                 sim_mode.name,
             )
+        config_path :str = "mission_config.json"
+        if("--config" in sys.argv):
+            config_index: int = sys.argv.index("--config") + 1
+            if config_index < len(sys.argv):
+                config_path: str = sys.argv[config_index]
+                logging.info("Using mission config file at %s", config_path)
+                
+        else:
+            logging.warning(
+                "--config flag passed without a path. Using default mission config."
+            )
 
-        config: MissionConfig = mission_config.get_mission_config()
+                
+
+        config: MissionConfig = mission_config.get_mission_config(config_path)
+        resolved_id: int = self_id if self_id is not None else config["self_id"]
+        
         sim_mode_config: SimModeConfig = (
             config["airsim_mode_config"]
             if airsim_flag
             else (config["sim_mode_config"] if sim_flag else config["real_mode_config"])
         )
 
-        resolved_id: int = self_id if self_id is not None else config["self_id"]
+        
         all_drones: list[mission_config.DroneInfo] = config["drone_info"]
         if not any(d["id"] == resolved_id for d in all_drones):
             raise ValueError(f"Drone ID {resolved_id} not found in drone_info")
@@ -179,8 +197,10 @@ class FlightSettings:
             mission_corners=config["mission_field_corners"],
             max_height=config["max_flight_height"],
             start_coord=config["start_coord"],
+            mission_type=config["mission_type"],
             sim_mode=sim_mode,
             mission_data_path=sim_mode_config["mission_data_path"],
+            
         )
         return config_settings
 

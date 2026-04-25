@@ -84,7 +84,7 @@ class MissionConfig(TypedDict):
     max_flight_height: float
 
 
-def get_mission_config() -> MissionConfig:
+def get_mission_config(config_path: str) -> MissionConfig:
     """
     Get the mission configuration from mission_config.json
 
@@ -94,5 +94,5 @@ def get_mission_config() -> MissionConfig:
         The mission configuration.
     """
     config_file: TextIO
-    with open("mission_config.json", "r", encoding="utf-8") as config_file:
+    with open(config_path, "r", encoding="utf-8") as config_file:
         return json.load(config_file)

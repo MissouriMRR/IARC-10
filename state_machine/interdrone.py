@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     # it causes a circular import.
     from state_machine.states.state import State
 
+async def get_input(prompt: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, input, prompt)
 
 class CMD_MSG(Enum):
     NONE = 0
@@ -58,7 +61,6 @@ class Interdrone:
         self,
         flight_settings: FlightSettings,
         drone: Drone,
-        drone_states: list[DroneState],
     ):
         from interdrone_communication.networking_thread import NetworkingThread
 
@@ -67,6 +69,18 @@ class Interdrone:
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
         self.flight_settings: FlightSettings = flight_settings
         self.drone: Drone = drone
+        # Create drone_states to access state of other drones in the test
+        drone_states: list[DroneState] = (
+            []
+        )  
+        for id in flight_settings.other_drones_in_mission:
+            drone_states.append(
+                DroneState(
+                    drone_id=id,
+                    drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+            )
+        )
+
         self.drone_states: list[DroneState] = drone_states
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
 
@@ -370,7 +384,7 @@ class Interdrone:
 
         return all(state.mission_start is True for state in self.drone_states)
 
-    async def add_waypoints(
+    async def send_new_waypoints(
         self,
         dronesToSendData: tuple[int, ...],
         waypoints: list[Waypoint],
@@ -388,13 +402,17 @@ class Interdrone:
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
                 # checksum = get_checksum(state.list_of_waypoints)
+                waypointsString=""
+                for waypoint in waypoints:
+                    waypointsString+=waypoint.lat+","+waypoint.long+","+waypoint.id+";"
+
                 checksum = 10
                 new_waypoints_message: Message = Message.create(
                     id=MessageType.NEW_WAYPOINTS,
                     dronesToSendData=(target_drone,),
                     senderId=self.flight_settings.current_drone_ID,
                     data={
-                        "newWaypoints": waypoints,
+                        "newWaypoints": waypointsString,
                         "targetDroneWaypointsChecksum": checksum,
                     },
                 )
@@ -643,7 +661,18 @@ class Interdrone:
                             # TODO CHECK THE CHECKSUM TO DETERMINE WHETHER TO SEND RECONFIRM WAYPOINTS
                             if state is not None:
                                 # Add received waypoints to list_of_waypoints
-                                state.list_of_waypoints += message.data["newWaypoints"]
+                                for waypointStr in message.data["newWaypoints"].split(";"):
+                                    if waypointStr:  # Check if the string is not empty
+                                        lat, long, id = waypointStr.split(",")
+                                        state.list_of_waypoints.append(
+                                            Waypoint(
+                                                waypoint_id=int(id),
+                                                drone_id=state.drone_id,
+                                                lat=float(lat),
+                                                long=float(long),
+                                            )
+                                        )
+                                
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
@@ -695,6 +724,8 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message)
+                            
+                            self.drone.checkForCollision(state.list_of_waypoints)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
 
                         case MessageType.NEW_WAYPOINTS_ACK:
