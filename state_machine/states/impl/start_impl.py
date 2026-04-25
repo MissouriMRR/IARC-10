@@ -1,9 +1,11 @@
 """Implements the behavior of the Start state."""
 
+from typing import Any
+
+
 import asyncio
 import logging
 
-from state_machine.communication import send_ARM
 from state_machine.state_tracker import (
     update_drone,
     update_flight_settings,
@@ -63,8 +65,7 @@ async def run(self: Start) -> State:
         if self.drone.id == 1:
             for drone_id in self.flight_settings.drones_in_mission:
                 if drone_id != self.drone.id:
-                    self.interdrone.send_ARM(CMD_MSG.ARM, drone_id)
-
+                    await self.interdrone.send_ARM((drone_id,))
         while (
             not await self.interdrone.all_armed()
             and self.flight_settings.mission_type != "Prompted"
