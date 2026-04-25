@@ -589,6 +589,7 @@ class Interdrone:
                                     data={},
                                 )
                                 self.send(disarm_message)
+                            self.drone.vehicle.armed=False
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
                             # TODO MAKE SURE WE DON'T NEED A START_TAKEOFF_NACK
