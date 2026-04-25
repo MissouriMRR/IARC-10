@@ -81,6 +81,7 @@ class MissionConfig(TypedDict):
     range_test_toggle: bool
     mission_field_corners: list[dict[str, float]]
     start_coord: dict[str, float]
+    mission_type: str
     max_flight_height: float
 
 

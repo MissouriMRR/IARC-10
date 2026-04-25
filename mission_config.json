@@ -14,7 +14,10 @@
   "app_opperable": false,
   "self_id": 1,
   "drones_in_missions": [1, 2],
-  "drone_info": [{ "id": 1, "IP": "127.0.0.1", "port": 5001 }],
+  "drone_info": [
+    { "id": 1, "IP": "127.0.0.1", "port": 5001 },
+    { "id": 2, "IP": "127.0.0.1", "port": 5002 }
+  ],
   "app_info": {
     "ip": "127.0.0.8",
     "port": "1234"

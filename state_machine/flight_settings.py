@@ -156,15 +156,20 @@ class FlightSettings:
                 " Pass -a or --airsim to run in airsim mode.",
                 sim_mode.name,
             )
-        config_path: str = "mission_config.json"
+        config_path: str
         if "--config" in sys.argv:
             config_index: int = sys.argv.index("--config") + 1
             if config_index < len(sys.argv):
-                config_path: str = sys.argv[config_index]
+                config_path = sys.argv[config_index]
                 logging.info("Using mission config file at %s", config_path)
+            else:
+                config_path = "mission_config.json"
 
         else:
-            logging.warning("--config flag passed without a path. Using default mission config.")
+            logging.warning(
+                "--config flag passed without a path. Using default mission config."
+            )
+            config_path = "mission_config.json"
 
         config: MissionConfig = mission_config.get_mission_config(config_path)
         resolved_id: int = self_id if self_id is not None else config["self_id"]
@@ -185,6 +190,7 @@ class FlightSettings:
             title=config["run_title"],
             description=config["run_description"],
             drone_ID=resolved_id,
+            drones_in_mission=[d["id"] for d in all_drones],
             drone_info=all_drones,
             app_IP=config["app_info"]["ip"],
             app_port=int(config["app_info"]["port"]),
@@ -323,7 +329,9 @@ class FlightSettings:
     @property
     def other_drones_in_mission(self) -> list[int]:
         return [
-            drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
+            drone_id
+            for drone_id in self.__drones_in_mission
+            if drone_id != self.__current_drone_ID
         ]
 
     @property

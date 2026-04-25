@@ -10,7 +10,6 @@ dependencies = [
     "utm>=0.7.0",
     "numpy >= 1.0.0",
     "matplotlib>=3.10.8",
-
-    "pyqt5-qt5 == 5.15.2",
+    "pyqt5-qt5 == 5.15.2; platform_machine != 'aarch64'",
     "pyserial==3.5"
 ]
