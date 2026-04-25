@@ -98,9 +98,12 @@ class StateMachine:
             await run_task
         except asyncio.CancelledError:
             logging.info("State Machine cancelled")
+            
+            
 
         if self.run_task is not None:
             self.run_task = None
+
             logging.info("State Machine complete")
 
     async def _run(self) -> None:
