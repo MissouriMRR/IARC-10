@@ -15,7 +15,7 @@ from state_machine.states.start import Start
 from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
 from state_machine.interdrone import CMD_MSG, get_input
-
+import dronekit
 
 async def run(self: Start) -> State:
     """
@@ -43,6 +43,7 @@ async def run(self: Start) -> State:
         logging.info("Start state running")
 
         await self.drone.connect_drone()
+        self.vehicle.mode = dronekit.VehicleMode("GUIDED")
 
         # Continue pinging drones until all are connected
         while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):

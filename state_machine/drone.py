@@ -270,7 +270,7 @@ class Drone:
 
         match sim_mode:
             case SimMode.REAL:
-                self.address = "/dev/ttyUSB0"
+                self.address = "/dev/ttyS0"
                 self.baud = 57600
             case SimMode.SIM:
                 logging.info(f"Using SIM mode settings with port {port}")
