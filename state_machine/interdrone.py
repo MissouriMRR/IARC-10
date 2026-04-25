@@ -388,6 +388,7 @@ class Interdrone:
         self,
         dronesToSendData: tuple[int, ...],
         waypoints: list[Waypoint],
+        checksum: int,
     ) -> None:
         """
         Message ID = 545
@@ -397,14 +398,12 @@ class Interdrone:
         a checksum of waypoints for the other drone
         When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
         """
+
         for target_drone in dronesToSendData:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
                 # checksum = get_checksum(state.list_of_waypoints)
-                waypointsString = ""
-                for waypoint in waypoints:
-                    waypointsString += waypoint.lat + "," + waypoint.long + "," + waypoint.id + ";"
 
                 checksum = 10
                 new_waypoints_message: Message = Message.create(
@@ -412,7 +411,7 @@ class Interdrone:
                     dronesToSendData=(target_drone,),
                     senderId=self.flight_settings.current_drone_ID,
                     data={
-                        "newWaypoints": waypointsString,
+                        "newWaypoints": waypoints,
                         "targetDroneWaypointsChecksum": checksum,
                     },
                 )
@@ -661,17 +660,7 @@ class Interdrone:
                             # TODO CHECK THE CHECKSUM TO DETERMINE WHETHER TO SEND RECONFIRM WAYPOINTS
                             if state is not None:
                                 # Add received waypoints to list_of_waypoints
-                                for waypointStr in message.data["newWaypoints"].split(";"):
-                                    if waypointStr:  # Check if the string is not empty
-                                        lat, long, id = waypointStr.split(",")
-                                        state.list_of_waypoints.append(
-                                            Waypoint(
-                                                waypoint_id=int(id),
-                                                drone_id=state.drone_id,
-                                                lat=float(lat),
-                                                long=float(long),
-                                            )
-                                        )
+                                state.list_of_waypoints += message.data["newWaypoints"]
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
