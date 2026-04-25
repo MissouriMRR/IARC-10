@@ -27,13 +27,10 @@ class NetworkingThread:
         clientIn: AsyncQueue[Message] = asyncio.Queue()
         serverOut: AsyncQueue[Message] = asyncio.Queue()
 
-        # Provide interface to main thread
-        resourcesReady.put(
-            NetworkingInterface(
-                loop=loop,
-                clientIn=clientIn,
-                serverOut=serverOut,
-            )
+        interface = NetworkingInterface(
+            loop=loop,
+            clientIn=clientIn,
+            serverOut=serverOut,
         )
 
         loop.run_until_complete(
@@ -42,6 +39,8 @@ class NetworkingThread:
                 serverOutData=serverOut,
                 flight_settings=flight_settings,
                 range_test_toggle=range_test_toggle,
+                resourcesReady=resourcesReady,
+                interface=interface,
             )
         )
         # Async networking entry point - runs server and client
@@ -51,6 +50,8 @@ class NetworkingThread:
         clientInData: AsyncQueue[Message],
         serverOutData: AsyncQueue[Message],
         flight_settings: FlightSettings,
+        resourcesReady: queue.Queue[NetworkingInterface],
+        interface: NetworkingInterface,
         range_test_toggle: bool = False,
     ) -> None:
         # Instantiate Server and Client
@@ -65,10 +66,12 @@ class NetworkingThread:
             range_test_toggle=range_test_toggle,
         )
 
-        # Run both concurrently
+        # Start server and wait until it is bound before signalling the main thread
         serverTask = asyncio.create_task(serverInstance.start_server_async())
-        clientTask = asyncio.create_task(clientInstance.start_client_async())
+        await serverInstance.server_ready.wait()
+        resourcesReady.put(interface)
 
+        clientTask = asyncio.create_task(clientInstance.start_client_async())
         print("Server and Client started")
 
         try:

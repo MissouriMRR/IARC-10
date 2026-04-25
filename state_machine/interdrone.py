@@ -530,7 +530,6 @@ class Interdrone:
                 message = self.networking.try_get_server_message(timeout=0.02)
                 if message is not None:
                     # Adds the new message to its respective message queue
-                    print(message)
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
                     )  # TODO GET RID OF THIS SOON

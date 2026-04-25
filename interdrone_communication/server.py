@@ -21,6 +21,7 @@ class Server:
         self.flight_settings: FlightSettings = flight_settings
         self.serverOutData: Queue[Message] = serverOutData
         self.clientInData: Queue[Message] = clientInData
+        self.server_ready: asyncio.Event = asyncio.Event()
 
         # Check for droneId from flag in main.py
         self.droneId: int = flight_settings.current_drone_ID
@@ -32,6 +33,7 @@ class Server:
             "0.0.0.0",
             int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
         )
+        self.server_ready.set()
 
         try:
             async with server:
@@ -46,7 +48,6 @@ class Server:
     async def handle_client(self, reader: StreamReader, writer: StreamWriter):
         try:
             while True:
-                print("Message received in client. Trying to read it in.")
                 try:
                     byteMessage = await reader.readuntil(b"\n")
                 except asyncio.IncompleteReadError:
@@ -57,7 +58,6 @@ class Server:
                 # If message was read in, begin processing
                 if not message:
                     continue
-                print(f"Message processed correctly. ID is {message.id}")
                 # If the received message requires a response inside of server, it's overwritten and sent via clientInData at the end of handle_client()
                 responseMessage: Message | None = None
                 print(f"Message received: {message.id}")

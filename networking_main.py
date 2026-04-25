@@ -16,18 +16,8 @@ async def main():
     drone: Drone = Drone()
     flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
     # Create drone_state to access state of other drones in the test
-    drone_states: list[DroneState] = (
-        []
-    )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
     print(flight_settings.drones_in_mission)
     print(flight_settings.other_drones_in_mission)
-    for id in flight_settings.other_drones_in_mission:
-        drone_states.append(
-            DroneState(
-                drone_id=id,
-                drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
-            )
-        )
     interdrone: Interdrone = Interdrone(
         flight_settings=flight_settings,
         drone=drone,
@@ -41,7 +31,8 @@ async def main():
             print("Ping succeeded. Exiting loop")
             break
         else:
-            print("Ping failed. Trying again")
+            pass
+            # print("Ping failed. Trying again")
         await asyncio.sleep(0.1)
     # Try to arm once ping works
     if flight_settings.current_drone_ID == 1:
