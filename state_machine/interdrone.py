@@ -579,6 +579,7 @@ class Interdrone:
                             print(f"Drone {message.senderId} failed to arm. Resending message.")
                             await self.send_ARM(dronesToSendData=(message.senderId,))
                         case MessageType.DISARM:
+                            self.cmd_msg = CMD_MSG.DISARM
                             if self.flight_settings.current_drone_ID == 1:
                                 # Drone 1 distributes message to other drones in the mission
                                 disarm_message: Message = Message.create(
