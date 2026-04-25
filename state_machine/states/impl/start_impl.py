@@ -43,7 +43,7 @@ async def run(self: Start) -> State:
         logging.info("Start state running")
 
         await self.drone.connect_drone()
-        self.vehicle.mode = dronekit.VehicleMode("GUIDED")
+        self.drone.vehicle.mode = dronekit.VehicleMode("GUIDED")
 
         # Continue pinging drones until all are connected
         while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
