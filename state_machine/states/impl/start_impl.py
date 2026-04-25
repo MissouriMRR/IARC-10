@@ -66,10 +66,7 @@ async def run(self: Start) -> State:
             for drone_id in self.flight_settings.drones_in_mission:
                 if drone_id != self.drone.id:
                     await self.interdrone.send_ARM((drone_id,))
-        while (
-            not await self.interdrone.all_armed()
-            
-        ):
+        while not await self.interdrone.all_armed():
             logging.info("Waiting for all drones to be armed...")
             await asyncio.sleep(0.1)
 
