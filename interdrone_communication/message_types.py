@@ -233,7 +233,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
         "newWaypoints": list[Waypoint],
-        "targetDroneWaypointsChecksum": int,
+        "senderDroneWaypointsChecksum": int,
     },
     MessageType.NEW_WAYPOINTS_ACK: {
         "id": MessageType.NEW_WAYPOINTS_ACK,
