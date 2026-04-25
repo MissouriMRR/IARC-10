@@ -153,6 +153,9 @@ class Interdrone:
         Sends PING and waits until every other drone has ACK/NACK.
         Returns True only if all responded with ACK.
         """
+        # If only drone in test, return true for ping_drones
+        if self.flight_settings.other_drones_in_mission == []:
+            return True
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
         ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
