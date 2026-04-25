@@ -405,8 +405,6 @@ class Interdrone:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
-                # checksum = get_checksum(state.list_of_waypoints)
-
                 new_waypoints_message: Message = Message.create(
                     id=MessageType.NEW_WAYPOINTS,
                     dronesToSendData=(target_drone,),
@@ -693,9 +691,7 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message)
-
-                            self.drone.checkForCollision(state.list_of_waypoints)
-                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
+                                self.drone.checkForCollision(state.list_of_waypoints)
 
                         case MessageType.NEW_WAYPOINTS_ACK:
                             state = self.get_drone_state_from_id(message.senderId)
@@ -725,32 +721,14 @@ class Interdrone:
                                 state.waypoint_up_to_date = True
                                 # Message needs responses, send back message with current drones waypoints
                                 if message.data["needResponse"]:
-                                    test_waypoints = [
-                                        Waypoint(
-                                            1,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            2,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            3,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                    ]
+                                    waypoints: list[Waypoint] = self.drone.waypoints
+
                                     reconfirm_waypoints_message_response: Message = Message.create(
                                         id=MessageType.RECONFIRM_WAYPOINTS,
                                         dronesToSendData=(message.senderId,),
                                         senderId=self.flight_settings.current_drone_ID,
                                         data={
-                                            "allWaypoints": test_waypoints,
+                                            "allWaypoints": waypoints,
                                             "needResponse": False,
                                         },
                                     )

@@ -71,13 +71,18 @@ async def main():
             Waypoint(2, flight_settings.current_drone_ID, 1.0, 1),
             Waypoint(3, flight_settings.current_drone_ID, 1.0, 1),
         ]
-        fake_checksum = 10
+        new_waypoints = [
+            Waypoint(4, flight_settings.current_drone_ID, 1.0, 1),
+            Waypoint(5, flight_settings.current_drone_ID, 1.0, 1),
+            Waypoint(6, flight_settings.current_drone_ID, 1.0, 1),
+        ]
+        drone.waypoints = waypoints
+        drone.waypoints += new_waypoints
         await interdrone.send_new_waypoints(
             dronesToSendData=tuple(
                 flight_settings.other_drones_in_mission,
             ),
-            waypoints=waypoints,
-            checksum=fake_checksum,
+            waypoints=new_waypoints,
         )
 
         await interdrone.reached_waypoint(

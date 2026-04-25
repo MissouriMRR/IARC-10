@@ -93,7 +93,7 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
-        self.field_size: tuple[int, int] = [3600, 960]
+        self.field_size: tuple[int, int] = (3600, 960)
         self.mine_radius = mine_radius
         self.tasks: tuple = []
         self.seen_tracker = seen_by_drone.SightTracker(self.field_size)
@@ -300,7 +300,7 @@ class Drone:
     def getWaypointChecksum(self):
         return Waypoint.getChecksum(self.waypoints)
 
-    def checkForCollision(self, other_waypoints):
+    def checkForCollision(self, other_waypoints: list[Waypoint]):
         collisions = Waypoint.check_for_collision(self.waypoints, other_waypoints)
         for collision in collisions:
             logging.info(
