@@ -398,13 +398,12 @@ class Interdrone:
         a checksum of waypoints for the other drone
         When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
         """
-        
+
         for target_drone in dronesToSendData:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
                 # checksum = get_checksum(state.list_of_waypoints)
-               
 
                 checksum = 10
                 new_waypoints_message: Message = Message.create(
