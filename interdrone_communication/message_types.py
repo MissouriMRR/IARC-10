@@ -32,6 +32,7 @@ class MessageType(Enum):
     ARM = 520
     ARM_ACK = 521
     ARM_NACK = 522
+    DISARM = 523
     PING = 525
     PING_ACK = 526
     PING_NACK = 527
@@ -176,6 +177,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     },
     MessageType.ARM_NACK: {
         "id": MessageType.ARM_NACK,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+    },
+    MessageType.DISARM: {
+        "id": MessageType.DISARM,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },

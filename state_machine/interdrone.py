@@ -578,6 +578,16 @@ class Interdrone:
                             # Try and resend ARM to drone that sent NACK
                             print(f"Drone {message.senderId} failed to arm. Resending message.")
                             await self.send_ARM(dronesToSendData=(message.senderId,))
+                        case MessageType.DISARM:
+                            if self.flight_settings.current_drone_ID == 1:
+                                # Drone 1 distributes message to other drones in the mission
+                                disarm_message: Message = Message.create(
+                                    id=MessageType.DISARM,
+                                    dronesToSendData=(message.senderId,),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(disarm_message)
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
                             # TODO MAKE SURE WE DON'T NEED A START_TAKEOFF_NACK
