@@ -45,24 +45,10 @@ async def run(self: Takeoff) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Takeoff state running")
 
-        if self.flight_settings.mission_type == "Prompted":
-            action_type = await get_input("Enter action command (takeoff, demo, or mission): ")
-            await self.drone.takeoff(10)
-            await asyncio.sleep(5)  # Wait for the drone to stabilize after takeoff
-            while action_type.lower() not in ["takeoff", "demo", "mission"]:
-                action_type = await get_input(
-                    "Invalid input. Enter action command (takeoff, demo, or mission): "
-                )
-
-            if action_type == "takeoff":
-                return Land(self.drone, self.flight_settings, self.interdrone)
-            elif action_type == "demo":
-                return POIF(self.drone, self.flight_settings, self.interdrone)
-            elif action_type == "mission":
-                return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
-
         while True:
-            if self.interdrone.CMD_MSG == CMD_MSG.DEMO:
+            action_type = await get_input("Enter action command (takeoff, demo, or mission): ")
+
+            if self.interdrone.CMD_MSG == CMD_MSG.DEMO or action_type.lower() == "demo":
                 if self.drone.id == 1:
                     for id in self.flight_settings.drones_in_mission:
                         if id != self.drone.id:
@@ -72,9 +58,10 @@ async def run(self: Takeoff) -> State:
                         logging.info("Waiting for all drones to start the demo...")
                         await asyncio.sleep(0.1)
                 self.drone.takeoff(5)  # Fix altitude later lol
+                await asyncio.sleep(5)
                 return POIF(self.drone, self.flight_settings, self.interdrone)
 
-            if self.interdrone.CMD_MSG == CMD_MSG.MISSION:
+            if self.interdrone.CMD_MSG == CMD_MSG.MISSION or action_type.lower() == "mission":
                 if self.drone.id == 1:
                     for id in self.flight_settings.drones_in_mission:
                         if self.drone.id == 1 and id != self.drone.id:
@@ -86,8 +73,9 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
                     break
                 await self.drone.takeoff(5)  # Fix altitude later lol
+                await asyncio.sleep(5)
                 return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
-            if self.interdrone.CMD_MSG == CMD_MSG.TAKEOFF:
+            if self.interdrone.CMD_MSG == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
                 if self.drone.id == 1:
                     for id in self.flight_settings.drones_in_mission:
                         if id != self.drone.id:
@@ -98,6 +86,7 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
                     break
                 await self.drone.takeoff(5)  # Fix altitude later lol
+                await asyncio.sleep(5)
                 return Land(self.drone, self.flight_settings, self.interdrone)
 
         return Land(self.drone, self.flight_settings, self.interdrone)

@@ -67,7 +67,7 @@ async def run(self: Start) -> State:
 
         while (
             not await self.interdrone.all_armed()
-            and self.flight_settings.mission_type != "Prompted"
+            
         ):
             logging.info("Waiting for all drones to be armed...")
             await asyncio.sleep(0.1)
