@@ -1,6 +1,6 @@
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
-from state_machine.interdrone import Interdrone
+from state_machine.interdrone import CMD_MSG, Interdrone
 from state_machine.drone_state import DroneState
 import asyncio
 import argparse
@@ -40,7 +40,12 @@ async def main():
                 print("Ping failed. Trying again")
             await asyncio.sleep(0.1)
         # Try to arm once ping works
+        current_cmd_msg = CMD_MSG.NONE
         while True:
+            # Check for change in cmd msg and print it
+            if interdrone.get_cmd_msg() != current_cmd_msg:
+                current_cmd_msg = interdrone.get_cmd_msg()
+                print(current_cmd_msg)
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         print("Networking shutting down...")

@@ -201,7 +201,7 @@ class FlightSettings:
             mission_data_path=sim_mode_config["mission_data_path"],
         )
         return config_settings
-    
+
     @property
     def mission_type(self) -> str:
         """
@@ -213,6 +213,7 @@ class FlightSettings:
             The mission type, either "Prompted" or "Automatic"
         """
         return self.__mission_type
+
     @mission_type.setter
     def mission_type(self, mission_type: str) -> None:
         """

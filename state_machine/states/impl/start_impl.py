@@ -42,7 +42,6 @@ async def run(self: Start) -> State:
 
         await self.drone.connect_drone()
 
-
         # Continue pinging drones until all are connected
         while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
             await asyncio.sleep(0.1)
@@ -66,7 +65,10 @@ async def run(self: Start) -> State:
                 if drone_id != self.drone.id:
                     self.interdrone.send_ARM(CMD_MSG.ARM, drone_id)
 
-        while not await self.interdrone.all_armed() and self.flight_settings.mission_type != "Prompted":
+        while (
+            not await self.interdrone.all_armed()
+            and self.flight_settings.mission_type != "Prompted"
+        ):
             logging.info("Waiting for all drones to be armed...")
             await asyncio.sleep(0.1)
 
