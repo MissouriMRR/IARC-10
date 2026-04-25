@@ -40,8 +40,9 @@ async def run(self: POIF) -> None:
             self.drone.vehicle.location.global_relative_frame.lat,
             self.drone.vehicle.location.global_relative_frame.lon,
         )
-
-        circleWaypoints = circle_waypoints(*location, 10, drone_id=self.drone.id)
+        circleWaypoints = []
+        for i in range(10):
+            circleWaypoints.extend(circle_waypoints(*location, 10, drone_id=self.drone.id))
         self.drone.updateWaypoints(circleWaypoints[:5])
 
         await self.interdrone.send_new_waypoints(
@@ -53,10 +54,15 @@ async def run(self: POIF) -> None:
 
         while True:
             curWaypoint = await self.drone.gotoWaypoint()
-            await self.interdrone.reached_waypoint((self.drone.id), curWaypoint)
+            await self.interdrone.reached_waypoint(
+                tuple(self.flight_settings.other_drones_in_mission), curWaypoint
+            )
             self.drone.updateWaypoints([circleWaypoints.pop(0)])
             for drone in self.interdrone.drone_states:
-                send_new_waypoints = drone.list_of_waypoints[drone.next_waypoint_index :]
+                await self.interdrone.send_new_waypoints(
+                    tuple(self.flight_settings.other_drones_in_mission), [curWaypoint]
+                )
+
                 self.drone.checkForCollision(drone.list_of_waypoints)
 
             if len(circleWaypoints) == 0:
