@@ -6,7 +6,7 @@ FROM python:${PYTHON_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install dependencies
-RUN apt update 
+RUN apt update
 #&& apt install -y software-properties-common
 # RUN apt-get install python3-wxgtk4.0 -y --no-install-recommends
 
@@ -20,9 +20,9 @@ ENV POETRY_HOME=/etc/poetry \
 
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
-    
+
 # INSTALL DEPENDENCIES
-    
+
 RUN mkdir /pyenv
 WORKDIR /pyenv
 

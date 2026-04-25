@@ -106,9 +106,9 @@ class Waypoint:
 
     @staticmethod
     def getChecksum(waypoints: list[Waypoint]) -> int:
-        
+
         return sum(wp._get_waypoint_id() for wp in waypoints)
-    
+
     @staticmethod
     def check_for_collision(
         drone1_waypoints: list[Waypoint], drone2_waypoints: list[Waypoint]

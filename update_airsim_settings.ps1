@@ -29,20 +29,20 @@
     Given that NumDrones is provided, determines the control port of the first drone.
     Each successive drone has a port ten higher than the previous. It is 9002 by default.
 
-    e.g., drone ports will be {9002, 9012, 9022, 9032, ...} if this value is 
+    e.g., drone ports will be {9002, 9012, 9022, 9032, ...} if this value is
     9002
 .PARAMETER StartUdpPort
     Given that NumDrones is provided, determines the UDP port of the first drone.
     Each successive drone has a port ten higher than the previous. It is 9003 by default.
 
-    e.g., drone ports will be {9003, 9013, 9023, 9033, ...} if this value is 
+    e.g., drone ports will be {9003, 9013, 9023, 9033, ...} if this value is
     9003
 .EXAMPLE
     C:\SUAS-2025> ./update_airsim_settings.ps1 ./my_settings.json
     Simplest case copying the contents of ./my_settings.json to the default AirSim settigns.json.
 
     C:\SUAS-2025> ./update_airsim_settings.ps1 ./my_settings.json -NumDrones 5,5
-    Example of automatically creating a 5 by 5 grid of drones. The settigns in my_settings.json 
+    Example of automatically creating a 5 by 5 grid of drones. The settigns in my_settings.json
     will be used as a template.
 #>
 
@@ -52,7 +52,7 @@
 param(
     [Parameter(Mandatory, Position=0)]
     [string]$File,  # this is positional (e.g., ./update_airsim_settings.ps1 file.json)
-    
+
     [string]$OutDir = [System.IO.Path]::Combine([Environment]::GetFolderPath('Personal'), "AirSim"),
 
     [Parameter(ParameterSetName="ndrones")]

@@ -28,8 +28,18 @@ async def main():
         )
     interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
+
     try:
         # Keep the networking loop alive
+        while True:
+            ping_worked: bool = await interdrone.ping_drones()
+            if ping_worked:
+                print("Ping succeeded. Exiting loop")
+                break
+            else:
+                print("Ping failed. Trying again")
+            await asyncio.sleep(0.1)
+        # Try to arm once ping works
         while True:
             await asyncio.sleep(1)
     except asyncio.CancelledError:

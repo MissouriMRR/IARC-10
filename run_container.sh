@@ -11,7 +11,7 @@ function find_container_name() {
 
 function usage() {
     echo This script is intended as a simple wrapper for running the env and sim podman containers.
-    echo 
+    echo
     echo Usage:
     echo "  cmd [command]"
     echo

@@ -32,4 +32,4 @@ ENV OUT_PORT=14550
 ENV OUT_HOST=127.0.0.1
 ENV NUM_DRONES=1
 
-CMD /ardupilot/Tools/autotest/sim_start_drones.sh $NUM_DRONES $OUT_PORT $OUT_HOST 
+CMD /ardupilot/Tools/autotest/sim_start_drones.sh $NUM_DRONES $OUT_PORT $OUT_HOST
