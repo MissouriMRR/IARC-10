@@ -56,7 +56,7 @@ async def run(self: Start) -> State:
             await asyncio.sleep(0.1)
         logging.info("All drones connected and armable")
 
-         # Wait until the drone has a global position estimate
+        # Wait until the drone has a global position estimate
         # ^Check if itself is ready to arm
         if self.flight_settings.mission_type == "Prompted":
             print("here")
