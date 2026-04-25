@@ -42,6 +42,7 @@ class CMD_MSG(Enum):
     MISSION_DONE = 6
     LAND = 7
     EMERGENCY_LAND = 8
+    DISARM = 10
 
 
 class Interdrone:
