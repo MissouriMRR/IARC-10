@@ -277,7 +277,7 @@ class Drone:
                 self.address = "tcp:127.0.0.1:" + str(port)
                 self.baud = None
             case SimMode.AIRSIM:
-                
+
                 port += (
                     self.id - 1
                 ) * 10  # IDs are assigned sequentially starting at 5762 and increasing by 10 for each drone.

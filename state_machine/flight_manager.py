@@ -52,7 +52,7 @@ class FlightManager:
         flight_settings : FlightSettings
             The flight settings to use.
         """
-        self.drone.id=flight_settings.current_drone_ID
+        self.drone.id = flight_settings.current_drone_ID
         self.drone.use_settings(flight_settings.sim_mode)
 
         logging.info("Initializing drone connection")
