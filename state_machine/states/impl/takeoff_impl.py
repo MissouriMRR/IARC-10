@@ -48,7 +48,7 @@ async def run(self: Takeoff) -> State:
         if self.flight_settings.mission_type == "Prompted":
             action_type = await get_input("Enter action command (takeoff, demo, or mission): ")
             await self.drone.takeoff(10)
-            await asyncio.sleep(5) # Wait for the drone to stabilize after takeoff
+            await asyncio.sleep(5)  # Wait for the drone to stabilize after takeoff
             while action_type.lower() not in ["takeoff", "demo", "mission"]:
                 action_type = await get_input(
                     "Invalid input. Enter action command (takeoff, demo, or mission): "
