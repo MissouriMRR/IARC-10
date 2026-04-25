@@ -609,7 +609,9 @@ class Interdrone:
                                     f"No DroneState found for drone_id={message.senderId}! Something is ary!"
                                 )
                         case MessageType.START_DEMO:
-                            if self.cmd_msg == CMD_MSG.ARM:
+                            if (
+                                self.cmd_msg == CMD_MSG.ARM
+                            ):  # TODO VERIFY THIS IS CORRECT
                                 self.cmd_msg = CMD_MSG.DEMO
                                 if self.flight_settings.current_drone_ID == 1:
                                     await self.send_start_demo(

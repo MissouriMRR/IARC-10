@@ -144,8 +144,12 @@ class Client:
         elif sendToSelf:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
-                    serverPort=int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
+                    serverIP=str(
+                        self.flight_settings.get_drone_by_id(self.droneId)["IP"]
+                    ),
+                    serverPort=int(
+                        self.flight_settings.get_drone_by_id(self.droneId)["port"]
+                    ),
                     message=message,
                 )
             )
@@ -167,15 +171,17 @@ class Client:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
     # Takes Message and sends it to passed in server
-    async def send_data_async(self, serverIP: str, serverPort: int, message: Message) -> None:
+    async def send_data_async(
+        self, serverIP: str, serverPort: int, message: Message
+    ) -> None:
         try:
-            clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
+            clientMessageDump: str = JsonMessageUtilities.message_to_json(
+                message=message
+            )
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
-            async with (
-                conn.lock
-            ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
+            async with conn.lock:  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
 
@@ -187,6 +193,21 @@ class Client:
             ConnectionRefusedError,
         ):
             await self._drop_connection(serverIP, serverPort)
+            # Messages that need to be resent if they fail to send
+            messages_that_need_resend: set[MessageType] = {
+                MessageType.ARM,
+                MessageType.ARM_ACK,
+                MessageType.ARM_NACK,
+                MessageType.START_DEMO,
+                MessageType.START_DEMO_ACK,
+                MessageType.DEMO_DONE,
+                MessageType.START_MISSION,
+                MessageType.START_MISSION_ACK,
+                MessageType.REACHED_WAYPOINT,
+                MessageType.RECONFIRM_WAYPOINTS,
+                MessageType.EMERGENCY_LAND,
+                MessageType.LAND,
+            }
             match message.id:
                 # If ping message failed to send, send a PING_NACK to self server
                 case MessageType.PING:
@@ -200,7 +221,8 @@ class Client:
                             data={},
                         )
                     )
-
+                case _ if message.id in messages_that_need_resend:
+                    await self.clientInData.put(message)
             if self.rangeTestEnabled:
                 print(
                     f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{serverPort - 5000}"
@@ -256,7 +278,10 @@ class Client:
         keysToClose: list[tuple[str, int]] = []
         for key, conn in self.connectionPool.items():
             # If connection is closing or is over idle time, flag connection to be closed
-            if conn.writer.is_closing() or (now - conn.lastUsed) > self.connectionIdleTimeoutSec:
+            if (
+                conn.writer.is_closing()
+                or (now - conn.lastUsed) > self.connectionIdleTimeoutSec
+            ):
                 keysToClose.append(key)
 
         # Close all connections flagged above
