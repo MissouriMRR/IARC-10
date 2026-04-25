@@ -35,11 +35,14 @@ async def run(self: POIF) -> None:
 
         # Instruct the drone to land
         self.drone.vehicle.airspeed = 20
-        location=(self.drone.vehicle.location.global_relative_frame.lat,self.drone.vehicle.location.global_relative_frame.lon)
-        
-        circleWaypoints=self.flight_settings.get_circle_waypoints(location, 10, 5)
+        location = (
+            self.drone.vehicle.location.global_relative_frame.lat,
+            self.drone.vehicle.location.global_relative_frame.lon,
+        )
+
+        circleWaypoints = self.flight_settings.get_circle_waypoints(location, 10, 5)
         self.drone.add_waypoints(circleWaypoints[:5])
-        circleWaypoints=circleWaypoints[5:]
+        circleWaypoints = circleWaypoints[5:]
         for state in self.interdrone.other_drones_in_mission:
             self.drone.checkForCollision(state.list_of_waypoints)
 

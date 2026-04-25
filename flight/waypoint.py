@@ -29,7 +29,7 @@ class Waypoint:
         self.drone_id = drone_id
         self.lat = lat
         self.long = long
-        self.id= self.drone_id*100000000+random.randint(0, 1000000)
+        self.id = self.drone_id * 100000000 + random.randint(0, 1000000)
 
         self.name = name  # Optional name for the waypoint, can be used for easier identification
 
@@ -157,8 +157,6 @@ class Waypoint:
                     )
                 )
         return waypoint_groups
-
-
 
 
 # Testing code

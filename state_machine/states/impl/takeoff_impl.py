@@ -14,6 +14,7 @@ from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
 from state_machine.interdrone import CMD_MSG, get_input
 
+
 async def run(self: Takeoff) -> State:
     """
     Implements the run method for the Takeoff state.
@@ -43,11 +44,14 @@ async def run(self: Takeoff) -> State:
         logging.info("Takeoff state running")
 
         while True:
-            if self.interdrone.CMD_MSG==CMD_MSG.MISSION or self.interdrone.CMD_MSG==CMD_MSG.DEMO or self.interdrone.cmd_msg==CMD_MSG.TAKEOFF:
+            if (
+                self.interdrone.CMD_MSG == CMD_MSG.MISSION
+                or self.interdrone.CMD_MSG == CMD_MSG.DEMO
+                or self.interdrone.cmd_msg == CMD_MSG.TAKEOFF
+            ):
                 logging.info("Mission command received. Initiating takeoff.")
                 break
 
-        
         await self.drone.takeoff(takeoff_altitude)
 
         return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
