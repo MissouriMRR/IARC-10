@@ -726,32 +726,13 @@ class Interdrone:
                                 state.waypoint_up_to_date = True
                                 # Message needs responses, send back message with current drones waypoints
                                 if message.data["needResponse"]:
-                                    test_waypoints = [
-                                        Waypoint(
-                                            1,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            2,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            3,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                    ]
+                                    waypoints = self.drone.getWaypoints()
                                     reconfirm_waypoints_message_response: Message = Message.create(
                                         id=MessageType.RECONFIRM_WAYPOINTS,
                                         dronesToSendData=(message.senderId,),
                                         senderId=self.flight_settings.current_drone_ID,
                                         data={
-                                            "allWaypoints": test_waypoints,
+                                            "allWaypoints": waypoints,
                                             "needResponse": False,
                                         },
                                     )
