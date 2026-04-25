@@ -329,9 +329,8 @@ class Drone:
 
         curWaypoint.has_visited = True
         logging.info(f"Reached waypoint {curWaypoint.waypoint_id}")
-        
+
         return self.waypoints.pop(0)
-    
 
     def setFieldSize(self, xMin, xMax, yMin, yMax):
         self.field = nodeGen.Field(xMin, xMax, yMin, yMax)

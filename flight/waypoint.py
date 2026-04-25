@@ -24,23 +24,23 @@ class Line:
 
 
 class Waypoint:
-    def __init__(self, drone_id: int, lat: float, long: float, waypoint_id :int = -1,name: str = ""):
-       
+    def __init__(
+        self, drone_id: int, lat: float, long: float, waypoint_id: int = -1, name: str = ""
+    ):
+
         self.drone_id = drone_id
         self.lat = lat
         self.long = long
         if waypoint_id != -1:
             self.waypoint_id = waypoint_id
         else:
-            self.waypoint_id = self.drone_id*100000000+random.randint(0, 1000000)
-        
+            self.waypoint_id = self.drone_id * 100000000 + random.randint(0, 1000000)
 
         self.name = name  # Optional name for the waypoint, can be used for easier identification
 
         self.has_visited = False
         self.has_to_wait = False
         self.waypoints_to_reach: list[Waypoint] = []
-    
 
     def __str__(self) -> str:
         return f"Waypoint(id={self.waypoint_id}, drone_id={self.drone_id}, lat={self.lat}, long={self.long}, name='{self.name}')"
