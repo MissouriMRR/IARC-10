@@ -388,7 +388,6 @@ class Interdrone:
         self,
         dronesToSendData: tuple[int, ...],
         waypoints: list[Waypoint],
-     
     ) -> None:
         """
         Message ID = 545
@@ -404,9 +403,7 @@ class Interdrone:
             if state is not None:
                 # TODO IMPLEMENT GETTING OTHER DRONES CHECKSUM
                 # checksum = get_checksum(state.list_of_waypoints)
-               
 
-                
                 new_waypoints_message: Message = Message.create(
                     id=MessageType.NEW_WAYPOINTS,
                     dronesToSendData=(target_drone,),
@@ -682,7 +679,7 @@ class Interdrone:
                                 # If checksums don't match, send reconfirm waypoints message
                                 else:
                                     state.waypoint_up_to_date = False
-                                    waypoints=self.drone.getWaypoints()
+                                    waypoints = self.drone.getWaypoints()
                                     reconfirm_waypoints_message: Message = Message.create(
                                         id=MessageType.RECONFIRM_WAYPOINTS,
                                         dronesToSendData=(message.senderId,),

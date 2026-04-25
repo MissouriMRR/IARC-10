@@ -13,7 +13,7 @@ services:
     working_dir: /IARC-10
     command: bash
     stdin_open: true
-    tty: true 
+    tty: true
   sim:
     environment:
       - OUT_PORT=14550

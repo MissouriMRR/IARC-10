@@ -295,6 +295,7 @@ class Drone:
 
     def getWaypoints(self):
         return self.waypoints
+
     def getWaypointChecksum(self):
         return Waypoint.getChecksum(self.waypoints)
 
