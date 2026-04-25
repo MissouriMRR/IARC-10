@@ -277,6 +277,7 @@ class Drone:
                 self.address = "tcp:127.0.0.1:" + str(port)
                 self.baud = None
             case SimMode.AIRSIM:
+                
                 port += (
                     self.id - 1
                 ) * 10  # IDs are assigned sequentially starting at 5762 and increasing by 10 for each drone.
@@ -300,7 +301,7 @@ class Drone:
         return Waypoint.getChecksum(self.waypoints)
 
     def checkForCollision(self, other_waypoints):
-        collisions = Waypoint.checkForCollision(self.waypoints, other_waypoints)
+        collisions = Waypoint.check_for_collision(self.waypoints, other_waypoints)
         for collision in collisions:
             logging.info(
                 f"Collision detected between waypoints {collision[0].waypoint_id} and {collision[1].waypoint_id}"
