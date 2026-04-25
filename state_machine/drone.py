@@ -295,6 +295,8 @@ class Drone:
 
     def getWaypoints(self):
         return self.waypoints
+    def getWaypointChecksum(self):
+        return Waypoint.getChecksum(self.waypoints)
 
     def checkForCollision(self, other_waypoints):
         collisions = Waypoint.checkForCollision(self.waypoints, other_waypoints)

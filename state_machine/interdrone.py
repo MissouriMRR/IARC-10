@@ -388,7 +388,7 @@ class Interdrone:
         self,
         dronesToSendData: tuple[int, ...],
         waypoints: list[Waypoint],
-        checksum: int,
+     
     ) -> None:
         """
         Message ID = 545
@@ -398,7 +398,7 @@ class Interdrone:
         a checksum of waypoints for the other drone
         When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
         """
-        
+        checksum = self.drone.getWaypointChecksum()
         for target_drone in dronesToSendData:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
@@ -406,7 +406,7 @@ class Interdrone:
                 # checksum = get_checksum(state.list_of_waypoints)
                
 
-                checksum = 10
+                
                 new_waypoints_message: Message = Message.create(
                     id=MessageType.NEW_WAYPOINTS,
                     dronesToSendData=(target_drone,),
@@ -665,13 +665,13 @@ class Interdrone:
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
-                                fake_checksum = 10
+                                checksum = Waypoint.getChecksum(state.list_of_waypoints)
                                 print(
                                     f"Comparing checksum. message.checksum = {message.data['targetDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {fake_checksum}"
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if fake_checksum == message.data["targetDroneWaypointsChecksum"]:
+                                if checksum == message.data["targetDroneWaypointsChecksum"]:
                                     takeoff_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         dronesToSendData=(message.senderId,),
@@ -682,33 +682,13 @@ class Interdrone:
                                 # If checksums don't match, send reconfirm waypoints message
                                 else:
                                     state.waypoint_up_to_date = False
-                                    # TODO IMPLEMENT GETTING ACTUAL WAYPOINTS (HARPER)
-                                    test_waypoints = [
-                                        Waypoint(
-                                            1,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            2,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                        Waypoint(
-                                            3,
-                                            self.flight_settings.current_drone_ID,
-                                            1.0,
-                                            1.0,
-                                        ),
-                                    ]
+                                    waypoints=self.drone.getWaypoints()
                                     reconfirm_waypoints_message: Message = Message.create(
                                         id=MessageType.RECONFIRM_WAYPOINTS,
                                         dronesToSendData=(message.senderId,),
                                         senderId=self.flight_settings.current_drone_ID,
                                         data={
-                                            "allWaypoints": test_waypoints,
+                                            "allWaypoints": waypoints,
                                             "needResponse": True,
                                         },
                                     )

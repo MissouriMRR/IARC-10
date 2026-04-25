@@ -132,7 +132,7 @@ dependencies = [
     { name = "future" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "pyqt5-qt5" },
+    { name = "pyqt5-qt5", marker = "platform_machine != 'aarch64'" },
     { name = "pyserial" },
     { name = "utm" },
 ]
@@ -143,7 +143,7 @@ requires-dist = [
     { name = "future", specifier = ">=1.0.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=1.0.0" },
-    { name = "pyqt5-qt5", specifier = "==5.15.2" },
+    { name = "pyqt5-qt5", marker = "platform_machine != 'aarch64'", specifier = "==5.15.2" },
     { name = "pyserial", specifier = "==3.5" },
     { name = "utm", specifier = ">=0.7.0" },
 ]
