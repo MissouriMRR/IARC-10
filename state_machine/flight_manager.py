@@ -60,19 +60,7 @@ class FlightManager:
         if flight_settings.sim_mode.AIRSIM:
             self.drone.remove_arming_check()
 
-        # Create drone_states to access state of other drones in the test
-        drone_states: list[DroneState] = (
-            []
-        )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
-        for id in flight_settings.other_drones_in_mission:
-            drone_states.append(
-                DroneState(
-                    drone_id=id,
-                    drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
-                )
-            )
-
-        interdrone_state: Interdrone = Interdrone(flight_settings, self.drone, drone_states)
+        interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
 
         logging.info("Starting processes")
         state_machine_task: asyncio.Task[None] = asyncio.ensure_future(

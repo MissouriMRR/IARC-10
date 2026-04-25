@@ -12,6 +12,7 @@ from state_machine.state_tracker import (
 from state_machine.states.land import Land
 from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
+from state_machine.interdrone import CMD_MSG, get_input
 
 
 async def run(self: Takeoff) -> State:
@@ -42,10 +43,15 @@ async def run(self: Takeoff) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Takeoff state running")
 
-        # Set takeoff altitude to the minimum allowed altitude, plus one meter
-        takeoff_altitude: float = (
-            extract_gps(self.flight_settings.mission_data_path).altitude_limits.min_altitude + 1.0
-        )
+        while True:
+            if (
+                self.interdrone.CMD_MSG == CMD_MSG.MISSION
+                or self.interdrone.CMD_MSG == CMD_MSG.DEMO
+                or self.interdrone.cmd_msg == CMD_MSG.TAKEOFF
+            ):
+                logging.info("Mission command received. Initiating takeoff.")
+                break
+
         await self.drone.takeoff(takeoff_altitude)
 
         return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)

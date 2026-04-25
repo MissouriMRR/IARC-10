@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+from state_machine.communication import send_ARM
 from state_machine.state_tracker import (
     update_drone,
     update_flight_settings,
@@ -11,6 +12,7 @@ from state_machine.state_tracker import (
 from state_machine.states.start import Start
 from state_machine.states.state import State
 from state_machine.states.takeoff import Takeoff
+from state_machine.interdrone import CMD_MSG, get_input
 
 
 async def run(self: Start) -> State:
@@ -41,10 +43,30 @@ async def run(self: Start) -> State:
         await self.drone.connect_drone()
 
         # Continue pinging drones until all are connected
-        while not await self.interdrone.ping_drones():
+        while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armed()):
             await asyncio.sleep(0.1)
-        await self.drone.arm()
-        logging.info("Start state complete")
+        # ^Check if itself is ready to arm
+        if self.flight_settings.mission_type == "Prompted":
+            MSG = await get_input("Type 'arm' to arm the drone and start the mission: ")
+            while MSG.lower() != "arm":
+                MSG = await get_input(
+                    "Invalid input. Type 'arm' to arm the drone and start the mission: "
+                )
+        else:
+            while self.interdrone.get_cmd_msg() != CMD_MSG.ARM:
+                await asyncio.sleep(0.1)
+
+        self.drone.arm()
+
+        if self.drone.id == 1:
+            for drone_id in self.flight_settings.drones_in_mission:
+                if drone_id != self.drone.id:
+                    self.interdrone.send_ARM(CMD_MSG.ARM, drone_id)
+
+        while not self.interdrone.all_armed() or self.flight_settings.mission_type == "Prompted":
+            logging.info("Waiting for all drones to be armed...")
+            await asyncio.sleep(0.1)
+
         return Takeoff(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("Start state canceled")

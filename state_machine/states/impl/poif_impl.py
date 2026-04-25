@@ -1,0 +1,64 @@
+import asyncio
+import logging
+
+from state_machine.state_tracker import (
+    update_state,
+    update_drone,
+    update_flight_settings,
+)
+from state_machine.states.land import Land
+from state_machine.states.poif import POIF
+
+
+async def run(self: POIF) -> None:
+    """
+    Implements the run method for the POIF state.
+
+    This method handles the logic for the POIF state and transitions to the appropriate next state.
+
+    Returns
+    -------
+    Start : State
+        The next state after the drone has successfully landed.
+
+    Notes
+    -----
+    This method is responsible for initiating the landing process of the drone and transitioning
+    it back to the Start state, preparing for a new flight.
+
+    """
+    try:
+        update_state("POIF")
+        update_drone(self.drone)
+        update_flight_settings(self.flight_settings)
+        logging.info("POIF state running")
+
+        # Instruct the drone to land
+        self.drone.vehicle.airspeed = 20
+        location = (
+            self.drone.vehicle.location.global_relative_frame.lat,
+            self.drone.vehicle.location.global_relative_frame.lon,
+        )
+
+        circleWaypoints = self.flight_settings.get_circle_waypoints(location, 10, 5)
+        self.drone.add_waypoints(circleWaypoints[:5])
+        circleWaypoints = circleWaypoints[5:]
+        for state in self.interdrone.other_drones_in_mission:
+            self.drone.checkForCollision(state.list_of_waypoints)
+
+        while True:
+            self.drone.gotoWaypoint()
+            self.drone.addWaypoints([circleWaypoints.pop(0)])
+            if len(circleWaypoints) == 0:
+                break
+
+        return Land(self.drone, self.flight_settings, self.interdrone)
+        logging.info("Land state complete.")
+        return
+    except asyncio.CancelledError as ex:
+        logging.error("Land state canceled")
+        raise ex
+
+
+# Setting the run_callable attribute of the Land class to the run function
+POIF.run_callable = run

@@ -68,7 +68,7 @@ async def main():
             Waypoint(2, flight_settings.current_drone_ID, 1.0, 1.0),
             Waypoint(3, flight_settings.current_drone_ID, 1.0, 1.0),
         ]
-        await interdrone.add_waypoints(
+        await interdrone.send_new_waypoints(
             dronesToSendData=tuple(
                 flight_settings.other_drones_in_mission,
             ),
