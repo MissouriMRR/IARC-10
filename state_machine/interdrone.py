@@ -264,7 +264,7 @@ class Interdrone:
         if not self.drone_states:
             return True
 
-        return all(state.armed is True for state in self.drone_states)
+        return all(state.armed is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_takeoff(self, dronesToSendData: tuple[int, ...]) -> None:
         """
@@ -305,9 +305,11 @@ class Interdrone:
         if not self.drone_states:
             return False
 
-        return all(state.takeoff is True for state in self.drone_states)
+        return all(state.takeoff is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
+        print("sending message AHH")
+        await asyncio.sleep(1)
         """
         Send a start demo message to the drone id passed as a parameter
         """
@@ -344,9 +346,9 @@ class Interdrone:
         Loop through all droneState objects to see if they have started demo
         """
         if not self.drone_states:
-            return False
-
-        return all(state.demo_start is True for state in self.drone_states)
+            return True
+        print(f"Checking if all drones have started demo. Drone states: {self.drone_states}")
+        return all(state.demo_start is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_start_mission(self, dronesToSendData: tuple[int, ...]) -> None:
         """
@@ -589,6 +591,7 @@ class Interdrone:
                                     data={},
                                 )
                                 self.send(disarm_message)
+                            self.drone.vehicle.armed = False
                         case MessageType.START_TAKEOFF:
                             # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
                             # TODO MAKE SURE WE DON'T NEED A START_TAKEOFF_NACK
@@ -613,6 +616,7 @@ class Interdrone:
                                     f"No DroneState found for drone_id={message.senderId}! Something is ary!"
                                 )
                         case MessageType.START_DEMO:
+                            print("GOT START DEMO MESSAGE")
                             if self.cmd_msg == CMD_MSG.ARM:  # TODO VERIFY THIS IS CORRECT
                                 self.cmd_msg = CMD_MSG.DEMO
                                 if self.flight_settings.current_drone_ID == 1:
@@ -645,6 +649,7 @@ class Interdrone:
                                 )
                                 self.send(demo_done_message)
                         case MessageType.START_MISSION:
+                            print("start mission recieved")
                             if self.cmd_msg == CMD_MSG.ARM:
                                 self.cmd_msg = CMD_MSG.MISSION
                                 if self.flight_settings.current_drone_ID == 1:
@@ -671,6 +676,8 @@ class Interdrone:
                             if state is not None:
                                 # Add received waypoints to list_of_waypoints
                                 state.list_of_waypoints += message.data["newWaypoints"]
+                                print(state.list_of_waypoints)
+                                await asyncio.sleep(15)
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
