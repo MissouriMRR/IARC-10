@@ -92,6 +92,7 @@ class Waypoint:
 
     def __repr__(self):
         return self.__str__()
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Waypoint":
         return cls(

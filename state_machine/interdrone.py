@@ -727,14 +727,14 @@ class Interdrone:
                                 """
                                 print("_______________________________________________")
                                 reached_id = message.data["reachedWaypointId"]
-                                reached_waypoint=None
+                                reached_waypoint = None
                                 for waypoint in state.list_of_waypoints:
-                                    if waypoint.waypoint_id==reached_id:
-                                        reached_waypoint=waypoint
+                                    if waypoint.waypoint_id == reached_id:
+                                        reached_waypoint = waypoint
                                 state.list_of_waypoints.remove(reached_waypoint)
-                                reached_waypoint.has_visited=True
+                                reached_waypoint.has_visited = True
 
-                                #print(f"State of waypoint list after: {state.list_of_waypoints} ")
+                                # print(f"State of waypoint list after: {state.list_of_waypoints} ")
                                 reached_waypoint_ack_message: Message = Message.create(
                                     id=MessageType.REACHED_WAYPOINT_ACK,
                                     dronesToSendData=(message.senderId,),
@@ -744,7 +744,7 @@ class Interdrone:
                                 self.send(reached_waypoint_ack_message)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
                         case MessageType.REACHED_WAYPOINT_ACK:
-                            
+
                             state = self.get_drone_state_from_id(message.senderId)
                             if state is not None:
                                 state.waypoint_up_to_date = True
