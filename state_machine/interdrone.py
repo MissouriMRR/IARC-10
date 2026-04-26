@@ -308,8 +308,6 @@ class Interdrone:
         return all(state.takeoff is True for state in self.drone_states) or self.drone.id != 1
 
     async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
-        
-        
         """
         Send a start demo message to the drone id passed as a parameter
         """
@@ -677,7 +675,6 @@ class Interdrone:
                                 # Add received waypoints to list_of_waypoints
                                 state.list_of_waypoints += message.data["newWaypoints"]
                                 print(state.list_of_waypoints)
-                                
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
