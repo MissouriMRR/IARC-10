@@ -92,7 +92,13 @@ class Waypoint:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Waypoint":
-        return cls(d["waypoint_id"], d["drone_id"], d["lat"], d["long"], d.get("name", ""))
+        return cls(
+            drone_id=d["drone_id"],
+            lat=d["lat"],
+            long=d["long"],
+            waypoint_id=d["waypoint_id"],
+            name=d.get("name", ""),
+        )
 
     def check_wait(self) -> None:
         needs_to_wait: bool = False
