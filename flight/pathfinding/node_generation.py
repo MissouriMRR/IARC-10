@@ -120,10 +120,14 @@ class Connection:
         distance = 0.0
         
         if self.connectionType==seg.ARC: # Nodes are on the same mine
-            angleTheta=abs(self.node1.angle-self.node2.angle)
             
-            mineRadius=self.node1.parentMine.radius
+            # Get two different angle differences, one for major arc, the other for minor arc
+            angle1=abs(self.node1.angle-self.node2.angle)
+            angle2 = (2*np.pi)-angle1
 
+            # Only use the smallest arc
+            angleTheta = min(angle1, angle2)
+            mineRadius=self.node1.parentMine.radius
             distance = angleTheta*mineRadius
 
         else: # Nodes are on seperate mines
@@ -216,48 +220,46 @@ class Connection:
         if (self.node1.nType == "default"):
             # Left line check
             if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x1,y1))):
-                print(x1,y1)
+                # print(x1,y1)
                 self.node1.labeled = True
                 return False
             # Right line check
             if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x1,y1))):
-                print(x1,y1)
+                # print(x1,y1)
                 # self.node1.labeled = True
                 return False
             # Upper line check
             if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x1,y1))):
-                print(x1,y1)
+                # print(x1,y1)
                 # self.node1.labeled = True
                 return False
             # Lower line check
             if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x1,y1))):
-                print(x1,y1)
+                # print(x1,y1)
                 # self.node1.labeled = True
                 return False
         # Node 2 boundary check
         if (self.node2.nType == "default"):
             # Left line check
             if not(field.isPointRightofLine(field.leftLine,field.leftSlope,(x2,y2))):
-                print(x2,y2)
+                # print(x2,y2)
                 self.node1.labeled = True
                 return False
             # Right line check
             if not(field.isPointLeftofLine(field.rightLine,field.rightSlope,(x2,y2))):
-                print(x2,y2)
+                # print(x2,y2)
                 # self.node1.labeled = True
                 return False
             # Upper line check
             if not(field.isPointBelowLine(field.upperLine,field.upperSlope,(x2,y2))):
-                print(x2,y2)
+                # print(x2,y2)
                 # self.node1.labeled = True
                 return False
             # Lower line check
             if not(field.isPointAboveLine(field.lowerLine,field.lowerSlope,(x2,y2))):
-                print(x2,y2)
+                # print(x2,y2)
                 # self.node1.labeled = True
                 return False
-        
-
         
         # Connection intersecting mine test
         if self.connectionType == seg.LINE:
@@ -305,7 +307,6 @@ class Connection:
                 
                 if intersectionPoints != None:
                     validEdge = validEdge and self.validHuggingEdge(intersectionAngle,offsetAngle)
-                
                 else:
                     print("Something went really wrong with midpoint & intersectionpoints")
             return validEdge
@@ -625,21 +626,22 @@ class Field:
         """
         x = point[0]
         y = point[1]
-
-        if slope < 0: # Negative slope
-            if (y < line(x)):
-                return True
-        elif slope > 0: # Positive slope
-            if (y > line(x)):
-                return True
-        elif slope == "undef": # Verticle line
-            if (x < line(x)):
-                return True
-        else:
-        # If the points are horizontal, and since this is checking a *line*
-        # A point will always be within the line <-----*--->
-        # So technically cant be left of the line
-            return False
+        if isinstance(slope,str):
+            if slope == "undef": # Verticle line
+                if (x < line(x)):
+                    return True
+        if isinstance(slope,float):
+            if slope < 0: # Negative slope
+                if (y < line(x)):
+                    return True
+            elif slope > 0: # Positive slope
+                if (y > line(x)):
+                    return True
+            else:
+            # If the points are horizontal, and since this is checking a *line*
+            # A point will always be within the line <-----*--->
+            # So technically cant be left of the line
+                return False
         return False
     # Given a line function and a point, detects if the point
     @staticmethod # lies to the right of the line
@@ -664,18 +666,19 @@ class Field:
         # point[0],point[1] = x,y
         x = point[0]
         y = point[1]
-
-        if slope < 0: # Negative Slope
-            if (y > line(x)):
-                return True
-        elif slope > 0: # Positive Slope
-            if (y < line(x)):
-                return True
-        elif slope == "undef": # Verticle line
-            if (x > line(x)):
-                return True
-        else: # Horizontal
-            return False
+        if isinstance(slope,str):
+            if slope == "undef": # Verticle line
+                if (x > line(x)):
+                    return True
+        if isinstance(slope,float):
+            if slope < 0: # Negative Slope
+                if (y > line(x)):
+                    return True
+            elif slope > 0: # Positive Slope
+                if (y < line(x)):
+                    return True
+            else: # Horizontal
+                return False
         return False
     
     # Given a line function and a point, detects if the point
@@ -687,10 +690,12 @@ class Field:
         """
         x = point[0]
         y = point[1]
-        if slope == "undef": # Vertical line
-            return True
-        if (y > line(x)):
-            return True
+        if isinstance(slope,str):
+            if slope == "undef": # Vertical line
+                return True
+        if isinstance(slope,float):
+            if (y > line(x)):
+                return True
         return False
     # Given a line function and a point, detects if the point
     @staticmethod # lies below the line
@@ -701,14 +706,16 @@ class Field:
         """
         x = point[0]
         y = point[1]
-        if slope == "undef": # Vertical line
-            return None
-        if (y < line(x)):
-            return True
+        if isinstance(slope,str):
+            if slope == "undef": # Vertical line
+                return None
+        if isinstance(slope,float):
+            if (y < line(x)):
+                return True
         return False
     
     # Purely for debugging
-    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="") -> None:
+    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="",labelPath:bool=False) -> None:
         """
         Using the matplotlib library and various optional labelling, plots the current iteration of the field
         """
@@ -736,6 +743,12 @@ class Field:
             plt.plot(mine.x,mine.y,"x",color=(1,1,1))
         nodeSymbol = '' # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
         print("Start plotting, will not affect node generation")
+        if len(path) > 0:
+            xlabel += "\nBlack = A* path"
+            if labelPath:
+                for node in path:
+                    node.labeled = True
+        
         for node in self.nodeGraph.keys():
             if labeled or node.labeled:
                 vertalignment = ['top','bottom','baseline','center_baseline']
@@ -762,7 +775,6 @@ class Field:
         xlabel += "\nX = Mines' centers"
         # If a path is passed in, display the path as a black line
         if len(path) > 0:
-            xlabel += "\nBlack = A* path"
             for i, node in enumerate(path):
                 if (i < len(path)-1):
                     nextNode = path[i+1]
@@ -894,7 +906,6 @@ class Mine:
         if len(sortedNodes)==0:
             return 0
 
-       
         for i in range(len(sortedNodes)-1):
            
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
@@ -1148,7 +1159,6 @@ class MineNode(Node):
     def __repr__(self):
         return self.__str__()
 
-## Moved debugging to testCases.py ##
 """
 TODO:
 X=Done
