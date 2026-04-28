@@ -1,9 +1,24 @@
 from camera/camera.py import Camera
 from camera/mine_detection.py import MineDetection
 from camera/image.py import Image
-from math import dist
+from math import sin, acos
 import dronekit
 import common/drone_coordinates.py
+
+# haversine
+def hvs(theta):
+    return sin(theta / 2) ** 2
+
+# archaversine
+def ahvs(theta):
+    return acos(1 - 2 * theta)
+
+# arc length between two points on a sphere given longitude and latitude
+def great_circle(p_lon, p_lat, q_lon, q_lat):
+    delta_lon = abs(p_lon - q_lon)
+    delta_lat = abs(p_lat - q_lat)
+    delta_sigma = ahvs(hvs(delta_lat) + (1 - hvs(delta_lat) - hvs(p_lat + q_lat)) * hvs(delta_lon))
+    return 6378137 * delta_sigma # random number is radius of the earth in meters
 
 class Vision:
     def __init__(self, config: dict):
@@ -21,11 +36,11 @@ class Vision:
         # this will assume mine coordinates are in lat/lon FOR NOW
         # they are not in this format, they are still just boxes
         for comparison_mine in range(len(self.mine_list) - 2)
-            if dist(mine_to_check.world_coords, comparison_mine.world_coords) <= cluster_threshold:
+            if great_circle(mine_to_check.world_coords, comparison_mine.world_coords) <= cluster_threshold:
                 self.mine_list.remove(mine_to_check)
                 break
 
-    def big_ass_picture_function(self) -> Image:
+    def big_picture_function(self) -> Image:
         drone_position = drone_coordinates.DronePose(self.drone.location.lat, 
                                                      self.drone.location.lon,
                                                      self.drone.location.alt,
