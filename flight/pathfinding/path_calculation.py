@@ -139,6 +139,7 @@ class Graph:
                     f_score[neighbor] = tenative_gScore + h(neighbor)
                     if neighbor not in open_set:
                         heapq.heappush(open_set,(f_score[neighbor],neighbor))
+            print(current,self.graph[current])
 
         return "No Path"
     

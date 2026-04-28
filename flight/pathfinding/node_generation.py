@@ -474,6 +474,7 @@ class Field:
         Connection.field=self
 
     # This type of node will not have a parent mine, primarily used for start/end points
+    
     def addFloatingNode(self,x:float,y:float,ndType:str=None) ->'Node':
         """
         Given a coordinate position, place a floating node onto the field
@@ -488,9 +489,9 @@ class Field:
             mineNodePrimary.connectNode(fNode)
             mineNodeSecondary.connectNode(fNode)
         
-        if fNode in self.nodeGraph:
-            if len(self.nodeGraph[fNode])==0:
-                del self.nodeGraph[fNode]
+        """ if fNode in self.nodeGraph:
+        if len(self.nodeGraph[fNode])==0:
+        del self.nodeGraph[fNode]"""
         return fNode
     
     #Due to the current node stucture, right now this only modifies the nodeGraph

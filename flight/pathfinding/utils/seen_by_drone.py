@@ -1,9 +1,11 @@
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 import numpy as np
-import flight.pathfinding.node_generation as nodeg
-import flight.pathfinding.path_calculation as pc
-import flight.pathfinding.path_subdivision as ps
-import flight.pathfinding.utils.mask_gen as maskGen
-import flight.pathfinding.path_subdivision as pathSub
+from flight.pathfinding import node_generation as nodeg
+from flight.pathfinding import path_calculation as pc
+from flight.pathfinding import path_subdivision as ps
+from flight.pathfinding.utils import mask_gen as maskGen
+from flight.pathfinding import path_subdivision as pathSub
 from PIL import Image, ImageDraw
 
 class SightTracker:
@@ -110,13 +112,15 @@ if __name__ == "__main__":
     # Screw My stupid chud life I can't test this until the field is working again.
     print("-Making Field")
     field = nodeg.Field([250, 250], [[0,250],[200,250],[50,0],[250,0]])
-    start = field.placeStartNode(125,0) 
-    end = field.placeEndNodesPositions([125,250])
+
+    #print(end)
+    print(field.nodeGraph)
     print("-Making Seen Tracker")
     seen_tracker = SightTracker([250,250])
     seen_tracker.note_field_borders([[0,250],[200,250],[50,0],[250,0]])
 
-    mines = [[50,120],[59,120],[68,120],[77,120],[86,120],[95,120],[104,120],[113,120],[122,120],[131,120],[140,120],[149,120],[158,120],[167,120],[176,120],[185,120],[190,120]]
+    # [50,120],[59,120],[68,120],[77,120],[86,120],[95,120],[104,120],[113,120],[122,120],[131,120],[140,120],[149,120],[158,120],[167,120],[176,120],[185,120],[190,120]
+    mines = [[49,120],[60,120],[68,120],[77,120],[86,120],[95,120],[104,120],[113,120],[122,120],[131,120],[140,120],[149,120],[158,120],[167,120],[176,120],[184,120],[195,120]]
 
     picture_borders = [[50,120],[200,170],[45,85],[195,90]]
 
@@ -126,17 +130,24 @@ if __name__ == "__main__":
     print("-Adding Mines")
     for i in mines:
         field.addMine(i[0], i[1], 10)
-    
+    start = field.placeStartNode(125,2) 
+    print(start)
+    end = field.placeEndNodesPositions([(125,248)])
     print("-Plotting Field")
-    field.plotField()
+    field.plotField(labeled=True)
 
     print("-Finding Path")
+    def y_max(node):
+        return (460 - node.y)
+    
     new_graph = pc.Graph(field.nodeGraph)
-    node_list = new_graph.shortest_path(start, end)
+    
+    node_list = new_graph.a_star(start, end, y_max)
 
     print("-Running Path segmentation")
     path = ps.Path()
-    goto_points, data_sup = path.generate_goto_points(node_list, 0.3, 64, 20)
+    print(node_list)
+    goto_points, data_sup = path.generate_goto_points(node_list, 64, 20, 20)
 
     print("-Removing Already seen points")
     remove_extra_coords(seen_tracker, goto_points, data_sup, [path.ground_covered_image(0.3, 64), path.ground_covered_image(0.3, 64)], True)
