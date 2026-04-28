@@ -443,6 +443,106 @@ class Interdrone:
                 state.waypoint_up_to_date = False
 
         return
+    
+    async def send_survey_start(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 565
+        Set the CMD_MSG in interdrone to SURVEY_START
+        Send Survey_Start message to all other drones
+        """
+        survey_message: Message = Message.create(
+            id=MessageType.SURVEY_START,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_message)
+
+        return
+    
+    async def send_survey_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 566
+        Sends survey_start_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        survey_ack_message: Message = Message.create(
+            id=MessageType.SURVEY_START_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_ack_message)
+
+        return
+
+    async def send_survey_end(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 570
+        Sends survey_end message to all other drones
+        """
+        survey_end_message: Message = Message.create(
+            id=MessageType.SURVEY_END,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_end_message)
+
+        return
+    
+    async def send_survey_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 571
+        Sends survey_end_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        survey_end_ack_message: Message = Message.create(
+            id=MessageType.SURVEY_END_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_end_ack_message)
+
+        return
+
+    async def send_mission_end(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 585
+        Sends mission_end message to all other drones
+        """
+        mission_end_message: Message = Message.create(
+            id=MessageType.MISSION_END,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_end_message)
+        
+        return
+    
+    async def send_mission_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 586
+        Sends mission_end_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        mission_end_ack_message: Message = Message.create(
+            id=MessageType.MISSION_END_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_end_ack_message)
+
+        return
 
     async def cancel_state(self) -> None:
         """

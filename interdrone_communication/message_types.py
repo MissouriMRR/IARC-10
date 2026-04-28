@@ -55,7 +55,7 @@ class MessageType(Enum):
     SURVEY_END = 570
     SURVEY_END_ACK = 571
     SHARE_PHOTOS = 575 #TODO: Put photos with correct type
-    FIELD_CHECKSUM = 580 #TODO: Make sure "checksum" is an int
+    FIELD_CHECKSUM = 580
     MISSION_END = 585
     MISSION_END_ACK = 586
 
@@ -312,7 +312,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.FIELD_CHECKSUM,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "checksum": int,    #TODO: make sure this is an int
+        "checksum": int,
     },
     MessageType.MISSION_END: {
         "id": MessageType.MISSION_END,
