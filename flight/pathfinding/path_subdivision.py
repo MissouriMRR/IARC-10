@@ -178,7 +178,7 @@ if __name__ == "__main__":
     field.addMine(170, 100, 20)
 
     start=field.placeStartNode(110,0)
-    end=field.placeEndNodes(190,2)
+    end=field.placeEndNodesPositions([(180, 125)])
 
     for node in end:
         node.connectNode(start)
