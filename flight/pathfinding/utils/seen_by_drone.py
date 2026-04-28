@@ -1,4 +1,7 @@
 import numpy as np
+import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.path_calculation as pc
+import flight.pathfinding.path_subdivision as ps
 import flight.pathfinding.utils.mask_gen as maskGen
 import flight.pathfinding.path_subdivision as pathSub
 from PIL import Image, ImageDraw
@@ -16,7 +19,7 @@ class SightTracker:
         self.map += np.array(pic_shape)
     
     # Takes the corner coords from a taken picture to increment the "confidence value"
-    def note_pic(self, corner_coords:tuple[int, int, int, int]):
+    def note_pic(self, corner_coords:tuple[tuple[int, int], tuple[int, int], tuple[int, int], tuple[int, int]]):
         picShape = Image.new("L", self.field_size, 0)
         ImageDraw.Draw(picShape).polygon(corner_coords, outline=1, fill=1)
         self.map += np.array(picShape)
@@ -31,7 +34,9 @@ class SightTracker:
         return False
     
     def save_tracker_as_image(self):
-        im = Image.fromarray(self.map)
+        temp = self.map
+        temp[[temp > 0]] = 255
+        im = Image.fromarray(temp)
         im.save("latest_test_seen_tracker_save.jpeg")
 
 # Removes coords that are redundant to check
@@ -103,4 +108,35 @@ def remove_extra_coords(seen:SightTracker, goto_points:tuple[tuple[float,float]]
 
 if __name__ == "__main__":
     # Screw My stupid chud life I can't test this until the field is working again.
-    pass
+    print("-Making Field")
+    field = nodeg.Field([250, 250], [[0,250],[200,250],[50,0],[250,0]])
+    start = field.placeStartNode(125,0) 
+    end = field.placeEndNodesPositions([125,250])
+    print("-Making Seen Tracker")
+    seen_tracker = SightTracker([250,250])
+    seen_tracker.note_field_borders([[0,250],[200,250],[50,0],[250,0]])
+
+    mines = [[50,120],[59,120],[68,120],[77,120],[86,120],[95,120],[104,120],[113,120],[122,120],[131,120],[140,120],[149,120],[158,120],[167,120],[176,120],[185,120],[190,120]]
+
+    picture_borders = [[50,120],[200,170],[45,85],[195,90]]
+
+    print("-Noting Picture")
+    seen_tracker.note_pic(picture_borders)
+
+    print("-Adding Mines")
+    for i in mines:
+        field.addMine(i[0], i[1], 10)
+    
+    print("-Plotting Field")
+    field.plotField()
+
+    print("-Finding Path")
+    new_graph = pc.Graph(field.nodeGraph)
+    node_list = new_graph.shortest_path(start, end)
+
+    print("-Running Path segmentation")
+    path = ps.Path()
+    goto_points, data_sup = path.generate_goto_points(node_list, 0.3, 64, 20)
+
+    print("-Removing Already seen points")
+    remove_extra_coords(seen_tracker, goto_points, data_sup, [path.ground_covered_image(0.3, 64), path.ground_covered_image(0.3, 64)], True)
