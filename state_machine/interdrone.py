@@ -443,7 +443,7 @@ class Interdrone:
                 state.waypoint_up_to_date = False
 
         return
-    
+
     async def send_survey_start(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 565
@@ -460,7 +460,7 @@ class Interdrone:
         self.send(survey_message)
 
         return
-    
+
     async def send_survey_ack(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 566
@@ -493,7 +493,7 @@ class Interdrone:
         self.send(survey_end_message)
 
         return
-    
+
     async def send_survey_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 571
@@ -524,9 +524,9 @@ class Interdrone:
         )
 
         self.send(mission_end_message)
-        
+
         return
-    
+
     async def send_mission_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 586

@@ -54,7 +54,7 @@ class MessageType(Enum):
     SURVEY_START_ACK = 566
     SURVEY_END = 570
     SURVEY_END_ACK = 571
-    SHARE_PHOTOS = 575 #TODO: Put photos with correct type
+    SHARE_PHOTOS = 575  # TODO: Put photos with correct type
     FIELD_CHECKSUM = 580
     MISSION_END = 585
     MISSION_END_ACK = 586
