@@ -59,6 +59,7 @@ class MessageType(Enum):
     MISSION_END = 585
     MISSION_END_ACK = 586
 
+
 SchemaFieldType: TypeAlias = (
     type[int] | type[float] | type[str] | type[tuple[Any, ...]] | type[dict[str, Any]] | MessageType
 )
@@ -306,7 +307,7 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SHARE_PHOTOS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        #TODO: Put photos with correct type
+        # TODO: Put photos with correct type
     },
     MessageType.FIELD_CHECKSUM: {
         "id": MessageType.FIELD_CHECKSUM,
