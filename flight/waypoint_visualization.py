@@ -52,9 +52,7 @@ class CoordinateConverter:
 
         return x, y
 
-    def get_bounds(
-        self, waypoints: list[Waypoint]
-    ) -> tuple[float, float, float, float]:
+    def get_bounds(self, waypoints: list[Waypoint]) -> tuple[float, float, float, float]:
         """
         Get the bounding box of all waypoints in local coordinates.
 
@@ -68,8 +66,7 @@ class CoordinateConverter:
             return 0, 0, 0, 0
 
         coords = [
-            self.lat_lon_to_local(wp._get_latitude(), wp._get_longitude())
-            for wp in waypoints
+            self.lat_lon_to_local(wp._get_latitude(), wp._get_longitude()) for wp in waypoints
         ]
         xs = [c[0] for c in coords]
         ys = [c[1] for c in coords]
@@ -180,9 +177,7 @@ class LiveWaypointVisualizer:
             )
 
             # Plot lines between consecutive waypoints
-            self.ax.plot(
-                xs, ys, color=color, linestyle="-", linewidth=2, alpha=0.6, zorder=2
-            )
+            self.ax.plot(xs, ys, color=color, linestyle="-", linewidth=2, alpha=0.6, zorder=2)
 
             # Add arrows if requested
             if self.show_arrows and len(wps) > 1:
