@@ -81,8 +81,8 @@ Coordinates are example only, may not actually display accurately.
     field.addMine(0,0,20)
     field.addMine(-30,0,20)
     field.addMine(30,25,20)
-    field.placeStartNode(0,-10) 
-    field.placeEndNodes(-100,100,250,4)
+    field.placeStartNode(0,-10)
+    field.placeEndNodesPositions([0,30])
     field.plotField()
 
 Complex example moved to test_cases.py
@@ -489,9 +489,9 @@ class Field:
             mineNodePrimary.connectNode(fNode)
             mineNodeSecondary.connectNode(fNode)
         
-        """ if fNode in self.nodeGraph:
-        if len(self.nodeGraph[fNode])==0:
-        del self.nodeGraph[fNode]"""
+        # if fNode in self.nodeGraph:
+        #     if len(self.nodeGraph[fNode])==0:
+        #         del self.nodeGraph[fNode]
         return fNode
     
     #Due to the current node stucture, right now this only modifies the nodeGraph
@@ -585,7 +585,7 @@ class Field:
                     connection.deleteConnection()
          
     @staticmethod #Given two points, get the line equation and slope (to determine negative or positive slope)
-    def getLine(point1: tuple, point2: tuple) -> tuple:
+    def getLine(point1: tuple, point2: tuple) -> tuple[Callable[[float], float], float]:
         """
         Given two points as a tuple of floats each, get a line function and its slope
         """
@@ -715,10 +715,10 @@ class Field:
                 return True
         return False
     
-    # Purely for debugging
-    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="",labelPath:bool=False) -> None:
+    # Purely for debugging will have a growing list of parameters
+    def plotField(self,labeled:bool=False,path:list["Node"]=[],title:str="",xlabel:str="",labelPath:bool=False, pastPath:list["Node"] = []) -> None:
         """
-        Using the matplotlib library and various optional labelling, plots the current iteration of the field
+        Using the matplotlib library and various optional debug options, plots the current iteration of the field
         """
         plt = pyplot
         fig, ax = plt.subplots()
@@ -729,6 +729,7 @@ class Field:
 
         if len(title) <= 0:
             title = f"Mines({len(self.mines)}) and Potential Paths"
+        xlabel += "KEY:\n"
         # Create a list of circles representing mines, centered to their correlated mine's center
 
         circles = [plt.Circle(Mine.mines[i].getPos(),Mine.mines[i].getRadius(),color=Mine.mines[i].color) for i in range(len(Mine.mines))]
@@ -769,7 +770,6 @@ class Field:
                             plt.plot([node.x,connectedNode.x],[node.y,connectedNode.y],nodeSymbol)
                         except AttributeError:
                             plt.plot([node.x],[node.y],nodeSymbol)
-        xlabel += "KEY:\n"
         xlabel += "Colors = Potential Paths"
         xlabel += "\nLight Gray = Simulated Boundary"
         xlabel += "\nDark Gray = Field Boundary"
@@ -792,6 +792,15 @@ class Field:
         # Plot field boundaries
         for pair in [self.fieldVertPairLeft,self.fieldVertPairRight,self.fieldHorzPairUpper,self.fieldHorzPairLower]:
             plt.plot([pair[0][0],pair[1][0]],[pair[0][1],pair[1][1]],color = (0.3,0.3,0.3))
+        
+        # Plot the previous, if any, path from a previous iteration
+        # Useful if you run plotField twice in the same program instance.
+        if len(pastPath) > 0:
+            for i, node in enumerate(pastPath):
+                if (i < len(path)-1):
+                    nextNode = path[i+1]
+                    plt.plot([node.x,nextNode.x],[node.y,nextNode.y],color=(0,0,0))
+
         print("Done plotting")
         print("Displaying field...")
         
@@ -877,7 +886,6 @@ class Mine:
         if len(color) > 0:
             self.color = color
         else:
-            
             self.color = random.randint(20,80)/100,random.randint(20,80)/100,random.randint(20,80)/100
         self.x, self.y, self.radius = np.round(centerX,2) , np.round(centerY,2), np.round(radius,2)
         # Node storage
@@ -940,11 +948,11 @@ class Node:
         Create node based off of (x,y) coordinate, whether or not it is floating,
         its angle, optional name, whether or not it is named, labeled, 
         and the kind of Node it is(for selective elimination purposes)
-        \nTypes(case sensitive): "default","start","end"
+        \nTypes(case sensitive):\n "default","start","end"
         """
         Node.nodeNum += 1
         if len(name) < 1:
-            self.name = "NID: "+str(Node.nodeNum)
+            self.name = "FNID: "+str(Node.nodeNum)
         else:
             self.name = name 
         self.type = type
@@ -1008,10 +1016,6 @@ class MineNode(Node):
     
     def __init__(self,parentMine:"Mine"=None,targetMine:"Mine"=None,internal:bool=True,primary:bool=True,connectedToFloating:bool=False,floatingNode:"Node"=None,name:str=''):
         Node.nodeNum += 1
-        if len(name) < 1:
-            self.name = "FNID: "+ str(Node.nodeNum)
-        else:
-            self.name = name 
         self.parentMine = parentMine
         self.x = 0.0
         self.y = 0.0
@@ -1027,13 +1031,14 @@ class MineNode(Node):
         self.floatingNode = floatingNode
 
         self.calculateAndAssignPosition()
-        
-        super().__init__(self.x,self.y,False,angle=self.angle,name=self.name)
-        self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
         if len(name) < 1:
             self.name = "CID:"+str(parentMine.number)+"."+str(Node.nodeNum)
         else:
             self.name = name
+
+        super().__init__(self.x,self.y,False,angle=self.angle,name=self.name)
+        self.parentMine = parentMine #VERY NECESSARY DO NOT REMOVE
+        
     
     def calculateAndAssignPosition(self):
         
@@ -1067,6 +1072,7 @@ class MineNode(Node):
                     offsetAngle = -np.arccos(np.clip((self.parentMine.x-self.targetMine.x)/d,-1,1))+np.pi
             
             # Offset Angle is the same for internal and external bitangents
+            """Each pair of angles are mirrored to each other about the offset angle"""
             if self.internal:
                 # Create internal angle
                 internalArccosParameter = ((self.parentMine.radius)+(self.targetMine.radius))/d
@@ -1125,7 +1131,6 @@ class MineNode(Node):
                 self.y = (self.parentMine.radius) * np.sin(self.angle+np.pi) + self.parentMine.y
         
         self.angle=(np.atan2(self.y-self.parentMine.y,self.x-self.parentMine.x)+2*np.pi)%(2*np.pi)
-        # print(self)
         # print(self.angle)
         self.x = round(self.x,3)
         self.y = round(self.y,3)
