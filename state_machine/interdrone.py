@@ -207,7 +207,7 @@ class Interdrone:
         print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
         return all_ack
 
-    async def send_ARM(self, dronesToSendData: tuple[int, ...]) -> None:
+    async def send_ARM(self) -> None:
         """
         Message ID = 520
         Sends an arm message to all other drones in mission.
@@ -215,7 +215,9 @@ class Interdrone:
         """
         arm_message: Message = Message.create(
             id=MessageType.ARM,
-            dronesToSendData=dronesToSendData,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
@@ -444,7 +446,7 @@ class Interdrone:
 
         return
 
-    async def send_survey_start(self, dronesToSendData: tuple[int, ...]) -> None:
+    async def send_survey_start(self) -> None:
         """
         Message ID = 565
         Set the CMD_MSG in interdrone to SURVEY_START
@@ -452,7 +454,9 @@ class Interdrone:
         """
         survey_message: Message = Message.create(
             id=MessageType.SURVEY_START,
-            dronesToSendData=dronesToSendData,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
@@ -478,14 +482,16 @@ class Interdrone:
 
         return
 
-    async def send_survey_end(self, dronesToSendData: tuple[int, ...]) -> None:
+    async def send_survey_end(self) -> None:
         """
         Message ID = 570
         Sends survey_end message to all other drones
         """
         survey_end_message: Message = Message.create(
             id=MessageType.SURVEY_END,
-            dronesToSendData=dronesToSendData,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
@@ -511,14 +517,16 @@ class Interdrone:
 
         return
 
-    async def send_mission_end(self, dronesToSendData: tuple[int, ...]) -> None:
+    async def send_mission_end(self) -> None:
         """
         Message ID = 585
         Sends mission_end message to all other drones
         """
         mission_end_message: Message = Message.create(
             id=MessageType.MISSION_END,
-            dronesToSendData=dronesToSendData,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
