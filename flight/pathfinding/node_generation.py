@@ -875,7 +875,7 @@ class Mine:
     def __init__(self,centerX,centerY,radius,color:str='',name:str=''):
         
         Mine.radius = radius
-            
+        
         Mine.numMines += 1
         self.number=Mine.numMines
         if len(name) > 0:
@@ -912,11 +912,12 @@ class Mine:
     def connectMineNodes(self):
         
         sortedNodes = sorted(self.nodes, key=lambda node: node.angle)
+
         if len(sortedNodes)==0:
             return 0
 
         for i in range(len(sortedNodes)-1):
-           
+            sortedNodes[i].mineOrder = i
             arcConnection = Connection(sortedNodes[i],sortedNodes[i+1])
             if(arcConnection.validPath()):
                 arcConnection.addGraph()
@@ -1016,6 +1017,7 @@ class MineNode(Node):
     
     def __init__(self,parentMine:"Mine"=None,targetMine:"Mine"=None,internal:bool=True,primary:bool=True,connectedToFloating:bool=False,floatingNode:"Node"=None,name:str=''):
         Node.nodeNum += 1
+        self.mineOrder=-1 #Used to determine order on mine, Set at connectMineNodes functions.
         self.parentMine = parentMine
         self.x = 0.0
         self.y = 0.0
