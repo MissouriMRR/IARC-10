@@ -5,6 +5,7 @@ import flight.pathfinding.path_subdivision as gotoDiv
 import flight.pathfinding.utils.mask_gen as mask_gen
 import numpy as np
 import time as t
+
 from PIL import Image, ImageDraw
 
 # This class represents the actual drones
