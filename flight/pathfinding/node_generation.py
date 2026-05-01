@@ -9,6 +9,7 @@ import time
 import gc
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from enum import Enum
+import quads
 
 ######## File: genNodesFromMines.py                                                                      ########
 ######## Purpose:                                                                                        ########
@@ -95,10 +96,10 @@ class seg(Enum):
 
 class Connection:
     field:'Field'=None #must be initialized on startup
-    def __init__(self,node1: 'Node',node2: 'Node'):
+    def __init__(self,node1: 'Node',node2: 'Node',mineRadius: float=-1):
         self.node1=node1
         self.node2=node2
-        
+        self.mineRadius=mineRadius if mineRadius != -1 else Mine.radius # Default to the first mine's radius if not specified, but should be updated to a more dynamic value
         if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
             self.connectionType=seg.LINE
         else:
@@ -265,8 +266,13 @@ class Connection:
                 return False
         
         # Connection intersecting mine test
+        
         if self.connectionType == seg.LINE:
-            for mine in Connection.field.mines:
+            boundingBox=quads.BoundingBox(min_x=min(x1,x2)-self.mineRadius,min_y=min(y1,y2)-self.mineRadius,max_x=max(x1,x2)+self.mineRadius,max_y=max(y1,y2)+self.mineRadius)
+            minesToCheck=Connection.field.mineQuadTree.within_bb(boundingBox)
+            for mine in minesToCheck:
+                
+                mine=mine.data
                 x3 = mine.x
                 y3 = mine.y
 
@@ -437,6 +443,7 @@ class Connection:
 # Field generates nodes off of mines, generates mines too
 class Field:
     mines = []
+    
     debugPoints = [] # purely for debuging and testing, field will plot these points
 
     # simFieldSize = simulated size of field, a rectangle.
@@ -477,7 +484,9 @@ class Field:
         self.lowerLine, self.lowerSlope = Field.getLine(self.fieldHorzPairLower[0],self.fieldHorzPairLower[1])
         
         self.mines = []
+        self.mineQuadTree= quads.QuadTree((self.xMin+self.xMax/2,self.yMin+self.yMax/2),self.xMax,self.yMax) # Used for collision detection, holds mines
         Connection.field=self
+
 
     # This type of node will not have a parent mine, primarily used for start/end points
     
@@ -537,6 +546,7 @@ class Field:
         """
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
+        self.mineQuadTree.insert((centerX,centerY), data=newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
         for pair in mineCombo:
             mine = pair[0]
