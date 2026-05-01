@@ -167,20 +167,25 @@ class Connection:
         #     print("node2 is in field.nodeGraph AND node1 in node2's nodeGraph")
         #     print("Something Broke")
 
-    def deleteConnection(self):
+    def deleteConnection(self,field=None):
+        purgeNodes=False
 
-        if self.node1 in self.field.nodeGraph: 
-            if self.node2 in self.field.nodeGraph[self.node1]:
-                del self.field.nodeGraph[self.node1][self.node2]
-            if len(self.field.nodeGraph[self.node1])==0:
+        if field == None:
+            field = self.field
+            purgeNodes=True
+
+        if self.node1 in field.nodeGraph: 
+            if self.node2 in field.nodeGraph[self.node1]:
+                del field.nodeGraph[self.node1][self.node2]
+            if len(field.nodeGraph[self.node1])==0 and purgeNodes:
                 self.node1.deleteNode()
         else:
             self.node1.deleteNode()
 
-        if self.node2 in self.field.nodeGraph: 
-            if self.node1 in self.field.nodeGraph[self.node2]:
-                del self.field.nodeGraph[self.node2][self.node1]
-            if len(self.field.nodeGraph[self.node2])==0:
+        if self.node2 in field.nodeGraph: 
+            if self.node1 in field.nodeGraph[self.node2]:
+                del field.nodeGraph[self.node2][self.node1]
+            if len(field.nodeGraph[self.node2])==0 and purgeNodes:
                 self.node2.deleteNode()
         else:
             self.node2.deleteNode()
@@ -841,6 +846,20 @@ class Field:
         else:
             print("Node graph is empty")
 
+
+    def graphAtRadius(self,radius:int):
+        shallowCopy=self.nodeGraph.copy()
+        for node1 in shallowCopy.keys():
+            deepCopy=shallowCopy[node1].copy()
+            shallowCopy[node1]=deepCopy
+
+        for node1 in shallowCopy.keys():
+           deepCopy=shallowCopy[node1].copy()
+           for node2 in deepCopy:
+                connection=Connection(node1,node2)
+                if(connection.connectionType==seg.ARC):
+                    connection.deleteConnection()
+        
     def increaseRadius(self,step:int):
         """
         Manually increases radius of all mines by a step 

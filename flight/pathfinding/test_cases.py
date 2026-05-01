@@ -142,6 +142,7 @@ for mine in field.mines:
     mine.connectMineNodes()
 
 
+
 dijkstraPathLength = 0
 aStarPathLength = 0
 if pathFindingType == "dijkstra" or pathFindingType == "both":
