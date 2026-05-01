@@ -537,7 +537,7 @@ class Interdrone:
         self.send(photos_message)
 
         return
-    
+
     async def send_checksum(self, checksum: int):
         """
         Message ID = 580
