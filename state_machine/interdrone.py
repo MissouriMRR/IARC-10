@@ -208,7 +208,7 @@ class Interdrone:
         print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
         return all_ack
 
-    async def send_ARM(self) -> None:
+    async def send_ARM(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Message ID = 520
         Sends an arm message to all other drones in mission.
@@ -216,9 +216,7 @@ class Interdrone:
         """
         arm_message: Message = Message.create(
             id=MessageType.ARM,
-            dronesToSendData=tuple(
-                self.flight_settings.other_drones_in_mission,
-            ),
+            dronesToSendData=dronesToSendData,
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
@@ -242,14 +240,14 @@ class Interdrone:
 
         return
 
-    async def send_arm_nack(self, dronesToSendData: tuple[int, ...]) -> None:
+    async def send_arm_nack(self) -> None:
         """
         Sends arm_nack message to drone 1.
         Not used by drone 1, only recieved.
         """
         arm_ack_message: Message = Message.create(
             id=MessageType.ARM_NACK,
-            dronesToSendData=dronesToSendData,  # Only need to send to drone 1
+            dronesToSendData=(1,),  # Only need to send to drone 1
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
