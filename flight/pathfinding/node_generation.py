@@ -9,6 +9,7 @@ import time
 import gc
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from enum import Enum
+import quads
 
 ######## File: genNodesFromMines.py                                                                      ########
 ######## Purpose:                                                                                        ########
@@ -95,10 +96,10 @@ class seg(Enum):
 
 class Connection:
     field:'Field'=None #must be initialized on startup
-    def __init__(self,node1: 'Node',node2: 'Node'):
+    def __init__(self,node1: 'Node',node2: 'Node',mineRadius: float=-1):
         self.node1=node1
         self.node2=node2
-        
+        self.mineRadius=mineRadius if mineRadius != -1 else Mine.radius # Default to the first mine's radius if not specified, but should be updated to a more dynamic value
         if(node1.parentMine != node2.parentMine or node1.floating or node2.floating):
             self.connectionType=seg.LINE
         else:
@@ -122,11 +123,14 @@ class Connection:
         if self.connectionType==seg.ARC: # Nodes are on the same mine
             
             # Get two different angle differences, one for major arc, the other for minor arc
-            angle1=abs(self.node1.angle-self.node2.angle)
-            angle2 = (2*np.pi)-angle1
 
-            # Only use the smallest arc
-            angleTheta = min(angle1, angle2)
+            nodeAngle1= self.node1.angle
+            nodeAngle2= self.node2.angle
+            angleTheta=abs(nodeAngle1-nodeAngle2)
+            if abs(self.node1.mineOrder-self.node2.mineOrder)==1:
+                angleTheta=min(angleTheta,2*np.pi-angleTheta)
+
+
             mineRadius=self.node1.parentMine.radius
             distance = angleTheta*mineRadius
 
@@ -163,20 +167,25 @@ class Connection:
         #     print("node2 is in field.nodeGraph AND node1 in node2's nodeGraph")
         #     print("Something Broke")
 
-    def deleteConnection(self):
+    def deleteConnection(self,field=None):
+        purgeNodes=False
 
-        if self.node1 in self.field.nodeGraph: 
-            if self.node2 in self.field.nodeGraph[self.node1]:
-                del self.field.nodeGraph[self.node1][self.node2]
-            if len(self.field.nodeGraph[self.node1])==0:
+        if field == None:
+            field = self.field
+            purgeNodes=True
+
+        if self.node1 in field.nodeGraph: 
+            if self.node2 in field.nodeGraph[self.node1]:
+                del field.nodeGraph[self.node1][self.node2]
+            if len(field.nodeGraph[self.node1])==0 and purgeNodes:
                 self.node1.deleteNode()
         else:
             self.node1.deleteNode()
 
-        if self.node2 in self.field.nodeGraph: 
-            if self.node1 in self.field.nodeGraph[self.node2]:
-                del self.field.nodeGraph[self.node2][self.node1]
-            if len(self.field.nodeGraph[self.node2])==0:
+        if self.node2 in field.nodeGraph: 
+            if self.node1 in field.nodeGraph[self.node2]:
+                del field.nodeGraph[self.node2][self.node1]
+            if len(field.nodeGraph[self.node2])==0 and purgeNodes:
                 self.node2.deleteNode()
         else:
             self.node2.deleteNode()
@@ -262,8 +271,13 @@ class Connection:
                 return False
         
         # Connection intersecting mine test
+        
         if self.connectionType == seg.LINE:
-            for mine in Connection.field.mines:
+            boundingBox=quads.BoundingBox(min_x=min(x1,x2)-self.mineRadius,min_y=min(y1,y2)-self.mineRadius,max_x=max(x1,x2)+self.mineRadius,max_y=max(y1,y2)+self.mineRadius)
+            minesToCheck=Connection.field.mineQuadTree.within_bb(boundingBox)
+            for mine in minesToCheck:
+                
+                mine=mine.data
                 x3 = mine.x
                 y3 = mine.y
 
@@ -301,7 +315,10 @@ class Connection:
         elif self.connectionType == seg.ARC:
             parentMine = self.node1.parentMine
             validEdge=True
-            for mine in parentMine.overlappingMines:
+            
+            for mine in parentMine.mineDistances.keys():
+                if mine.mineDistances[parentMine] >= parentMine.radius + mine.radius:
+                    continue
                 # Other than being None, there should only be 2 values
                 intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
                 
@@ -431,6 +448,7 @@ class Connection:
 # Field generates nodes off of mines, generates mines too
 class Field:
     mines = []
+    
     debugPoints = [] # purely for debuging and testing, field will plot these points
 
     # simFieldSize = simulated size of field, a rectangle.
@@ -471,7 +489,9 @@ class Field:
         self.lowerLine, self.lowerSlope = Field.getLine(self.fieldHorzPairLower[0],self.fieldHorzPairLower[1])
         
         self.mines = []
+        self.mineQuadTree= quads.QuadTree((self.xMin+self.xMax/2,self.yMin+self.yMax/2),self.xMax,self.yMax) # Used for collision detection, holds mines
         Connection.field=self
+
 
     # This type of node will not have a parent mine, primarily used for start/end points
     
@@ -531,6 +551,7 @@ class Field:
         """
         newMine = Mine(centerX,centerY,radius,color=color)
         self.mines.append(newMine)
+        self.mineQuadTree.insert((centerX,centerY), data=newMine)
         mineCombo = [[newMine, mine] for mine in self.mines[:-1]]
         for pair in mineCombo:
             mine = pair[0]
@@ -571,7 +592,8 @@ class Field:
             mineExternSecond.connectNode(targetExternSecond)
             #mine.connectMineNodes()
             #target.connectMineNodes()
-            mine.updateOverlap(target)
+            mine.mineDistances[target] = np.sqrt((mine.x-target.x)**2 + (mine.y-target.y)**2)
+            target.mineDistances[mine] = mine.mineDistances[target]
 
 
         
@@ -824,6 +846,20 @@ class Field:
         else:
             print("Node graph is empty")
 
+
+    def graphAtRadius(self,radius:int):
+        shallowCopy=self.nodeGraph.copy()
+        for node1 in shallowCopy.keys():
+            deepCopy=shallowCopy[node1].copy()
+            shallowCopy[node1]=deepCopy
+
+        for node1 in shallowCopy.keys():
+           deepCopy=shallowCopy[node1].copy()
+           for node2 in deepCopy:
+                connection=Connection(node1,node2)
+                if(connection.connectionType==seg.ARC):
+                    connection.deleteConnection()
+        
     def increaseRadius(self,step:int):
         """
         Manually increases radius of all mines by a step 
@@ -891,7 +927,8 @@ class Mine:
         # Node storage
         self.nodes = [] 
         self.connectedMines = []
-        self.overlappingMines = []
+        self.mineDistances={} #Distance of this mine to all other mines, used for checking for overlapping path at arbitrary radius.
+        
         Mine.mines.append(self)
         
     def getPos(self):
@@ -925,15 +962,8 @@ class Mine:
         if(arcConnection.validPath()):
             arcConnection.addGraph()
             
-    #Checks if target and self overlap. If they do update both's overlappingMines list.
-    def updateOverlap(self,target : 'Mine'):
-        # Add to each mines' overlapping mines list if they do overlap
-        if target not in self.overlappingMines and self not in target.overlappingMines:
-            distanceThreshold = 2*Mine.radius
-            distance = np.sqrt((self.x-target.x)**2 + (self.y-target.y)**2)
-            if distance < distanceThreshold:
-                self.overlappingMines.append(target)
-                target.overlappingMines.append(self)
+
+
     def __str__(self):
         return self.name
     def __repr__(self):
