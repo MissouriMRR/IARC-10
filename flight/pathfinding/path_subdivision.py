@@ -58,8 +58,9 @@ class Path:
         horizontal_separation = image_size - horizontal_image_overlap*image_size
         #finalGotoList = []
         #segmentedList = []
-        isArc = False
+        
         for i in range(len(nodeList) - 1):
+            isArc = False
             n1 = nodeList[i] #first node
             n2 = nodeList[i + 1] #second node in each iteration
             
