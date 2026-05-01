@@ -47,10 +47,9 @@ class Path:
         
     
     #overlap is percent
-    def generate_goto_points(self, nodeList: tuple[Node], altitude: float, fovDeg: float, path_width: float, vertical_image_overlap: float = 0.1, horizontal_image_overlap: float = 0.1, scan_edge_overlap: float = 0.3):
+    def generate_goto_points(self, nodeList: tuple[Node], altitude: float, fovDeg: float, path_width: float, vertical_image_overlap: float = 0.1, horizontal_image_overlap: float = 0.1, scan_edge_overlap: float = 0.3, standardDist: float = 0.0):
         
         image_size = self.ground_covered_image(altitude, fovDeg)
-
         # number of side by side waypoints
         x_temp = m.ceil((path_width-image_size*(horizontal_image_overlap+2*scan_edge_overlap))/(image_size*(1-horizontal_image_overlap)))
         num_image = x_temp + (x_temp + 1) % 2 # Makes sure number of waypoints is on in order to have a waypoint on the path
@@ -70,9 +69,12 @@ class Path:
     
                 self.total_lin_distance += connect.distance
                 numPoints = max(1, int(connect.distance / step))
+                
                 x_vals = np.linspace(n1.x, n2.x, numPoints)
-                y_vals = np.linspace(n1.y, n2.y, numPoints)
+                y_vals = np.linspace(n1.y, n2.y, numPoints) 
                 for x, y in zip(x_vals, y_vals):
+                    #distance variable that has the distance between each point, so you can use that ot maintain space in arc nodes spacing.
+                    standardDist = m.dist((n1.x, n1.y), (n2.x, n2.y)) #used to compare dist in arc as well
                     path_angle = m.atan2(n2.y - n1.y, n2.x - n1.x)
                     node_addition_angle = path_angle + m.pi/2
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
@@ -114,15 +116,29 @@ class Path:
                 
                 # Generate arc points
                 angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
+                
+                last_point = None
+                
                 for a in angles:
                     x = cx + r * m.cos(a)
                     y = cy + r * m.sin(a)
+                
+                    current_point = (x, y)
+
+                    if last_point is not None:
+                        if m.dist(current_point, last_point) < step:
+                            continue
+
+                    last_point = current_point
+                  
                     path_angle = angle1 + delta_theta + m.pi/2
                     node_addition_angle = path_angle + m.pi/2
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
+
                     self.finalGotoList.append((float(x), float(y), path_angle))
                     self.segmentedList.append([(n1), (n2), isArc])
+                    
                     for i in range(1, (num_image//2) + 1):
                         self.finalGotoList.append((float(x) + i*adjusted_vector[0], float(y) + i*adjusted_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
@@ -228,12 +244,3 @@ if __name__ == "__main__":
     plt.grid(True)
     #plt.show()
     field.plotField(labeled=True)
-
-
-    
-# TODO: LOOK at what mapping code has
-    #ask about overlap with mapping team and if that is being accounted for? 
-# is the given fov horizontal or vertical? I don't think it matter because using distance covered by image for points.
-    # imageHeight = 2⋅h⋅tan(fovv​/2) 
-# Is the best path computed everytime new mine is found, or new image taken?
-# why are my commits unverified?
