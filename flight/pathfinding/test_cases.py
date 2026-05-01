@@ -89,6 +89,7 @@ Note to self:
 Though mines can be right at the edge of the field,
 only their nodes will be checked for elimination
 """
+start=time.time()
 for num in range(numMines):
     step += 1
     if len(recordedMineCoords) <= 0: # Run normally if no mine cords have been inputted
@@ -118,7 +119,7 @@ for num in range(numMines):
     else:
         continue
 print("done adding mines\n")
-
+print(f"Mine generation time: {time.time()-start}")
 if len(recordedMineCoords) <= 0:
     mineHistory += "]"
     print("Mine positions:")
