@@ -307,7 +307,9 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SHARE_PHOTOS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "photos": list[dict[str, Any]] # Each photo has cornerCoordinates (4 corner tuples) and mines (list with coordinate tuples)
+        "photos": list[
+            dict[str, Any]
+        ],  # Each photo has cornerCoordinates (4 corner tuples) and mines (list with coordinate tuples)
         # TODO: Update once photos are defined better
     },
     MessageType.FIELD_CHECKSUM: {
