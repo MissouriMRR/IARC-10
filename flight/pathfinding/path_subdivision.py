@@ -88,8 +88,6 @@ class Path:
                         self.segmentedList.append([(n1), (n2), isArc])
                         self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*adjusted_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
-
-
             
             #arc gotos
             elif connect.connectionType == seg.ARC:
