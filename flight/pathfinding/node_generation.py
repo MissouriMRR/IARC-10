@@ -122,11 +122,14 @@ class Connection:
         if self.connectionType==seg.ARC: # Nodes are on the same mine
             
             # Get two different angle differences, one for major arc, the other for minor arc
-            angle1=abs(self.node1.angle-self.node2.angle)
-            angle2 = (2*np.pi)-angle1
 
-            # Only use the smallest arc
-            angleTheta = min(angle1, angle2)
+            nodeAngle1= self.node1.angle
+            nodeAngle2= self.node2.angle
+            angleTheta=abs(nodeAngle1-nodeAngle2)
+            if abs(self.node1.mineOrder-self.node2.mineOrder)==1:
+                angleTheta=min(angleTheta,2*np.pi-angleTheta)
+
+
             mineRadius=self.node1.parentMine.radius
             distance = angleTheta*mineRadius
 
