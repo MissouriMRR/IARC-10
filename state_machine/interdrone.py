@@ -245,13 +245,13 @@ class Interdrone:
         Sends arm_nack message to drone 1.
         Not used by drone 1, only recieved.
         """
-        arm_ack_message: Message = Message.create(
+        arm_nack_message: Message = Message.create(
             id=MessageType.ARM_NACK,
             dronesToSendData=(1,),  # Only need to send to drone 1
             senderId=self.flight_settings.current_drone_ID,
             data={},
         )
-        self.send(arm_ack_message)
+        self.send(arm_nack_message)
 
         return
 
