@@ -537,6 +537,26 @@ class Interdrone:
         self.send(photos_message)
 
         return
+    
+    async def send_checksum(self, checksum: int):
+        """
+        Message ID = 580
+        Radius representing the state of the shared mat and all mines.
+        Sends to all other drones
+        """
+        # TODO: Calculate checksum elsewhere
+        checksum_message: Message = Message.create(
+            id=MessageType.FIELD_CHECKSUM,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            checksum=checksum,
+        )
+
+        self.send(checksum_message)
+
+        return
 
     async def send_mission_end(self) -> None:
         """
