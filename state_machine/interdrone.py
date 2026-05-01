@@ -8,6 +8,7 @@ import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from typing import Any
 from flight.waypoint import Waypoint
 import queue
 import threading
@@ -514,6 +515,26 @@ class Interdrone:
         )
 
         self.send(survey_end_ack_message)
+
+        return
+
+    async def share_photos(self, photos: list[dict[str, Any]]) -> None:
+        """
+        Message ID = 575
+        Sends list of photos to all other drones
+        """
+        photos_message: Message = Message.create(
+            id=MessageType.SHARE_PHOTOS,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            sendId=self.flight_settings.current_drone_ID,
+            data={
+                "photos": photos,
+            },
+        )
+
+        self.send(photos_message)
 
         return
 
