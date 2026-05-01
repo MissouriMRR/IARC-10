@@ -304,7 +304,10 @@ class Connection:
         elif self.connectionType == seg.ARC:
             parentMine = self.node1.parentMine
             validEdge=True
-            for mine in parentMine.overlappingMines:
+            
+            for mine in parentMine.mineDistances.keys():
+                if mine.mineDistances[parentMine] >= parentMine.radius + mine.radius:
+                    continue
                 # Other than being None, there should only be 2 values
                 intersectionPoints,intersectionAngle,offsetAngle = self.generateIntersectionPoints(parentMine,mine)
                 
@@ -574,7 +577,8 @@ class Field:
             mineExternSecond.connectNode(targetExternSecond)
             #mine.connectMineNodes()
             #target.connectMineNodes()
-            mine.updateOverlap(target)
+            mine.mineDistances[target] = np.sqrt((mine.x-target.x)**2 + (mine.y-target.y)**2)
+            target.mineDistances[mine] = mine.mineDistances[target]
 
 
         
@@ -894,7 +898,8 @@ class Mine:
         # Node storage
         self.nodes = [] 
         self.connectedMines = []
-        self.overlappingMines = []
+        self.mineDistances={} #Distance of this mine to all other mines, used for checking for overlapping path at arbitrary radius.
+        
         Mine.mines.append(self)
         
     def getPos(self):
@@ -928,15 +933,8 @@ class Mine:
         if(arcConnection.validPath()):
             arcConnection.addGraph()
             
-    #Checks if target and self overlap. If they do update both's overlappingMines list.
-    def updateOverlap(self,target : 'Mine'):
-        # Add to each mines' overlapping mines list if they do overlap
-        if target not in self.overlappingMines and self not in target.overlappingMines:
-            distanceThreshold = 2*Mine.radius
-            distance = np.sqrt((self.x-target.x)**2 + (self.y-target.y)**2)
-            if distance < distanceThreshold:
-                self.overlappingMines.append(target)
-                target.overlappingMines.append(self)
+
+
     def __str__(self):
         return self.name
     def __repr__(self):
