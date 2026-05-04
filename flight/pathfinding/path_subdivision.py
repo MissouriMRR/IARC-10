@@ -45,7 +45,7 @@ class Path:
         fovRad = m.radians(fovDeg)
         return 2 * altitude * m.tan(fovRad/2)
         
-    
+
     #overlap is percent
     def generate_goto_points(self, nodeList: tuple[Node], altitude: float, fovDeg: float, path_width: float, vertical_image_overlap: float = 0.1, horizontal_image_overlap: float = 0.1, scan_edge_overlap: float = 0.3):
         
@@ -69,7 +69,7 @@ class Path:
             if connect.connectionType == seg.LINE:
     
                 self.total_lin_distance += connect.distance
-                numPoints = max(1, int(connect.distance / step))
+                numPoints = max(1, m.ceil(connect.distance / step))
                 x_vals = np.linspace(n1.x, n2.x, numPoints)
                 y_vals = np.linspace(n1.y, n2.y, numPoints)
                 for x, y in zip(x_vals, y_vals):
@@ -110,7 +110,7 @@ class Path:
                 
                 self.total_arc_length += connect.distance 
                 
-                numPoints = max(1, int(connect.distance/ step)) 
+                numPoints = max(1, m.ceil(connect.distance/ step)) 
                 
                 # Generate arc points
                 angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
