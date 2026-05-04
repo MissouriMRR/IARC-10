@@ -1,0 +1,112 @@
+import sys, os
+sys.path.append(os.path.abspath(".."))
+
+from typing import Callable # Type hinting a function (parameter(s)) -> return value(s)
+import matplotlib.pyplot as pyplot
+import numpy as np
+import random
+import time
+import gc
+from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
+from enum import Enum
+import quads
+
+######## File: genNodesFromMines.py                                                                      ########
+######## Purpose:                                                                                        ########
+######## This file, given the center coordinates of mines and a to-be-determined radius, generates nodes ########
+######## that connect to each other in a way that allows for traversal with minimal sharp turns.         ########
+
+"""
+When using the attributes/methods, refer to the object unless intentionally accessing a class variable.
+KEY MINE ATTRIBUTES/METHODS:
+ - Mine.getPos() -> (x,y) position on field of the Mine
+ - Mine.getNodes() -> [Node,Node,...] A list of all mine's child Nodes, can be accessed directly with Mine.nodes
+ - Mine.connectMineNodes() -> establishes node connections from the nodes on the current mine to the rest of the nodes.
+
+KEY NODE ATTRIBUTES/METHODS:
+ - Node(xPosition:float,yPosition:float,floating:bool,name:str) -> Constructor for general nodes, floating or not.
+ - Node.connectNode(node:Node) -> returns Connection: Establishes connection between current and target Node
+ - Node.getPos() -> gets position of node
+ - Node.getTargetMine() -> returns Mine; gets the target mine
+ - Node.getParentMine() -> returns Mine or None if floating; gets the parent mine
+ 
+ - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,connectedToFloating:True/False,floatingNode:Node,name:str)
+    -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
+
+ - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
+                              A list of strings describing the kind of connection each node has to another
+ - MineNode.getPos() -> (x,y) position on field of the Node
+
+KEY CONNECTION ATTRIBUTES/METHODS:
+ - Connection(node1:Node,node2:Node) -> Constructor for pairing nodes to make a connection
+ - Connection.addGraph() -> adds connection to field.nodeGraph
+    (Connection objects are two-way and shared)
+    {
+    Node1: {Node2:ConnectionObj 1<->2, Node3:ConnectionObj 1<->3},
+    Node2: {Node1:ConnectionObj 1<->2},
+    Node3: {Node1:ConnectionObj 1<->3}
+    }
+ - Connection.deleteConnection() -> Removes itself from nodeGraph
+ - Connection.validPath() -> Determines if any point along the connection collides with a mine or outside of field boundaries.
+ - Connection.mineCollision(self,mine) -> Determines if the connection collides with a specific mine.
+
+KEY FIELD ATTRIBUTES/METHODS:
+ = Class Variable: nodeGraph -> a dictionary containing Connection objects
+ - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
+ - Field.plotField(labeled:bool,path:list["Node"],title:str,xlabel:str) -> Using matplotlib, plots the field.
+                                    plot key: 
+                                        NID = Node ID;
+                                        MID = Mine ID;
+                                        CID = [Parent Mine ID].[Node ID];
+                                        Black line = A* path
+ - addFloatingNode(x,y): -> adds a node to the field that does not have a parent mine,
+                            But does have a target mine.
+ - placeStartNode(xVal,yVal) -> adds the starting Node(s). Must have at least one.
+ - placeEndNodes(xMin,xMax,yVal,density) -> Places endpoint nodes along a certain y-value within
+                                            the limits of xMin and xMax with a certain density
+                                            or amount of nodes placed equidistantly.
+---------------------------------------------------------------------
+
+Use the Field class to generate mines and their nodes.
+Unless you are optimizing or working on this program/code/algorithm, 
+I suggest you create mines and nodes via the Field class.
+    Field(simFieldSize,fieldCorners)
+    Field Setup:
+     - simFieldSize = simulated size of field, a rectangle.
+     - fieldCorners = arbitrary corners that might not form a rectangle.
+
+Ex: A basic setup of 3 Mines with start and end nodes. 
+Coordinates are example only, may not actually display accurately.
+
+    field = Field(simFieldSize, fieldCorners)
+    field.addMine(0,0,20)
+    field.addMine(-30,0,20)
+    field.addMine(30,25,20)
+    field.placeStartNode(0,-10)
+    field.placeEndNodesPositions([0,30])
+    field.plotField()
+
+Complex example moved to test_cases.py
+"""
+
+
+
+        
+
+
+
+"""
+TODO:
+X=Done
+- = Todo
+------
+ X Terminate nodes if the nodes themselves are created within another mine
+ X Establish a list of paths between connected Nodes
+ X Terminate internal bitangents unless external bitangents are intersecting
+ X Combine all node lists into one
+ X Generate Floating Nodes
+ X Generate tangent mineNodes connecting to floating nodes
+ - Expanding mines
+ X Hugging Edges
+------
+"""

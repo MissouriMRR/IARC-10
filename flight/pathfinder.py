@@ -15,7 +15,7 @@
 # .. and the constants for arbitrary things like end node density etc.
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer
 from flight.pathfinding.path_subdivision import Path
-from flight.pathfinding.node_generation import Field
+from flight.pathfinding.node_generation.node_generation import Field
 from flight.pathfinding.path_calculation import Graph
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 

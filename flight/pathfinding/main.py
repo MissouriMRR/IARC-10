@@ -1,10 +1,11 @@
-import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.node_generation.node_generation as nodeg
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 import flight.pathfinding.path_calculation as dijk
 import flight.pathfinding.path_subdivision as gotoDiv
 import flight.pathfinding.utils.mask_gen as mask_gen
 import numpy as np
 import time as t
+
 from PIL import Image, ImageDraw
 
 # This class represents the actual drones
