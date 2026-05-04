@@ -1,4 +1,4 @@
-import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.node_generation.node_generation as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
 import math

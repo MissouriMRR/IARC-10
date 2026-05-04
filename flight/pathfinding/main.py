@@ -1,4 +1,4 @@
-import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.node_generation.node_generation as nodeg
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 import flight.pathfinding.path_calculation as dijk
 import flight.pathfinding.path_subdivision as gotoDiv

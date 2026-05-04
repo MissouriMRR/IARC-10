@@ -1,4 +1,4 @@
-from flight.pathfinding.node_generation import Field, Mine, Node
+from flight.pathfinding.node_generation.node_generation import Field, Mine, Node
 from flight.pathfinding.path_calculation import Graph
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from random import randint, seed, uniform
@@ -30,7 +30,7 @@ pathFindingType = "dijkstra"  # dijkstra OR A* OR both OR none
 def calcAstar(field,start,endPoints):
     print("Calculating A*")
     def yMax(node):
-        return (460-node.y)
+        return (field.yMax-node.y)
 
     aStarPathSolve = Graph(field.nodeGraph)
     temp = time.time()

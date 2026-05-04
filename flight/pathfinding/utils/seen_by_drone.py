@@ -1,7 +1,7 @@
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 import numpy as np
-from flight.pathfinding import node_generation as nodeg
+from flight.pathfinding.node_generation import node_generation as nodeg
 from flight.pathfinding import path_calculation as pc
 from flight.pathfinding import path_subdivision as ps
 from flight.pathfinding.utils import mask_gen as maskGen
