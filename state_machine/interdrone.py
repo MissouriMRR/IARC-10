@@ -939,6 +939,7 @@ class Interdrone:
                                 )
                                 self.send(land_message)
                         case MessageType.SEND_APP_COORDS:
+                            # TODO droneState stuff?
                             if self.flight_settings.current_drone_ID == 1:
                                 send_app_coords_message: Message = Message.create(
                                     id=MessageType.SEND_APP_COORDS,
@@ -952,6 +953,9 @@ class Interdrone:
                                     },
                                 )
                                 self.send(send_app_coords_message)
+                        case MessageType.SEND_APP_COORDS_ACK:
+                            # TODO Harper implement this or something
+                            pass
 
                             # Check if drone 1 received and then distribute
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
