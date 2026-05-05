@@ -9,12 +9,15 @@ import os
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message, MessageType
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_thread import NetworkingThread
 from interdrone_communication.networking_interface import NetworkingInterface
+from state_machine.flight_settings import FlightSettings
+
+SPEED_TEST_PAYLOAD_KB: int = 16
 
 
 # Plan for network test updates: Filter logs based on self id and target
+# uv run -m interdrone_communication.network_speed_test -i 1
 async def main():
     # Parse arguments in main thread
     parser = argparse.ArgumentParser()
@@ -22,21 +25,15 @@ async def main():
     args = parser.parse_args()
 
     # Load config
-    networkConfig = NetworkConfig()
-
-    # Get drone ID
-    if args.id is not None:
-        droneId = args.id
-        networkConfig.set_self_id(droneId)
-    else:
-        droneId = int(networkConfig.get_self_id())
+    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
+    droneId = flight_settings.current_drone_ID
 
     # Start networking thread
     networkingThreadClassInstance: NetworkingThread = NetworkingThread()
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, networkConfig),
+        args=(resourcesReady, flight_settings),
         daemon=True,
     )
     networkingThread.start()
@@ -49,20 +46,16 @@ async def main():
     speedTestMessage: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
         dronesToSendData=(),  # Modify this for selective speed test
+        senderId=droneId,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "finalUploadTime": 0.0,
-            "initialDownloadTime": 0.0,
-            "finalDownloadTime": 0.0,
-            "senderId": droneId,
-            "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
+            "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
             "payload": "X"
             * (
-                networkConfig.get_speed_test_data_size() * 1024
+                SPEED_TEST_PAYLOAD_KB * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
-
     continuousSpeedTest = True
     speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
     numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
@@ -71,15 +64,18 @@ async def main():
     while continuousSpeedTest:
         try:
             # Check for client responses
-            clientMsg = networking.try_get_client_response(timeout=0.02)
-            if clientMsg is not None:
+            serverMsg = networking.try_get_server_message(timeout=0.02)
+            if (
+                serverMsg is not None
+                and serverMsg.id == MessageType.SPEED_TEST_RESPONSE
+            ):
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = clientMsg.data["targetId"]
+                    targetId: int = serverMsg.data["targetId"]
                     # print(targetId)
                     if targetId not in speedResults:
                         speedResults[targetId] = []
-                    speedResults[targetId].append(clientMsg)
+                    speedResults[targetId].append(serverMsg)
                     if len(speedResults[targetId]) >= numQueriesPerTest:
                         # Copy data and clear original list so we can keep receiving immediately
                         results_to_log = list(speedResults[targetId])
@@ -94,7 +90,7 @@ async def main():
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
-                                networkConfig,
+                                flight_settings,
                                 current_test_num,
                             )
                         )
@@ -106,29 +102,35 @@ async def main():
                         task.add_done_callback(backgroundTasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
+                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {targetId}"
+                        )
+                    elif len(speedResults[targetId]) % 10 == 0:
+                        print(
+                            f"Test #{len(speedResults[targetId])} / {numQueriesPerTest} complete to target #{targetId}"
                         )
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {clientMsg}")
+                    # print(f"Client Data: {serverMsg}")
             # If previous message has been sent, add new one to queue
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
 
-            await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except KeyboardInterrupt, asyncio.CancelledError:
+            await asyncio.sleep(
+                0.1
+            )  # Yield to event loop for background tasks (is good for performance)
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
             break
 
 
 def log_data(
-    speedResults: list[Message], networkConfig: NetworkConfig, testNumber: int
+    speedResults: list[Message], flight_settings: FlightSettings, testNumber: int
 ):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"Logs/Speed_Test/From_{networkConfig.get_self_id()}_To_{speedResults[0].data['targetId']}"
+    folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speedResults[0].data['targetId']}"
     os.makedirs(folder_name, exist_ok=True)
 
     file_path = f"{folder_name}/test-results-{testNumber}.txt"
@@ -141,7 +143,7 @@ def log_data(
 
         log_print("\n" + "=" * 70)
         log_print(
-            f"NETWORK SPEED TEST RESULTS FROM {networkConfig.get_self_id()} -> {speedResults[0].data['targetId']}"
+            f"NETWORK SPEED TEST RESULTS FROM {flight_settings.current_drone_ID} -> {speedResults[0].data['targetId']}"
         )
         log_print("=" * 70)
 
@@ -154,7 +156,6 @@ def log_data(
                 float(r.data["downloadThroughputKbps"]) for r in speedResults
             ]
             downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
-            # TODO investigate issue with 250ms+ times in first couple sends
             for i in range(len(downloadRttMs)):
                 if downloadRttMs[i] > 1:
                     pass

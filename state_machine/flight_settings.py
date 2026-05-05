@@ -83,12 +83,14 @@ class FlightSettings:
         title: str = DEFAULT_RUN_TITLE,
         description: str = DEFAULT_RUN_DESCRIPTION,
         drone_ID: int = 1,
+        drones_in_mission: list[int] = [1, 2, 3, 4],
         drone_info: list[mission_config.DroneInfo] = [],
         app_IP: str = "",
         app_port: int = 0,
         mission_corners: list[dict[str, float]] | None = None,
         max_height: float = 10,
         start_coord: dict = {},
+        mission_type: str = "",
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
     ) -> None:
@@ -115,12 +117,14 @@ class FlightSettings:
         self.__app_IP: str = app_IP
         self.__app_port: int = app_port
         self.__current_drone_ID = drone_ID
+        self.__drones_in_mission: list[int] = list(drones_in_mission)
         self.__drone_info: list[mission_config.DroneInfo] = list(drone_info)
         self.__mission_field_corners: list[dict[str, float]] = mission_corners or []
         self.__max_flight_height: float = max_height
         self.__start_coord: dict = start_coord
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
+        self.__mission_type: str = mission_type
         self.__yolo_status: Event = Event()
 
     @staticmethod
@@ -141,6 +145,7 @@ class FlightSettings:
         """
         sim_flag: bool = "-s" in sys.argv or "--sim" in sys.argv
         airsim_flag: bool = "-a" in sys.argv or "--airsim" in sys.argv
+
         sim_mode: SimMode = (
             SimMode.AIRSIM if airsim_flag else SimMode.SIM if sim_flag else SimMode.REAL
         )
@@ -152,15 +157,28 @@ class FlightSettings:
                 " Pass -a or --airsim to run in airsim mode.",
                 sim_mode.name,
             )
+        config_path: str
+        if "--config" in sys.argv:
+            config_index: int = sys.argv.index("--config") + 1
+            if config_index < len(sys.argv):
+                config_path = sys.argv[config_index]
+                logging.info("Using mission config file at %s", config_path)
+            else:
+                config_path = "mission_config.json"
 
-        config: MissionConfig = mission_config.get_mission_config()
+        else:
+            logging.warning("--config flag passed without a path. Using default mission config.")
+            config_path = "mission_config.json"
+
+        config: MissionConfig = mission_config.get_mission_config(config_path)
+        resolved_id: int = self_id if self_id is not None else config["self_id"]
+
         sim_mode_config: SimModeConfig = (
             config["airsim_mode_config"]
             if airsim_flag
             else (config["sim_mode_config"] if sim_flag else config["real_mode_config"])
         )
 
-        resolved_id: int = self_id if self_id is not None else config["self_id"]
         all_drones: list[mission_config.DroneInfo] = config["drone_info"]
         if not any(d["id"] == resolved_id for d in all_drones):
             raise ValueError(f"Drone ID {resolved_id} not found in drone_info")
@@ -171,18 +189,47 @@ class FlightSettings:
             title=config["run_title"],
             description=config["run_description"],
             drone_ID=resolved_id,
+            drones_in_mission=list(config["drones_in_mission"]),
             drone_info=all_drones,
             app_IP=config["app_info"]["ip"],
             app_port=int(config["app_info"]["port"]),
             mission_corners=config["mission_field_corners"],
             max_height=config["max_flight_height"],
             start_coord=config["start_coord"],
+            mission_type=config["mission_type"],
             sim_mode=sim_mode,
             mission_data_path=sim_mode_config["mission_data_path"],
         )
         return config_settings
 
+    @property
+    def mission_type(self) -> str:
+        """
+        Returns the mission type
+
+        Returns
+        -------
+        mission_type : str
+            The mission type, either "Prompted" or "Automatic"
+        """
+        return self.__mission_type
+
+    @mission_type.setter
+    def mission_type(self, mission_type: str) -> None:
+        """
+        Sets the mission type
+
+        Parameters
+        ----------
+        mission_type : str
+            The mission type, either "Prompted" or "Automatic"
+        """
+        if mission_type not in ["Prompted", "Automatic"]:
+            raise ValueError("mission_type must be either 'Prompted' or 'Automatic'")
+        self.__mission_type = mission_type
+
     # ----- Takeoff Settings ----- #
+
     @property
     def simple_takeoff(self) -> bool:
         """
@@ -303,6 +350,22 @@ class FlightSettings:
             New ID for the current drone
         """
         self.__current_drone_ID = drone_ID
+
+    # Other drones in mission_is_used to get other drones ids
+    @property
+    def other_drones_in_mission(self) -> list[int]:
+
+        return [
+            drone_id for drone_id in self.__drones_in_mission if drone_id != self.__current_drone_ID
+        ]
+
+    @property
+    def drones_in_mission(self) -> list[int]:
+        return self.__drones_in_mission
+
+    @drones_in_mission.setter
+    def drones_in_mission(self, drones_in_mission: list[int]) -> None:
+        self.__drones_in_mission = list(drones_in_mission)
 
     @property
     def drone_info(self) -> list[mission_config.DroneInfo]:
@@ -470,6 +533,12 @@ class FlightSettings:
         mission_data_path : str
             The path to the JSON file containing the boundary data.
         """
+
+    def get_drone_by_id(self, drone_id: int) -> mission_config.DroneInfo:
+        for drone in self.__drone_info:
+            if drone["id"] == drone_id:
+                return drone
+        raise ValueError(f"Drone ID {drone_id} not found in drone_info")
 
     @property
     def yolo_status(self) -> Event:

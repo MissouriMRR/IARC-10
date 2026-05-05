@@ -74,16 +74,18 @@ class MissionConfig(TypedDict):
     simple_takeoff: bool
     app_opperable: bool
     self_id: int
+    drones_in_mission: list[int]
     drone_info: list[DroneInfo]
     app_info: AppInfo
     speed_test_kb_data_size: int
     range_test_toggle: bool
     mission_field_corners: list[dict[str, float]]
     start_coord: dict[str, float]
+    mission_type: str
     max_flight_height: float
 
 
-def get_mission_config() -> MissionConfig:
+def get_mission_config(config_path: str) -> MissionConfig:
     """
     Get the mission configuration from mission_config.json
 
@@ -93,5 +95,5 @@ def get_mission_config() -> MissionConfig:
         The mission configuration.
     """
     config_file: TextIO
-    with open("mission_config.json", "r", encoding="utf-8") as config_file:
+    with open(config_path, "r", encoding="utf-8") as config_file:
         return json.load(config_file)

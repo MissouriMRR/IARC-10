@@ -6,9 +6,9 @@ import time
 import asyncio
 
 # Interdrone Imports
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.message_types import Message, MessageType
 from interdrone_communication.json_message_utilities import JsonMessageUtilities
+from state_machine.flight_settings import FlightSettings
 
 
 # Used by connectionPool to store TCP connections to other servers.
@@ -24,16 +24,15 @@ class Client:
     # Client Class constructor. Used to pass in JSON Data
     def __init__(
         self,
-        networkConfig: NetworkConfig,
+        flight_settings: FlightSettings,
         clientInData: Queue[Message],
-        clientOutData: Queue[Message],
+        range_test_toggle: bool = False,
     ):
-        self.networkConfig: NetworkConfig = networkConfig
+        self.flight_settings: FlightSettings = flight_settings
         self.clientInData: Queue[Message] = clientInData
-        self.clientOutData: Queue[Message] = clientOutData
 
         # Check for droneId from flag in main.py
-        self.droneId: int = networkConfig.get_self_id()
+        self.droneId: int = flight_settings.current_drone_ID
 
         # Instantiate otherDrones lists
         self.otherDronesIps: list[str] = []
@@ -52,18 +51,14 @@ class Client:
 
         # Create a temporary list to update tuple with otherDronesIds
         tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
-        # Loop through drones all drones to get IPs, Ports, and IDs of drones to connect to
-        for i in range(1, self.networkConfig.get_number_of_drones() + 1):
-            # If drone is self (drone running this script) don't add them otherDrones list
-            if i != self.droneId:
-                # Add other drones IP and Ports to their respective lists
-                self.otherDronesIps.append(self.networkConfig.get_drone_ip(droneId=i))
-                self.otherDronesPorts.append(self.networkConfig.get_drone_port(droneId=i))
-                tempOtherDronesIds.append(i)
+        # Loop through other drones to get IPs, Ports, and IDs of drones to connect to
+        for drone in flight_settings.other_drone_info:
+            self.otherDronesIps.append(str(drone["IP"]))
+            self.otherDronesPorts.append(int(drone["port"]))
+            tempOtherDronesIds.append(drone["id"])
         # Update otherDronesIds tuple with tempOtherDronesIds values
         self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
-        # Get range test toggle variable
-        self.rangeTestEnabled: bool = self.networkConfig.get_range_test_toggle()
+        self.rangeTestEnabled: bool = range_test_toggle
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -114,10 +109,13 @@ class Client:
 
         # If dronesToSendData list has id values, only send message to those drones
         sendToApp: bool = False
+        sendToSelf: bool = False
         if message.dronesToSendData != ():
             # If you to send data to the app, use ID 0
             if message.dronesToSendData == (0,):
                 sendToApp = True
+            elif message.dronesToSendData == (self.droneId,):
+                sendToSelf = True
             else:
                 dronesToSendData = message.dronesToSendData
         # Else dronesToSendData list is empty, attempt to send data to all other drones
@@ -128,18 +126,27 @@ class Client:
         # Update time value for Network Speed Test message
         if message.id == MessageType.SPEED_TEST_REQUEST:
             message.data["initialUploadTime"] = time.perf_counter()
-        clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
 
         # Create messageTasks list to store tasks for all drone connections
-        messageTasks: list[asyncio.Task[str]] = []
+        messageTasks: list[asyncio.Task[None]] = []
 
         # Loop through otherDronesIds and create to task to send message data to them if they're in dronesToSendData to list
         if sendToApp:
             messageTask = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.networkConfig.get_app_ip(),
-                    serverPort=self.networkConfig.get_app_port(),
-                    clientMessageDump=clientMessageDump,
+                    serverIP=self.flight_settings.app_IP,
+                    serverPort=self.flight_settings.app_port,
+                    message=message,
+                )
+            )
+            messageTasks.append(messageTask)
+        # Allow for messages to be sent to self in some special cases
+        elif sendToSelf:
+            messageTask = asyncio.create_task(
+                self.send_data_async(
+                    serverIP=str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
+                    serverPort=int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
+                    message=message,
                 )
             )
             messageTasks.append(messageTask)
@@ -150,21 +157,19 @@ class Client:
                         self.send_data_async(
                             serverIP=self.otherDronesIps[i],
                             serverPort=self.otherDronesPorts[i],
-                            clientMessageDump=clientMessageDump,
+                            message=message,
                         )
                     )
                     messageTasks.append(messageTask)
 
         # Run all messageTasks concurrently
-        # NOTE: If we await here, we block the loop. This is fine if we want to throttle sending to connection speed.
-        # But if we want to send fast, we should not await. However, if we don't await, we might spawn too many tasks.
-        # TODO: Look into what to do here. Could be optimizations
         if messageTasks:
             _ = await asyncio.gather(*messageTasks, return_exceptions=True)
 
-    # Takes data and sends it passed in server
-    async def send_data_async(self, serverIP: str, serverPort: int, clientMessageDump: str) -> str:
+    # Takes Message and sends it to passed in server
+    async def send_data_async(self, serverIP: str, serverPort: int, message: Message) -> None:
         try:
+            clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
             # Get the connection passed in ip and port
             conn = await self._get_or_create_connection(serverIP, serverPort)
 
@@ -174,103 +179,55 @@ class Client:
                 conn.writer.write((clientMessageDump + "\n").encode())
                 await conn.writer.drain()
 
-                serverResponseBytes = await asyncio.wait_for(
-                    conn.reader.readuntil(b"\n"), timeout=2.0
-                )
-                conn.lastUsed = time.monotonic()  # Needed for dropping idle connections
-
-            serverResponseDump: str = serverResponseBytes.decode()
-            await self.process_client_data(
-                clientMessageDump, serverResponseDump, serverIP, serverPort
-            )
-            return serverResponseDump
-
         except (
             asyncio.TimeoutError,
             asyncio.IncompleteReadError,
             ConnectionResetError,
             BrokenPipeError,
+            ConnectionRefusedError,
         ):
             await self._drop_connection(serverIP, serverPort)
+            # Messages that need to be resent if they fail to send
+            messages_that_need_resend: set[MessageType] = {
+                MessageType.ARM,
+                MessageType.ARM_ACK,
+                MessageType.ARM_NACK,
+                MessageType.DISARM,
+                MessageType.START_DEMO,
+                MessageType.START_DEMO_ACK,
+                MessageType.DEMO_DONE,
+                MessageType.START_MISSION,
+                MessageType.START_MISSION_ACK,
+                MessageType.REACHED_WAYPOINT,
+                MessageType.REACHED_WAYPOINT_ACK,
+                MessageType.RECONFIRM_WAYPOINTS,
+                MessageType.EMERGENCY_LAND,
+                MessageType.LAND,
+            }
+            match message.id:
+                # If ping message failed to send, send a PING_NACK to self server
+                case MessageType.PING:
+                    await self.clientInData.put(
+                        Message.create(
+                            id=MessageType.PING_NACK,
+                            dronesToSendData=(self.droneId,),
+                            senderId=(
+                                serverPort - 5000
+                            ),  # NACK is coming from drone it failed to contact
+                            data={},
+                        )
+                    )
+                case _ if message.id in messages_that_need_resend:
+                    print(f"Failed to send message. dronesToSendData = {message.dronesToSendData}")
+                    await self.clientInData.put(message)
             if self.rangeTestEnabled:
                 print(
-                    f"Timeout error sending data from drone #{self.networkConfig.get_self_id()} to #{serverPort - 5000}"
+                    f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{serverPort - 5000}"
                 )
-            return "timeout"
-
-        except ConnectionRefusedError as e:
-            await self._drop_connection(serverIP, serverPort)
-            # print(f"ConnectionRefusedError: {e}")
-            return str(e)
 
         except Exception as e:
             await self._drop_connection(serverIP, serverPort)
             raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
-
-    async def process_client_data(
-        self,
-        clientMessageDump: str,
-        serverResponseDump: str,
-        serverIP: str,
-        serverPort: int,
-    ) -> None:
-        clientMessage: Message = JsonMessageUtilities.message_from_json(payload=clientMessageDump)
-        serverResponse: Message = JsonMessageUtilities.message_from_json(payload=serverResponseDump)
-
-        match serverResponse.id:
-            case MessageType.SERVER_DEFAULT_RESPONSE:
-                # await self.clientOutData.put(item=serverResponseDump)  # Keep commented out for performance unless you want to see default server message
-                pass
-            # Network Speedtest Message (Needs a client response)
-            case MessageType.SPEED_TEST_REQUEST:
-                # Client receives response - set final download time
-                receiveTime = time.perf_counter()
-
-                # Calculate Server Processing Time (Delta on Server Clock)
-                serverProcessingTime: float = float(
-                    serverResponse.data["initialDownloadTime"]
-                ) - float(serverResponse.data["finalUploadTime"])
-
-                # Calculate Total Round Trip Time (Delta on Client Clock)
-                totalRtt = receiveTime - clientMessage.data["initialUploadTime"]
-
-                # Calculate Network RTT (Total - Processing)
-                networkRtt = totalRtt - serverProcessingTime
-
-                # Since the server echoes the payload, upload and download sizes are roughly equal,
-                # so we estimate upload and download time as half of the network RTT.
-                estimatedOneWayTime = networkRtt / 2
-
-                uploadTime = estimatedOneWayTime
-                downloadTime = estimatedOneWayTime
-
-                uploadSizeBytes = len(clientMessageDump.encode("utf-8"))
-                uploadThroughputKbps = (
-                    (uploadSizeBytes * 8 / 1000) / uploadTime if uploadTime > 0 else float("inf")
-                )
-
-                downloadSizeBytes = len(serverResponseDump)
-                downloadThroughputKbps = (
-                    (downloadSizeBytes * 8 / 1000) / downloadTime
-                    if downloadTime > 0
-                    else float("inf")
-                )
-                result: Message = Message.create(
-                    id=MessageType.SPEED_TEST_RESPONSE,
-                    dronesToSendData=(),
-                    data={
-                        "target": f"{serverIP}:{serverPort}",
-                        "targetId": serverPort - 5000,  # Port is 500* with start being id
-                        "uploadRttMs": round(uploadTime * 1000, 2),
-                        "uploadThroughputKbps": round(uploadThroughputKbps, 2),
-                        "downloadRttMs": round(downloadTime * 1000, 2),
-                        "downloadThroughputKbps": round(downloadThroughputKbps, 2),
-                    },
-                )
-                await self.clientOutData.put(item=result)
-            case _:
-                # If no message ID, return server response data
-                await self.clientOutData.put(item=serverResponse)
 
     # Used to get or create a TCP connection to a specific ip and port
     async def _get_or_create_connection(

@@ -9,3 +9,4 @@ from state_machine.states.impl.drone_share_impl import DroneShare
 from state_machine.states.impl.initial_calc_scan_path_impl import InitialCalcScanPath
 from state_machine.states.impl.recall_impl import Recall
 from state_machine.states.impl.scan_impl import Scan
+from state_machine.states.impl.poif_impl import POIF

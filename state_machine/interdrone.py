@@ -8,18 +8,18 @@ import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
+from typing import Any
+from flight.waypoint import Waypoint
 import queue
 import threading
 import time
 
 # IARC Imports
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_interface import NetworkingInterface
-from interdrone_communication.networking_thread import NetworkingThread
 from state_machine.flight_settings import FlightSettings
 from state_machine.drone import Drone
 from interdrone_communication.message_types import Message, MessageType
-from state_machine.mission_config import DroneInfo
+from state_machine.drone_state import DroneState
 from enum import Enum
 
 if TYPE_CHECKING:
@@ -28,12 +28,23 @@ if TYPE_CHECKING:
     from state_machine.states.state import State
 
 
+async def get_input(prompt: str) -> str:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, input, prompt)
+
+
 class CMD_MSG(Enum):
     NONE = 0
     ARM = 1
     TAKEOFF = 2
     DEMO = 3
     MISSION = 4
+    DEMO_DONE = 5
+    MISSION_DONE = 6
+    LAND = 7
+    EMERGENCY_LAND = 8
+    DISARM = 9
+    SURVEY_START = 10
 
 
 class Interdrone:
@@ -51,14 +62,37 @@ class Interdrone:
         The callback function to be called when the state machine needs to be restarted.
     """
 
-    def __init__(self, flight_settings: FlightSettings, drone: Drone):
+    def __init__(
+        self,
+        flight_settings: FlightSettings,
+        drone: Drone,
+    ):
+        from interdrone_communication.networking_thread import NetworkingThread
+
         self._current_task: Task | None = None
         self._current_state: "State | None" = None
         self._restart_callback: Callable[["State | None"], Awaitable[None]] | None = None
-        self.flight_settings = flight_settings
-        self.drone = drone
-        self.network_config = NetworkConfig(flight_settings=flight_settings)
+        self.flight_settings: FlightSettings = flight_settings
+        self.drone: Drone = drone
+        # Create drone_states to access state of other drones in the test
+        drone_states: list[DroneState] = []
+        for id in flight_settings.other_drones_in_mission:
+            drone_states.append(
+                DroneState(
+                    drone_id=id,
+                    drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+                )
+            )
+
+        self.drone_states: list[DroneState] = drone_states
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
+
+        # Store messages that each function may need
+        self.interdrone_messages = {
+            MessageType.PING_ACK: queue.Queue(),
+            MessageType.PING_NACK: queue.Queue(),
+            # NOTE ADD OTHER MESSAGES HERE AS NEEDED
+        }
 
         # Create interdrone resources
         # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
@@ -68,7 +102,7 @@ class Interdrone:
         # Start networking thread
         networkingThread = threading.Thread(
             target=networkingThreadClassInstance.run_networking_thread,
-            args=(resourcesReady, NetworkConfig(self.flight_settings)),
+            args=(resourcesReady, self.flight_settings),
             daemon=True,
         )
         networkingThread.start()
@@ -113,117 +147,180 @@ class Interdrone:
         """
         self._current_state = state
 
-    async def ping_drones(self) -> bool:
-        # NOTE TO MATT: YOU NEED TO FINISH IMPLEMENTING THIS
+    def get_drone_state_from_id(self, drone_id: int) -> DroneState | None:
+        return next((s for s in self.drone_states if s.drone_id == drone_id), None)
 
+    async def ping_drones(self) -> bool:
         """
         All drones run this function.
-        Sets ping_response flag in droneState to false for all drones.
-        Loops through all drones and pings them.
-        Whenever we recieve a ping_ack we set the ping_response flag to true.
-        Wait x seconds and check if all of the ping_response flags are set.
-        If they are, return true, otherwise return false.
+        Sends PING and waits until every other drone has ACK/NACK.
+        Returns True only if all responded with ACK.
         """
-        # TODO: Get all the drones
-        drone_list: list[DroneInfo] = self.network_config.get_other_drones()
-        drone_response: dict[int, bool] = {drone["id"]: False for drone in drone_list}
+        # If only drone in test, return true for ping_drones
+        if self.flight_settings.other_drones_in_mission == []:
+            return True
 
-        # TODO NEXT STEP: SCAFFOLD ALL MESSAGES AND THEN BEGIN IMPLEMENTING.
+        # Track responses by drone id: None=not received yet, True=ACK, False=NACK
+        ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
 
-        # TODO: Ping all drones
-        for drone in drone_list:
-            pass
+        ping_message: Message = Message.create(
+            id=MessageType.PING,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+        self.send(ping_message)
 
-        # TODO: Wait x seconds and check if all drones responded
-        all_respond = True  # check if all actually responded
+        print(f"Pings have been sent. Current ping response state is {ping_by_id}")
+        # TODO may move this functionality down to the interdrone loop and just wait up here. TBD. Keep this ok solution for now
+        while None in ping_by_id.values():
+            updated = False
 
-        return all_respond
+            try:
+                ack: Message = self.interdrone_messages[MessageType.PING_ACK].get_nowait()
+                if ack.senderId in ping_by_id:
+                    ping_by_id[ack.senderId] = True
+                    updated = True
+            except queue.Empty:
+                pass
 
-    async def send_ARM(self, drone_id: int) -> None:
+            try:
+                nack: Message = self.interdrone_messages[MessageType.PING_NACK].get_nowait()
+                if nack.senderId in ping_by_id:
+                    ping_by_id[nack.senderId] = False
+                    updated = True
+            except queue.Empty:
+                pass
+
+            if not updated:
+                await asyncio.sleep(0.05)
+
+        # Copy results back into DroneState objects
+        for state in self.drone_states:
+            result = ping_by_id.get(state.drone_id)
+            if result is not None:
+                state.ping_response = result
+
+        all_ack: bool = all(result is True for result in ping_by_id.values())
+
+        print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
+        return all_ack
+
+    async def send_ARM(self, dronesToSendData: tuple[int, ...]) -> None:
         """
-        Message ID = 430
-        Send an arm message to the drone id passed as a parameter.
+        Message ID = 520
+        Sends an arm message to all other drones in mission.
+        Only used by drone 1.
         """
-        # TODO: Send message ID 430 (arm drones) to drone_id
+        arm_message: Message = Message.create(
+            id=MessageType.ARM,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(arm_message)
 
         return
 
     async def send_arm_ack(self) -> None:
         """
-        Sends arm_ack message.
+        Sends arm_ack message to drone 1.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send arm_ack message
+        arm_ack_message: Message = Message.create(
+            id=MessageType.ARM_ACK,
+            dronesToSendData=(1,),  # Only need to send to drone 1
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+        self.send(arm_ack_message)
 
         return
 
-    # Function name might change
+    async def send_arm_nack(self) -> None:
+        """
+        Sends arm_nack message to drone 1.
+        Not used by drone 1, only recieved.
+        """
+        arm_nack_message: Message = Message.create(
+            id=MessageType.ARM_NACK,
+            dronesToSendData=(1,),  # Only need to send to drone 1
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+        self.send(arm_nack_message)
+
+        return
+
     async def all_armed(self) -> bool:
         """
         Used by drone one.
         Loop through all droneState objects to see if they are armed.
         Return true they are, false otherwise.
         """
-        # TODO: Check if all droneState objects are armed
-        armed = True  # actually check if they are
+        # Treat empty list as "not ready"
 
-        return armed
+        if not self.drone_states:
+            return True
+
+        return all(state.armed is True for state in self.drone_states) or self.drone.id != 1
+
+    async def send_takeoff(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Send a takeoff message to the drones passed as a parameter
+        """
+        takeoff_message: Message = Message.create(
+            id=MessageType.START_TAKEOFF,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(takeoff_message)
+
+        return
+
+    async def send_takeoff_ack(self) -> None:
+        """
+        Sends takeoff_ack message to drone 1
+        Not used by drone 1, only recieved.
+        """
+        takeoff_ack_message: Message = Message.create(
+            id=MessageType.START_TAKEOFF_ACK,
+            dronesToSendData=(1,),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(takeoff_ack_message)
+
+        return
 
     async def all_takeoff(self) -> bool:
         """
         Used by drone one
         Loop through all droneState objects to see if they have taken off.
         """
-        # TODO: Check if all droneState objects have taken off
-        taken_off = True  # actually check if they are
+        if not self.drone_states:
+            return False
 
-        return taken_off
+        return all(state.takeoff is True for state in self.drone_states) or self.drone.id != 1
 
-    async def all_mission_start(self) -> bool:
-        """
-        Used by drone one
-        Loop through all droneState objects to see if they have started mission
-        """
-        # TODO: Check if all droneState objects have started mission
-        started_mission = True  # actually check if they are
-
-        return started_mission
-
-    async def all_demo_start(self) -> bool:
-        """
-        Used by drone one
-        Loop through all droneState objects to see if they have started demo
-        """
-        # TODO: Check if all droneState objects have started demo
-        started_demo = True  # actually check if they are
-
-        return started_demo
-
-    # I'm lowkey guessing on descriptions from here until the async cancel_state
-    async def send_takeoff(self, drone_id: int) -> None:
-        """
-        Send a takeoff message to the drone id passed as a parameter
-        """
-        # TODO: Send message id xxx (takeoff) to drone_id
-        # TODO: actually make a message id for takeoff
-
-        return
-
-    async def send_takeoff_ack(self) -> None:
-        """
-        Sends takeoff_ack message.
-        Not used by drone 1, only recieved.
-        """
-        # TODO: Send takeoff_ack message
-
-        return
-
-    async def send_start_demo(self, drone_id: int) -> None:
+    async def send_start_demo(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a start demo message to the drone id passed as a parameter
         """
-        # TODO: Send message id xxx (start demo) to drone_id
-        # TODO: actually make a message id for start demo
+        demo_message: Message = Message.create(
+            id=MessageType.START_DEMO,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(demo_message)
 
         return
 
@@ -232,16 +329,39 @@ class Interdrone:
         Sends demo_ack message.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send demo_ack message
+        demo_ack_message: Message = Message.create(
+            id=MessageType.START_DEMO_ACK,
+            dronesToSendData=(1,),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(demo_ack_message)
 
         return
 
-    async def send_start_mission(self, drone_id: int) -> None:
+    async def all_demo_start(self) -> bool:
+        """
+        Used by drone one
+        Loop through all droneState objects to see if they have started demo
+        """
+        if not self.drone_states:
+            return True
+        print(f"Checking if all drones have started demo. Drone states: {self.drone_states}")
+        return all(state.demo_start is True for state in self.drone_states) or self.drone.id != 1
+
+    async def send_start_mission(self, dronesToSendData: tuple[int, ...]) -> None:
         """
         Send a start mission message to the drone id passed as a parameter.
         """
-        # TODO: Send message id xxx (start mission) to drone_id
-        # TODO: actually make a message id for start mission
+        mission_message: Message = Message.create(
+            id=MessageType.START_MISSION,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_message)
 
         return
 
@@ -250,7 +370,224 @@ class Interdrone:
         Sends mission_ack message.
         Not used by drone 1, only recieved.
         """
-        # TODO: Send mission_ack message
+        mission_ack_message: Message = Message.create(
+            id=MessageType.START_MISSION_ACK,
+            dronesToSendData=(1,),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_ack_message)
+
+        return
+
+    async def all_mission_start(self) -> bool:
+        """
+        Used by drone one
+        Loop through all droneState objects to see if they have started mission
+        """
+        if not self.drone_states:
+            return False
+
+        return all(state.mission_start is True for state in self.drone_states)
+
+    async def send_new_waypoints(
+        self,
+        dronesToSendData: tuple[int, ...],
+        waypoints: list[Waypoint],
+    ) -> None:
+        """
+        Message ID = 545
+        Send new_waypoints message to all drones
+        new_waypoints contains:
+        the new waypoints added to the current drone
+        a checksum of waypoints for the other drone
+        When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
+        """
+        checksum = Waypoint.getChecksum(waypoints)
+        for target_drone in dronesToSendData:
+            state = self.get_drone_state_from_id(target_drone)
+            if state is not None:
+                new_waypoints_message: Message = Message.create(
+                    id=MessageType.NEW_WAYPOINTS,
+                    dronesToSendData=(target_drone,),
+                    senderId=self.flight_settings.current_drone_ID,
+                    data={
+                        "newWaypoints": waypoints,
+                        "senderDroneWaypointsChecksum": checksum,
+                    },
+                )
+                self.send(new_waypoints_message)
+                state.waypoint_up_to_date = False
+
+        return
+
+    async def reached_waypoint(self, dronesToSendData: tuple[int, ...], waypoint: Waypoint) -> None:
+        """
+        Message ID = 550
+        Send reached_waypoint message to all drones
+        """
+        reached_waypoint_message: Message = Message.create(
+            id=MessageType.REACHED_WAYPOINT,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={
+                "reachedWaypointId": waypoint.waypoint_id,
+            },
+        )
+
+        self.send(reached_waypoint_message)
+
+        for drone_id in dronesToSendData:
+            state = self.get_drone_state_from_id(drone_id)
+            if state is not None:
+                state.waypoint_up_to_date = False
+
+        return
+
+    async def send_survey_start(self) -> None:
+        """
+        Message ID = 565
+        Set the CMD_MSG in interdrone to SURVEY_START
+        Send Survey_Start message to all other drones
+        """
+        survey_message: Message = Message.create(
+            id=MessageType.SURVEY_START,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_message)
+
+        return
+
+    async def send_survey_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 566
+        Sends survey_start_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        survey_ack_message: Message = Message.create(
+            id=MessageType.SURVEY_START_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_ack_message)
+
+        return
+
+    async def send_survey_end(self) -> None:
+        """
+        Message ID = 570
+        Sends survey_end message to all other drones
+        """
+        survey_end_message: Message = Message.create(
+            id=MessageType.SURVEY_END,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_end_message)
+
+        return
+
+    async def send_survey_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 571
+        Sends survey_end_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        survey_end_ack_message: Message = Message.create(
+            id=MessageType.SURVEY_END_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(survey_end_ack_message)
+
+        return
+
+    async def share_photos(self, photos: list[dict[str, Any]]) -> None:
+        """
+        Message ID = 575
+        Sends list of photos to all other drones
+        """
+        photos_message: Message = Message.create(
+            id=MessageType.SHARE_PHOTOS,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            sendId=self.flight_settings.current_drone_ID,
+            data={
+                "photos": photos,
+            },
+        )
+
+        self.send(photos_message)
+
+        return
+
+    async def send_checksum(self, checksum: int):
+        """
+        Message ID = 580
+        Radius representing the state of the shared mat and all mines.
+        Sends to all other drones
+        """
+        # TODO: Calculate checksum elsewhere
+        checksum_message: Message = Message.create(
+            id=MessageType.FIELD_CHECKSUM,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            checksum=checksum,
+        )
+
+        self.send(checksum_message)
+
+        return
+
+    async def send_mission_end(self) -> None:
+        """
+        Message ID = 585
+        Sends mission_end message to all other drones
+        """
+        mission_end_message: Message = Message.create(
+            id=MessageType.MISSION_END,
+            dronesToSendData=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_end_message)
+
+        return
+
+    async def send_mission_end_ack(self, dronesToSendData: tuple[int, ...]) -> None:
+        """
+        Message ID = 586
+        Sends mission_end_ack message to the drone that sent the original message
+        dronesToSendData should just be one drone
+        """
+        mission_end_ack_message: Message = Message.create(
+            id=MessageType.MISSION_END_ACK,
+            dronesToSendData=dronesToSendData,
+            senderId=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(mission_end_ack_message)
 
         return
 
@@ -309,21 +646,24 @@ class Interdrone:
         # Start the restart callback as a separate task but do not wait for it
         asyncio.ensure_future(self._restart_callback(state))
 
-    def read(self) -> None:
+    def read(self) -> Message | None:
         """
-        Read an message.
+        Try to read a message.
         """
-        raise NotImplementedError
+        return self.networking.try_get_server_message(timeout=0.02)
 
-    def send(self) -> None:
+    def send(self, message: Message) -> None:
         """
         Send a message.
         """
-        # ADDS A NEW MESSAGE TO QUEUE
-        raise NotImplementedError
+        self.networking.queue_client_message(message)
 
     def get_cmd_msg(self) -> CMD_MSG:
+        # NOTE May want to set to None after returning it
         return self.cmd_msg
+
+    def set_cmd_msg(self, cmd_msg: CMD_MSG) -> None:
+        self.cmd_msg = cmd_msg
 
     # Start client code and call the client_loop()
     async def start_interdrone(self):
@@ -331,39 +671,283 @@ class Interdrone:
 
     # Check for new messages to send and create tasks to send them
     async def interdrone_loop(self) -> None:
-        # TODO maybe setup a fancy message storage class
 
-        heartbeatMessage: Message = Message.create(
-            id=MessageType.HEARTBEAT,
-            dronesToSendData=(),
-            data={
-                "senderId": self.flight_settings.current_drone_ID,
-                "payload": "Hello server!",
-            },
-        )
-
-        # Main loop
-        msgNum = 0  # Used for testing
         startTime = time.time()
         try:
-            while True:  # TODO COMMENT THIS STUFF OUT ONCE STATE MACHINE IS GOING
+            while True:
                 # Check for server messages
-                serverMsg = self.networking.try_get_server_message(timeout=0.02)
-                if serverMsg is not None:
-                    msgNum += 1
-                    # print(f"Server Data: {serverMsg}")
-                    print(f"Client Data: {msgNum}")
+                message = self.networking.try_get_server_message(timeout=0.02)
+                if message is not None:
+                    # Adds the new message to its respective message queue
+                    self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
+                        message
+                    )  # TODO GET RID OF THIS SOON
+                    match message.id:
+                        # NOTE could move this functionality to a receive function. That would be a cleanup item though
+                        case MessageType.ARM:
+                            # Drone is able to arm if vehicle is armable and ping response to other drones is true
+                            # if self.drone.vehicle.is_armable and all(
+                            #     state.ping_response is True
+                            #     for state in self.drone_states
+                            # ):
+                            if all(
+                                state.ping_response is True for state in self.drone_states
+                            ):  # Extra if used for local testing
+                                # Set cmd_msg to arm (signals to state machine to arm the drone)
+                                self.cmd_msg = CMD_MSG.ARM
+                                if self.flight_settings.current_drone_ID == 1:
+                                    # Drone 1 distributes message to other drones in the mission
+                                    await self.send_ARM(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                # Other drones send ACK
+                                else:
+                                    await self.send_arm_ack()
+                            # Send ARM_NACK if drone can't arm
+                            else:
+                                await self.send_arm_nack(dronesToSendData=(message.senderId,))
 
-                # Check for client responses
-                clientMsg = self.networking.try_get_client_response(timeout=0.02)
-                if clientMsg is not None:
-                    print("stuff here")
-                    # print(f"Client Data: {msgNum}")
-                    pass
+                        case MessageType.ARM_ACK:
+                            # When drone 1 receives an ACK, set others drone arm state to true
+                            state = next(
+                                (s for s in self.drone_states if s.drone_id == message.senderId),
+                                None,
+                            )
+
+                            if state is not None:
+                                state.armed = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}. Something is ary!"
+                                )
+                        case MessageType.ARM_NACK:
+                            # Try and resend ARM to drone that sent NACK
+                            print(f"Drone {message.senderId} failed to arm. Resending message.")
+                            await self.send_ARM(dronesToSendData=(message.senderId,))
+                        case MessageType.DISARM:
+                            self.cmd_msg = CMD_MSG.DISARM
+                            if self.flight_settings.current_drone_ID == 1:
+                                # Drone 1 distributes message to other drones in the mission
+                                disarm_message: Message = Message.create(
+                                    id=MessageType.DISARM,
+                                    dronesToSendData=(message.senderId,),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(disarm_message)
+                            self.drone.vehicle.armed = False
+                        case MessageType.START_TAKEOFF:
+                            # TODO MAKE SURE THIS IS THE RIGHT WAY TO CHECK FOR ARM SET (we could unset arm cmd msg. want to double check we dont)
+                            # TODO MAKE SURE WE DON'T NEED A START_TAKEOFF_NACK
+                            if self.cmd_msg == CMD_MSG.ARM:
+                                self.cmd_msg = CMD_MSG.TAKEOFF
+                                if self.flight_settings.current_drone_ID == 1:
+                                    # Drone 1 distributes message to other drones in the mission
+                                    await self.send_takeoff(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                # Other drones send ACK
+                                else:
+                                    await self.send_takeoff_ack()
+                        case MessageType.START_TAKEOFF_ACK:
+                            state = self.get_drone_state_from_id(message.senderId)
+                            if state is not None:
+                                state.takeoff = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}! Something is ary!"
+                                )
+                        case MessageType.START_DEMO:
+                            print("GOT START DEMO MESSAGE")
+                            if self.cmd_msg == CMD_MSG.ARM:  # TODO VERIFY THIS IS CORRECT
+                                self.cmd_msg = CMD_MSG.DEMO
+                                if self.flight_settings.current_drone_ID == 1:
+                                    await self.send_start_demo(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                else:
+                                    await self.send_demo_ack()
+                        case MessageType.START_DEMO_ACK:
+                            state = self.get_drone_state_from_id(message.senderId)
+
+                            if state is not None:
+                                state.demo_start = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}! Something is ary!"
+                                )
+                        case MessageType.DEMO_DONE:
+                            self.cmd_msg = CMD_MSG.DEMO_DONE
+                            if self.flight_settings.current_drone_ID == 1:
+                                demo_done_message: Message = Message.create(
+                                    id=MessageType.DEMO_DONE,
+                                    dronesToSendData=tuple(
+                                        self.flight_settings.other_drones_in_mission,
+                                    ),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(demo_done_message)
+                        case MessageType.START_MISSION:
+                            print("start mission recieved")
+                            if self.cmd_msg == CMD_MSG.ARM:
+                                self.cmd_msg = CMD_MSG.MISSION
+                                if self.flight_settings.current_drone_ID == 1:
+                                    await self.send_start_mission(
+                                        dronesToSendData=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        )
+                                    )
+                                else:
+                                    await self.send_mission_ack()
+                        case MessageType.START_MISSION_ACK:
+                            state = self.get_drone_state_from_id(message.senderId)
+
+                            if state is not None:
+                                state.mission_start = True
+                            else:
+                                print(
+                                    f"No DroneState found for drone_id={message.senderId}! Something is ary!"
+                                )
+                        case MessageType.NEW_WAYPOINTS:
+                            # Get state and set list_of_waypoints
+                            state = self.get_drone_state_from_id(message.senderId)
+                            # TODO CHECK THE CHECKSUM TO DETERMINE WHETHER TO SEND RECONFIRM WAYPOINTS
+                            if state is not None:
+                                # Add received waypoints to list_of_waypoints
+                                state.list_of_waypoints += message.data["newWaypoints"]
+                                print(state.list_of_waypoints)
+
+                                # TODO IMPLEMENT CHECKSUM HERE
+                                # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
+                                checksum = Waypoint.getChecksum(state.list_of_waypoints)
+                                print(
+                                    f"Comparing checksum. message.checksum = {message.data['senderDroneWaypointsChecksum']} and checksum(state.list_of_waypoints) = {checksum}"
+                                )
+                                # Check if stored list of waypoints matches what the other drone has
+                                # If so, send NEW_WAYPOINTS_ACK
+                                if checksum == message.data["senderDroneWaypointsChecksum"]:
+                                    waypoints_ack_message: Message = Message.create(
+                                        id=MessageType.NEW_WAYPOINTS_ACK,
+                                        dronesToSendData=(message.senderId,),
+                                        senderId=self.flight_settings.current_drone_ID,
+                                        data={},
+                                    )
+                                    self.send(waypoints_ack_message)
+                                # If checksums don't match, send reconfirm waypoints message
+                                else:
+                                    state.waypoint_up_to_date = False
+                                    waypoints = self.drone.getWaypoints()
+                                    reconfirm_waypoints_message: Message = Message.create(
+                                        id=MessageType.RECONFIRM_WAYPOINTS,
+                                        dronesToSendData=(message.senderId,),
+                                        senderId=self.flight_settings.current_drone_ID,
+                                        data={
+                                            "allWaypoints": waypoints,
+                                            "needResponse": True,
+                                        },
+                                    )
+                                    self.send(reconfirm_waypoints_message)
+                                self.drone.checkForCollision(state.list_of_waypoints)
+                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
+
+                        case MessageType.NEW_WAYPOINTS_ACK:
+                            state = self.get_drone_state_from_id(message.senderId)
+                            if state is not None:
+                                state.waypoint_up_to_date = True
+                        case MessageType.REACHED_WAYPOINT:
+                            state = self.get_drone_state_from_id(message.senderId)
+
+                            if state is not None:
+                                """
+                                print(
+                                    f"Got reached waypoint. State of waypoint list before: {state.list_of_waypoints} "
+                                )
+                                """
+                                print("_______________________________________________")
+                                reached_id = message.data["reachedWaypointId"]
+                                reached_waypoint: Waypoint | None = None
+                                for waypoint in state.list_of_waypoints:
+                                    if waypoint.waypoint_id == reached_id:
+                                        reached_waypoint = waypoint
+                                if reached_waypoint is not None:
+                                    state.list_of_waypoints.remove(reached_waypoint)
+                                    reached_waypoint.has_visited = True
+
+                                # print(f"State of waypoint list after: {state.list_of_waypoints} ")
+                                reached_waypoint_ack_message: Message = Message.create(
+                                    id=MessageType.REACHED_WAYPOINT_ACK,
+                                    dronesToSendData=(message.senderId,),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(reached_waypoint_ack_message)
+                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
+                        case MessageType.REACHED_WAYPOINT_ACK:
+
+                            state = self.get_drone_state_from_id(message.senderId)
+                            if state is not None:
+                                state.waypoint_up_to_date = True
+                        case MessageType.RECONFIRM_WAYPOINTS:
+                            state = self.get_drone_state_from_id(message.senderId)
+
+                            if state is not None:
+                                # Update list of waypoints with the correct ones
+                                state.list_of_waypoints = message.data["allWaypoints"]
+                                state.waypoint_up_to_date = True
+                                # Message needs responses, send back message with current drones waypoints
+                                if message.data["needResponse"]:
+                                    waypoints = self.drone.getWaypoints()
+                                    reconfirm_waypoints_message_response: Message = Message.create(
+                                        id=MessageType.RECONFIRM_WAYPOINTS,
+                                        dronesToSendData=(message.senderId,),
+                                        senderId=self.flight_settings.current_drone_ID,
+                                        data={
+                                            "allWaypoints": waypoints,
+                                            "needResponse": False,
+                                        },
+                                    )
+                                    self.send(reconfirm_waypoints_message_response)
+                        case MessageType.EMERGENCY_LAND:
+                            self.cmd_msg = CMD_MSG.EMERGENCY_LAND
+                            if self.flight_settings.current_drone_ID == 1:
+                                emergency_land_message: Message = Message.create(
+                                    id=MessageType.EMERGENCY_LAND,
+                                    dronesToSendData=tuple(
+                                        self.flight_settings.other_drones_in_mission,
+                                    ),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(emergency_land_message)
+                        case MessageType.LAND:
+                            self.cmd_msg = CMD_MSG.LAND
+                            if self.flight_settings.current_drone_ID == 1:
+                                land_message: Message = Message.create(
+                                    id=MessageType.LAND,
+                                    dronesToSendData=tuple(
+                                        self.flight_settings.other_drones_in_mission,
+                                    ),
+                                    senderId=self.flight_settings.current_drone_ID,
+                                    data={},
+                                )
+                                self.send(land_message)
+
+                            # Check if drone 1 received and then distribute
+                    # Catch different messages here and add them to interdrone message queue so other functions can use them
+                    # msgNum += 1
+                    # print(f"Server Data: {msgNum}")
+
                 # Send heartbeat if queue is empty
-                if self.networking.is_client_in_empty():
-                    heartbeatMessage.data["payload"] = str(msgNum)
-                    self.networking.queue_client_message(heartbeatMessage)
+                # if self.networking.is_client_in_empty():
+                #     heartbeatMessage.data["payload"] = str(msgNum)
+                #     self.networking.queue_client_message(heartbeatMessage)
 
                 await asyncio.sleep(0.1)
 

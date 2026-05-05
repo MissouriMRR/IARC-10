@@ -12,9 +12,11 @@ import subprocess
 
 # Interdrone Imports
 from interdrone_communication.message_types import Message, MessageType
-from interdrone_communication.network_config import NetworkConfig
 from interdrone_communication.networking_thread import NetworkingThread
 from interdrone_communication.networking_interface import NetworkingInterface
+from state_machine.flight_settings import FlightSettings
+
+SPEED_TEST_PAYLOAD_KB: int = 16
 
 
 """
@@ -28,7 +30,6 @@ Waits for user to prompt for next one
 
 (spreadsheet can be created from JSON in a separate file)
 """
-# TODO update logging to be more readable when no spreadsheet
 
 
 def parse_bool_flag(value: str) -> bool:
@@ -116,7 +117,7 @@ async def main():
 
     args = parser.parse_args()
     # Load config
-    networkConfig = NetworkConfig()
+    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
 
     # Declare flag variables
     droneId: int
@@ -126,14 +127,8 @@ async def main():
     uwbEnabled: bool
     continuousTesting: bool
 
-    # Get drone ID
-    if args.id is not None:
-        droneId = args.id
-        networkConfig.set_self_id(droneId)
-    else:
-        droneId = int(networkConfig.get_self_id())
+    droneId = flight_settings.current_drone_ID
 
-    # TODO decide how I want to set up num drones / other drones
     if args.targets is not None:
         dronesToSendData = args.targets
         if args.numDrones is not None and len(dronesToSendData) != args.numDrones:
@@ -182,7 +177,8 @@ async def main():
     resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     networkingThread = threading.Thread(
         target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, networkConfig),
+        args=(resourcesReady, flight_settings),
+        kwargs={"range_test_toggle": True},
         daemon=True,
     )
     networkingThread.start()
@@ -197,16 +193,13 @@ async def main():
         dronesToSendData=tuple(
             dronesToSendData
         ),  # Modify this for selective speed test
+        senderId=droneId,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
-            "finalUploadTime": 0.0,
-            "initialDownloadTime": 0.0,
-            "finalDownloadTime": 0.0,
-            "senderId": droneId,
-            "payloadSize": networkConfig.get_speed_test_data_size() * 1024,
+            "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
             "payload": "X"
             * (
-                networkConfig.get_speed_test_data_size() * 1024
+                SPEED_TEST_PAYLOAD_KB * 1024
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
@@ -222,15 +215,15 @@ async def main():
     while True:
         try:
             # Check for client responses
-            clientMsg = networking.try_get_client_response(timeout=0.02)
-            if clientMsg is not None:
+            serverMsg = networking.try_get_server_message(timeout=0.02)
+            if serverMsg is not None:
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = clientMsg.data["targetId"]
+                    targetId: int = serverMsg.data["targetId"]
                     # print(targetId)
                     if targetId not in speedResults:
                         speedResults[targetId] = []
-                    speedResults[targetId].append(clientMsg)
+                    speedResults[targetId].append(serverMsg)
                     if len(speedResults[targetId]) >= numQueriesPerTest:
                         # Copy data and clear original list so we can keep receiving immediately
                         results_to_log = list(speedResults[targetId])
@@ -245,7 +238,7 @@ async def main():
                             asyncio.to_thread(
                                 log_data,
                                 results_to_log,
-                                networkConfig,
+                                flight_settings,
                                 current_test_num,
                                 logTitle,
                                 fileName,
@@ -261,7 +254,7 @@ async def main():
                         task.add_done_callback(backgroundTasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {networkConfig.get_self_id()} -> {targetId}"
+                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {targetId}"
                         )
                         # If all drones in range tests tests have finished
                         if sum(testsFinishedPerTarget) >= numDrones:
@@ -275,7 +268,7 @@ async def main():
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {clientMsg}")
+                    # print(f"Client Data: {serverMsg}")
             if testFinished:
                 # Wait for logging tasks to finish
                 while len(backgroundTasks) != 0:
@@ -295,14 +288,14 @@ async def main():
             if networking.is_client_in_empty():
                 networking.queue_client_message(message=speedTestMessage)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
-        except KeyboardInterrupt, asyncio.CancelledError:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
             break
 
 
 def log_data(
     speedResults: list[Message],
-    networkConfig: NetworkConfig,
+    flight_settings: FlightSettings,
     testNumber: int,
     logTitle: str,
     fileName: str,
@@ -442,7 +435,7 @@ def log_data(
 
         print("\n" + "=" * 70)
         print(
-            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {networkConfig.get_self_id()} -> {targetDrone}"
+            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {flight_settings.current_drone_ID} -> {targetDrone}"
         )
         print("=" * 70)
 
