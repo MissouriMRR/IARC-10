@@ -938,21 +938,20 @@ class Interdrone:
                                     data={},
                                 )
                                 self.send(land_message)
-                        case MessageType.SEND_PHONE_COORDS:
+                        case MessageType.SEND_APP_COORDS:
                             if self.flight_settings.current_drone_ID == 1:
-                                send_phone_coords_message: Message = Message.create(
-                                    id=MessageType.SEND_PHONE_COORDS,
+                                send_app_coords_message: Message = Message.create(
+                                    id=MessageType.SEND_APP_COORDS,
                                     dronesToSendData=tuple(
                                         self.flight_settings.other_drones_in_mission,
                                     ),
                                     senderId=self.flight_settings.current_drone_ID,
                                     data={
-                                        "phoneCoords": message.data[
-                                            "phoneCoords"
-                                        ],  # TODO Change this to be the actual coords of the phone instead of just sending the message through. This is just for testing
+                                        "appLatitude": self.flight_settings.app_latitude,
+                                        "appLongitude": self.flight_settings.app_longitude,
                                     },
                                 )
-                                self.send(send_phone_coords_message)
+                                self.send(send_app_coords_message)
 
                             # Check if drone 1 received and then distribute
                     # Catch different messages here and add them to interdrone message queue so other functions can use them

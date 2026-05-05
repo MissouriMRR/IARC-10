@@ -23,8 +23,8 @@ class MessageType(Enum):
     SEND_PATHS_TO_APP = 420
     SEND_APP_SCANNING_ERROR = 421
     SEND_DRONE_LOCATIONS = 425
-    SEND_PHONE_COORDS = 435
-    SEND_PHONE_COORDS_ACK = 436
+    SEND_APP_COORDS = 435
+    SEND_APP_COORDS_ACK = 436
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -150,15 +150,15 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "senderId": int,
         "payload": str,
     },
-    MessageType.SEND_PHONE_COORDS: {
-        "id": MessageType.SEND_PHONE_COORDS,
+    MessageType.SEND_APP_COORDS: {
+        "id": MessageType.SEND_APP_COORDS,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
-        "phoneLat": float,
-        "phoneLong": float,
+        "appLatitude": float,
+        "appLongitude": float,
     },
-    MessageType.SEND_PHONE_COORDS_ACK: {
-        "id": MessageType.SEND_PHONE_COORDS_ACK,
+    MessageType.SEND_APP_COORDS_ACK: {
+        "id": MessageType.SEND_APP_COORDS_ACK,
         "dronesToSendData": tuple[int, ...],
         "senderId": int,
     },
