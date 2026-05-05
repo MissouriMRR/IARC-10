@@ -43,6 +43,10 @@ class FlightSettings:
         Whether the drone is real, running in the ardupilot sim, or running in airsim
     __mission_data_path: str
         The path to the JSON file containing the boundary data.
+    __app_latitude: float
+        The latitude of the app
+    __app_longitude: float
+        The longitude of the app
     __yolo_status: Event
         An asyncio Event tracking whether the YOLO model has
         finished processing images.
@@ -71,6 +75,14 @@ class FlightSettings:
         Return the path to the JSON file containing the boundary data.
     mission_data_path(mission_data_path: str) -> None
         Set the path to the JSON file containing the boundary data.
+    app_latitude() -> float
+        Returns the latitude of the app
+    app_latitude(latitude: float) -> None
+        Sets the latitude of the app
+    app_longitude() -> float
+        Returns the longitude of the app
+    app_longitude(longitude: float) -> None
+        Sets the longitude of the app
     """
 
     _read_sim_mode: bool = False
@@ -87,6 +99,8 @@ class FlightSettings:
         drone_info: list[mission_config.DroneInfo] = [],
         app_IP: str = "",
         app_port: int = 0,
+        app_latitude: float = 0.0,
+        app_longitude: float = 0.0,
         mission_corners: list[dict[str, float]] | None = None,
         max_height: float = 10,
         start_coord: dict = {},
@@ -116,6 +130,8 @@ class FlightSettings:
         self.__app_opperable: bool = app_opperable
         self.__app_IP: str = app_IP
         self.__app_port: int = app_port
+        self.__app_latitude: float = app_latitude
+        self.__app_longitude: float = app_longitude
         self.__current_drone_ID = drone_ID
         self.__drones_in_mission: list[int] = list(drones_in_mission)
         self.__drone_info: list[mission_config.DroneInfo] = list(drone_info)
@@ -193,6 +209,8 @@ class FlightSettings:
             drone_info=all_drones,
             app_IP=config["app_info"]["ip"],
             app_port=int(config["app_info"]["port"]),
+            app_latitude=config["app_info"]["latitude"],
+            app_longitude=config["app_info"]["longitude"],
             mission_corners=config["mission_field_corners"],
             max_height=config["max_flight_height"],
             start_coord=config["start_coord"],
@@ -406,6 +424,22 @@ class FlightSettings:
     @app_port.setter
     def app_port(self, port: int) -> None:
         self.__app_port = port
+
+    @property
+    def app_latitude(self) -> float:
+        return self.__app_latitude
+
+    @app_latitude.setter
+    def app_latitude(self, latitude: float) -> None:
+        self.__app_latitude = latitude
+
+    @property
+    def app_longitude(self) -> float:
+        return self.__app_longitude
+
+    @app_longitude.setter
+    def app_longitude(self, longitude: float) -> None:
+        self.__app_longitude = longitude
 
     @property
     def number_of_total_drones(self) -> int:
