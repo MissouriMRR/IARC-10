@@ -124,7 +124,7 @@ class Path:
                     current_point = (x, y)
 
                     if last_point is not None:
-                        if m.dist(current_point, last_point) < step:
+                        if m.dist(current_point, last_point) < standardDist:
                             continue
 
                     last_point = current_point
