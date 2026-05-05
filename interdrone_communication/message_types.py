@@ -22,6 +22,8 @@ class MessageType(Enum):
     SEND_PATHS_TO_APP = 420
     SEND_APP_SCANNING_ERROR = 421
     SEND_DRONE_LOCATIONS = 425
+    SEND_PHONE_COORDS = 435
+    SEND_PHONE_COORDS_ACK = 436
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -105,6 +107,18 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SERVER_DEFAULT_RESPONSE,
         "dronesToSendData": tuple[int, ...],
         "payload": str,
+    },
+    MessageType.SEND_PHONE_COORDS: {
+        "id": MessageType.SEND_PHONE_COORDS,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
+        "phoneLat": float,
+        "phoneLong": float,
+    },
+    MessageType.SEND_PHONE_COORDS_ACK: {
+        "id": MessageType.SEND_PHONE_COORDS_ACK,
+        "dronesToSendData": tuple[int, ...],
+        "senderId": int,
     },
     # Message: SPEED_TEST_REQUEST
     # Usage: Used in network_test. Sent to other drones, their server updates the data, and it's then sent back to the client for processing. Client outputs SPEED_TEST_RESPONSE
