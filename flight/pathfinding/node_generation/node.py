@@ -50,7 +50,7 @@ class Node:
 
     # Establishes a connection between nodes
     # Does not add it to the nodegraph yet however
-    def connectNode(self, node: "Node") -> Connection:
+    def connectNode(self, node: "Node") -> "Connection":
         if self == node:
             raise TypeError("Same nodes")
         nodeConnection = Connection(self, node)  # connection initialization
@@ -77,10 +77,10 @@ class Node:
     def getPos(self) -> float:
         return (round(float(self.x), 3), round(float(self.y), 3))
 
-    def getTargetMine(self) -> Mine:
+    def getTargetMine(self) -> "Mine":
         return self.__targetMine
 
-    def getParentMine(self) -> Mine:
+    def getParentMine(self) -> "Mine":
         return self.parentMine
 
     def __str__(self):

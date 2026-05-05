@@ -126,7 +126,6 @@ class Path:
                 
                 current_theta = angle1
                 while seg_dist_left > dist_to_next_point or i == len(nodeList) - 2:
-                    counter += 1
                     if i != len(nodeList) - 2:
                         theta = current_theta + (dist_to_next_point/seg_dist_left)*(delta_theta)
                         x = cx + r * m.cos(theta)
