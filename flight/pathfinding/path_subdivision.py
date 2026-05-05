@@ -58,6 +58,7 @@ class Path:
         #finalGotoList = []
         #segmentedList = []
         
+        dist_to_next_point = 0 # Used to track when to put a point
         for i in range(len(nodeList) - 1):
             isArc = False
             n1 = nodeList[i] #first node
@@ -69,12 +70,20 @@ class Path:
             if connect.connectionType == seg.LINE:
     
                 self.total_lin_distance += connect.distance
-                numPoints = max(1, m.ceil(connect.distance / step))
-                x_vals = np.linspace(n1.x, n2.x, numPoints)
-                y_vals = np.linspace(n1.y, n2.y, numPoints) 
-                for x, y in zip(x_vals, y_vals):
-                    #distance variable that has the distance between each point, so you can use that ot maintain space in arc nodes spacing.
-                    standardDist = m.dist((n1.x, n1.y), (n2.x, n2.y)) #used to compare dist in arc as well
+                seg_dist_left = connect.distance
+                current_x = n1.x
+                current_y = n1.y
+                while seg_dist_left > dist_to_next_point or i == len(nodeList) - 2:
+                    if i != len(nodeList) - 2:
+                        x = current_x + dist_to_next_point/seg_dist_left*(n2.x-current_x)
+                        y = current_y + dist_to_next_point/seg_dist_left*(n2.y-current_y)
+                        current_x = x
+                        current_y = y
+                        seg_dist_left -= dist_to_next_point
+                        dist_to_next_point = step
+                    else:
+                        x = n2.x
+                        y = n2.y
                     path_angle = m.atan2(n2.y - n1.y, n2.x - n1.x)
                     node_addition_angle = path_angle + m.pi/2
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
@@ -87,7 +96,10 @@ class Path:
                         self.segmentedList.append([(n1), (n2), isArc])
                         self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*adjusted_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
-            
+                    if i == len(nodeList) - 2:
+                        break
+                if i != len(nodeList) - 2:
+                    dist_to_next_point -= seg_dist_left
             #arc gotos
             elif connect.connectionType == seg.ARC:
                 isArc = True
@@ -108,28 +120,26 @@ class Path:
                 elif delta_theta < -m.pi:
                     delta_theta += 2*m.pi
                 
+                
                 self.total_arc_length += connect.distance 
+                seg_dist_left = connect.distance
                 
-                numPoints = max(1, m.ceil(connect.distance/ step)) 
-                
-                # Generate arc points
-                angles = np.linspace(angle1, angle1 + delta_theta, numPoints)
-                
-                last_point = None
-                
-                for a in angles:
-                    x = cx + r * m.cos(a)
-                    y = cy + r * m.sin(a)
-                
-                    current_point = (x, y)
-
-                    if last_point is not None:
-                        if m.dist(current_point, last_point) < step:
-                            continue
-
-                    last_point = current_point
+                current_theta = angle1
+                while seg_dist_left > dist_to_next_point or i == len(nodeList) - 2:
+                    counter += 1
+                    if i != len(nodeList) - 2:
+                        theta = current_theta + (dist_to_next_point/seg_dist_left)*(delta_theta)
+                        x = cx + r * m.cos(theta)
+                        y = cy + r * m.sin(theta)
+                        delta_theta = delta_theta + current_theta - theta
+                        current_theta = theta
+                        seg_dist_left -= dist_to_next_point
+                        dist_to_next_point = step
+                    else:
+                        x = n2.x
+                        y = n2.y
                   
-                    path_angle = angle1 + delta_theta + m.pi/2
+                    path_angle = current_theta + m.pi/2
                     node_addition_angle = path_angle + m.pi/2
                     direction_unit_vector = [m.cos(node_addition_angle), m.sin(node_addition_angle)]
                     adjusted_vector = [a * horizontal_separation for a in direction_unit_vector]
@@ -142,6 +152,11 @@ class Path:
                         self.segmentedList.append([(n1), (n2), isArc])
                         self.finalGotoList.append((float(x) - i*adjusted_vector[0], float(y) - i*adjusted_vector[1], path_angle))
                         self.segmentedList.append([(n1), (n2), isArc])
+                    dist_to_next_point = step
+                    if i == len(nodeList) - 2:
+                        break
+                if i != len(nodeList) - 2:
+                    dist_to_next_point -= seg_dist_left
                 
         self.total_path_length = self.total_lin_distance + self.total_arc_length       
         return self.finalGotoList, self.segmentedList 
@@ -154,6 +169,7 @@ class Path:
         else:
             score = ((150000 * pathWidth) / ((1 + minesMissed) * optimumPath * (1 + 7 * flightMin + (100 * droneWeight))))
         return score
+    
 
 
 #set up 
