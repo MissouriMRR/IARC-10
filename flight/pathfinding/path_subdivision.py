@@ -5,7 +5,7 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from flight.pathfinding.node_generation.node_generation import Node, Mine, Field, Connection, seg
+from flight.pathfinding.node_generation import Node, Mine, Field, Connection, seg
 from flight.pathfinding.path_calculation import Graph
 '''
 Attributes:

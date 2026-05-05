@@ -29,11 +29,11 @@ KEY NODE ATTRIBUTES/METHODS:
  - Node.getPos() -> gets position of node
  - Node.getTargetMine() -> returns Mine; gets the target mine
  - Node.getParentMine() -> returns Mine or None if floating; gets the parent mine
- 
+
  - MineNode(parentMine:Mine, targetMine:Mine,internal:True/False,primary:True/False,connectedToFloating:True/False,floatingNode:Node,name:str)
     -> Constructor; not reconmended to construct manually, as the parameters heavily affect placements. Use Field to add Nodes.
 
- - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"] 
+ - MineNode.getPathType(Node) -> ["line"/"arc", "established"/"unestablished","bitangent"/"normal"]
                               A list of strings describing the kind of connection each node has to another
  - MineNode.getPos() -> (x,y) position on field of the Node
 
@@ -54,7 +54,7 @@ KEY FIELD ATTRIBUTES/METHODS:
  = Class Variable: nodeGraph -> a dictionary containing Connection objects
  - Field.addMine(centerX,centerY,radius) -> Adds a mine to the field and creates and connects Nodes accordingly
  - Field.plotField(labeled:bool,path:list["Node"],title:str,xlabel:str) -> Using matplotlib, plots the field.
-                                    plot key: 
+                                    plot key:
                                         NID = Node ID;
                                         MID = Mine ID;
                                         CID = [Parent Mine ID].[Node ID];
@@ -68,14 +68,14 @@ KEY FIELD ATTRIBUTES/METHODS:
 ---------------------------------------------------------------------
 
 Use the Field class to generate mines and their nodes.
-Unless you are optimizing or working on this program/code/algorithm, 
+Unless you are optimizing or working on this program/code/algorithm,
 I suggest you create mines and nodes via the Field class.
     Field(simFieldSize,fieldCorners)
     Field Setup:
      - simFieldSize = simulated size of field, a rectangle.
      - fieldCorners = arbitrary corners that might not form a rectangle.
 
-Ex: A basic setup of 3 Mines with start and end nodes. 
+Ex: A basic setup of 3 Mines with start and end nodes.
 Coordinates are example only, may not actually display accurately.
 
     field = Field(simFieldSize, fieldCorners)
@@ -91,7 +91,7 @@ Complex example moved to test_cases.py
 
 
 
-        
+
 
 
 

@@ -1,7 +1,7 @@
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 import numpy as np
-from flight.pathfinding.node_generation import node_generation as nodeg
+from flight.pathfinding.node_generation import Field
 from flight.pathfinding import path_calculation as pc
 from flight.pathfinding import path_subdivision as ps
 from flight.pathfinding.utils import mask_gen as maskGen
@@ -115,7 +115,7 @@ def remove_extra_coords(seen:SightTracker, goto_points:tuple[tuple[float,float]]
 if __name__ == "__main__":
     # Screw My stupid chud life I can't test this until the field is working again.
     print("-Making Field")
-    field = nodeg.Field([250, 250], [[0,250],[200,250],[50,0],[250,0]])
+    field = Field([250, 250], [[0,250],[200,250],[50,0],[250,0]])
 
     #print(end)
     print(field.nodeGraph)
