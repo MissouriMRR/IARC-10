@@ -139,7 +139,9 @@ class Server:
                         message.data["upload_rtt_ms"] = round(upload_time * 1000, 2)
                         message.data["upload_throughput_kbps"] = round(upload_throughput_kbps, 2)
                         message.data["download_rtt_ms"] = round(download_time * 1000, 2)
-                        message.data["download_throughput_kbps"] = round(download_throughput_kbps, 2)
+                        message.data["download_throughput_kbps"] = round(
+                            download_throughput_kbps, 2
+                        )
                         await self.server_out_data.put(item=message)
                     case MessageType.PING:
                         # Respond to ping with PING_ACK

@@ -422,7 +422,9 @@ class Interdrone:
 
         return
 
-    async def reached_waypoint(self, drones_to_send_data: tuple[int, ...], waypoint: Waypoint) -> None:
+    async def reached_waypoint(
+        self, drones_to_send_data: tuple[int, ...], waypoint: Waypoint
+    ) -> None:
         """
         Message ID = 550
         Send reached_waypoint message to all drones

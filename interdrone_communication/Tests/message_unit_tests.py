@@ -10,7 +10,7 @@ class TestMessages(unittest.TestCase):
         message = Message.create(
             id=MessageType.HEARTBEAT,
             drones_to_send_data=(),
-            sender_id = 1,
+            sender_id=1,
             data={
                 "payload": "Hello, world!",
             },

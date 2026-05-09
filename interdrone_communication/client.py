@@ -218,7 +218,9 @@ class Client:
                         )
                     )
                 case _ if message.id in messages_that_need_resend:
-                    print(f"Failed to send message. drones_to_send_data = {message.drones_to_send_data}")
+                    print(
+                        f"Failed to send message. drones_to_send_data = {message.drones_to_send_data}"
+                    )
                     await self.client_in_data.put(message)
             if self.range_test_enabled:
                 print(
