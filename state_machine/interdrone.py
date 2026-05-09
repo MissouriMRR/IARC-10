@@ -95,21 +95,21 @@ class Interdrone:
         }
 
         # Create interdrone resources
-        # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
-        networkingThreadClassInstance: NetworkingThread = NetworkingThread()
-        resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+        # Create instance of NetworkingThread class and setup resources_readyVariable to pass in
+        networking_thread_obj: NetworkingThread = NetworkingThread()
+        resources_ready: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
 
         # Start networking thread
-        networkingThread = threading.Thread(
-            target=networkingThreadClassInstance.run_networking_thread,
-            args=(resourcesReady, self.flight_settings),
+        networking_thread = threading.Thread(
+            target=networking_thread_obj.run_networking_thread,
+            args=(resources_ready, self.flight_settings),
             daemon=True,
         )
-        networkingThread.start()
+        networking_thread.start()
 
         # Wait for networking to be ready
         self.networking: NetworkingInterface = (
-            resourcesReady.get()
+            resources_ready.get()
         )  # Used to interface with networking thread
 
     def register_state_machine(self, callback: Callable[["State | None"], Awaitable[None]]) -> None:

@@ -14,12 +14,12 @@ class JsonMessageUtilities:
     @staticmethod
     def message_from_json(payload: str) -> Message:
         data = json.loads(payload)
-        messageIdValue = data.get("id")
+        message_id_value = data.get("id")
 
         try:
-            message_type = MessageType(messageIdValue)
+            message_type = MessageType(message_id_value)
         except ValueError:
-            print(f"Unknown message id received: {messageIdValue!r}, defaulting to UNKNOWN")
+            print(f"Unknown message id received: {message_id_value!r}, defaulting to UNKNOWN")
             message_type = MessageType.UNKNOWN
 
         nested_data: dict = data.get("data", {})

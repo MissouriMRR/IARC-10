@@ -21,58 +21,58 @@ def main() -> None:
 
     # Load config with full drone_info populated from mission_config.json
     flight_settings = FlightSettings.from_mission_config(self_id=args.id)
-    droneId = flight_settings.current_drone_ID
+    drone_id = flight_settings.current_drone_ID
     # parallel
-    # Create instance of NetworkingThread class and setup resourcesReadyVariable to pass in
-    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
-    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    # Create instance of NetworkingThread class and setup resources_ready variable to pass in
+    networking_thread_obj: NetworkingThread = NetworkingThread()
+    resources_ready: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
     # Start networking thread
-    networkingThread = threading.Thread(
-        target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, flight_settings),
+    networking_thread = threading.Thread(
+        target=networking_thread_obj.run_networking_thread,
+        args=(resources_ready, flight_settings),
         daemon=True,
     )
-    networkingThread.start()
+    networking_thread.start()
 
     # Wait for networking to be ready
     networking: NetworkingInterface = (
-        resourcesReady.get()
+        resources_ready.get()
     )  # Used to interface with networking thread
     print("Networking interface ready")
 
     # Message templates
-    heartbeatMessage: Message = Message.create(
+    heartbeat_message: Message = Message.create(
         id=MessageType.HEARTBEAT,
         dronesToSendData=(),
-        senderId=droneId,
+        senderId=drone_id,
         data={
             "payload": "Hello server!",
         },
     )
 
-    networking.queue_client_message(heartbeatMessage)
+    networking.queue_client_message(heartbeat_message)
 
     # Main loop
-    msgNum = 0  # Used for testing
-    startTime = time.time()
+    msg_num = 0  # Used for testing
+    start_time = time.time()
     try:
         while True:
             # Check for server messages
-            serverMsg = networking.try_get_server_message(timeout=0.02)
-            if serverMsg is not None:
-                msgNum += 1
-                # print(f"Server Data: {serverMsg}")
-                print(f"Client Data: {msgNum}")
+            server_msg = networking.try_get_server_message(timeout=0.02)
+            if server_msg is not None:
+                msg_num += 1
+                # print(f"Server Data: {server_msg}")
+                print(f"Client Data: {msg_num}")
 
             # Send heartbeat if queue is empty
             if networking.is_client_in_empty():
-                heartbeatMessage.data["payload"] = str(msgNum)
-                networking.queue_client_message(heartbeatMessage)
+                heartbeat_message.data["payload"] = str(msg_num)
+                networking.queue_client_message(heartbeat_message)
 
             time.sleep(0.1)
 
     except KeyboardInterrupt:
-        print(f"Program ran for {time.time() - startTime}")
+        print(f"Program ran for {time.time() - start_time}")
         print("Shutting down...")
 
 

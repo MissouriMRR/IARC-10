@@ -26,27 +26,27 @@ async def main():
 
     # Load config
     flight_settings = FlightSettings.from_mission_config(self_id=args.id)
-    droneId = flight_settings.current_drone_ID
+    drone_id = flight_settings.current_drone_ID
 
     # Start networking thread
-    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
-    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
-    networkingThread = threading.Thread(
-        target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, flight_settings),
+    networking_thread_obj: NetworkingThread = NetworkingThread()
+    resources_ready: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    networking_thread = threading.Thread(
+        target=networking_thread_obj.run_networking_thread,
+        args=(resources_ready, flight_settings),
         daemon=True,
     )
-    networkingThread.start()
-    backgroundTasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
+    networking_thread.start()
+    background_tasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
 
     # Wait for networking to be ready
-    networking: NetworkingInterface = resourcesReady.get()
+    networking: NetworkingInterface = resources_ready.get()
     print("Networking interface ready")
 
-    speedTestMessage: Message = Message.create(
+    speed_test_message: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
         dronesToSendData=(),  # Modify this for selective speed test
-        senderId=droneId,
+        senderId=drone_id,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
             "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
@@ -56,34 +56,34 @@ async def main():
             ),  # Multiply string by a specified size of Kb to create a payload size (It's just a very long string of X's to simulate data)
         },
     )
-    continuousSpeedTest = True
-    speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
-    numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
-    numQueriesPerTest = 100
-    networking.queue_client_message(message=speedTestMessage)
-    while continuousSpeedTest:
+    continuous_speed_test = True
+    speed_results: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
+    num_tests_per_target: list[int] = [0, 0, 0, 0, 0]
+    num_queries_per_test = 100
+    networking.queue_client_message(message=speed_test_message)
+    while continuous_speed_test:
         try:
             # Check for client responses
-            serverMsg = networking.try_get_server_message(timeout=0.02)
+            server_msg = networking.try_get_server_message(timeout=0.02)
             if (
-                serverMsg is not None
-                and serverMsg.id == MessageType.SPEED_TEST_RESPONSE
+                server_msg is not None
+                and server_msg.id == MessageType.SPEED_TEST_RESPONSE
             ):
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = serverMsg.data["targetId"]
-                    # print(targetId)
-                    if targetId not in speedResults:
-                        speedResults[targetId] = []
-                    speedResults[targetId].append(serverMsg)
-                    if len(speedResults[targetId]) >= numQueriesPerTest:
+                    target_id: int = server_msg.data["targetId"]
+                    # print(target_id)
+                    if target_id not in speed_results:
+                        speed_results[target_id] = []
+                    speed_results[target_id].append(server_msg)
+                    if len(speed_results[target_id]) >= num_queries_per_test:
                         # Copy data and clear original list so we can keep receiving immediately
-                        results_to_log = list(speedResults[targetId])
-                        speedResults[targetId].clear()
+                        results_to_log = list(speed_results[target_id])
+                        speed_results[target_id].clear()
 
                         # Increment test counter
-                        current_test_num = numTestsPerTarget[targetId]
-                        numTestsPerTarget[targetId] += 1
+                        current_test_num = num_tests_per_target[target_id]
+                        num_tests_per_target[target_id] += 1
 
                         # Run logging in a separate thread
                         task: Task[None] = asyncio.create_task(
@@ -96,26 +96,26 @@ async def main():
                         )
 
                         # Add to set to prevent garbage collection
-                        backgroundTasks.add(task)
+                        background_tasks.add(task)
 
                         # Remove from set when done
-                        task.add_done_callback(backgroundTasks.discard)
+                        task.add_done_callback(background_tasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {targetId}"
+                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {target_id}"
                         )
-                    elif len(speedResults[targetId]) % 10 == 0:
+                    elif len(speed_results[target_id]) % 10 == 0:
                         print(
-                            f"Test #{len(speedResults[targetId])} / {numQueriesPerTest} complete to target #{targetId}"
+                            f"Test #{len(speed_results[target_id])} / {num_queries_per_test} complete to target #{target_id}"
                         )
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {serverMsg}")
+                    # print(f"Client Data: {server_msg}")
             # If previous message has been sent, add new one to queue
             if networking.is_client_in_empty():
-                networking.queue_client_message(message=speedTestMessage)
+                networking.queue_client_message(message=speed_test_message)
 
             await asyncio.sleep(
                 0.1
@@ -126,14 +126,14 @@ async def main():
 
 
 def log_data(
-    speedResults: list[Message], flight_settings: FlightSettings, testNumber: int
+    speed_results: list[Message], flight_settings: FlightSettings, test_number: int
 ):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speedResults[0].data['targetId']}"
+    folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speed_results[0].data['targetId']}"
     os.makedirs(folder_name, exist_ok=True)
 
-    file_path = f"{folder_name}/test-results-{testNumber}.txt"
+    file_path = f"{folder_name}/test-results-{test_number}.txt"
 
     with open(file_path, "w") as log_file:
 
@@ -143,71 +143,69 @@ def log_data(
 
         log_print("\n" + "=" * 70)
         log_print(
-            f"NETWORK SPEED TEST RESULTS FROM {flight_settings.current_drone_ID} -> {speedResults[0].data['targetId']}"
+            f"NETWORK SPEED TEST RESULTS FROM {flight_settings.current_drone_ID} -> {speed_results[0].data['targetId']}"
         )
         log_print("=" * 70)
 
-        if speedResults:
-            uploadThroughputs = [
-                float(r.data["uploadThroughputKbps"]) for r in speedResults
+        if speed_results:
+            upload_throughputs = [
+                float(r.data["uploadThroughputKbps"]) for r in speed_results
             ]
-            uploadRttms = [float(r.data["uploadRttMs"]) for r in speedResults]
-            downloadThroughputs = [
-                float(r.data["downloadThroughputKbps"]) for r in speedResults
+            upload_rttms = [float(r.data["uploadRttMs"]) for r in speed_results]
+            download_throughputs = [
+                float(r.data["downloadThroughputKbps"]) for r in speed_results
             ]
-            downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
-            for i in range(len(downloadRttMs)):
-                if downloadRttMs[i] > 1:
+            download_rtt_ms = [float(r.data["downloadRttMs"]) for r in speed_results]
+            for i in range(len(download_rtt_ms)):
+                if download_rtt_ms[i] > 1:
                     pass
                     # log_print(
-                    #     f"Download rttms was {downloadRttMs[i]} ms at index {i}"
+                    #     f"Download rttms was {download_rtt_ms[i]} ms at index {i}"
                     # )
             # Calculate upload statistics
-            avgUploadThroughputKbps = sum(uploadThroughputs) / len(uploadThroughputs)
-            avgUploadThroughputMbps = avgUploadThroughputKbps / 1000
-            avgUploadRttMs = sum(uploadRttms) / len(uploadRttms)
-            minUploadThroughput = min(uploadThroughputs) / 1000
-            maxUploadThroughput = max(uploadThroughputs) / 1000
-            minUploadRtt = min(uploadRttms)
-            maxUploadRtt = max(uploadRttms)
+            avg_upload_throughput_kbps = sum(upload_throughputs) / len(upload_throughputs)
+            avg_upload_throughput_mbps = avg_upload_throughput_kbps / 1000
+            avg_upload_rtt_ms = sum(upload_rttms) / len(upload_rttms)
+            min_upload_throughput = min(upload_throughputs) / 1000
+            max_upload_throughput = max(upload_throughputs) / 1000
+            min_upload_rtt = min(upload_rttms)
+            max_upload_rtt = max(upload_rttms)
 
             # Calculate download statistics
-            avgDownloadThroughputKbps = sum(downloadThroughputs) / len(
-                downloadThroughputs
-            )
-            avgDownloadThroughputMbps = avgDownloadThroughputKbps / 1000
-            avgDownloadRttMs = sum(downloadRttMs) / len(downloadRttMs)
-            minDownloadThroughput = min(downloadThroughputs) / 1000
-            maxDownloadThroughput = max(downloadThroughputs) / 1000
-            minDownloadRtt = min(downloadRttMs)
-            maxDownloadRtt = max(downloadRttMs)
+            avg_download_throughput_kbps = sum(download_throughputs) / len(download_throughputs)
+            avg_download_throughput_mbps = avg_download_throughput_kbps / 1000
+            avg_download_rtt_ms = sum(download_rtt_ms) / len(download_rtt_ms)
+            min_download_throughput = min(download_throughputs) / 1000
+            max_download_throughput = max(download_throughputs) / 1000
+            min_download_rtt = min(download_rtt_ms)
+            max_download_rtt = max(download_rtt_ms)
 
-            log_print(f"\nTotal Tests: {len(speedResults)}")
-            # log_print(f"Target: {speedResults[0].data['target']}")
+            log_print(f"\nTotal Tests: {len(speed_results)}")
+            # log_print(f"Target: {speed_results[0].data['target']}")
 
             log_print("\n--- UPLOAD STATISTICS ---")
             log_print("Throughput:")
             log_print(
-                f"  Average: {avgUploadThroughputMbps:.2f} Mbps ({avgUploadThroughputKbps:.2f} Kbps)"
+                f"  Average: {avg_upload_throughput_mbps:.2f} Mbps ({avg_upload_throughput_kbps:.2f} Kbps)"
             )
-            log_print(f"  Minimum: {minUploadThroughput:.2f} Mbps")
-            log_print(f"  Maximum: {maxUploadThroughput:.2f} Mbps")
+            log_print(f"  Minimum: {min_upload_throughput:.2f} Mbps")
+            log_print(f"  Maximum: {max_upload_throughput:.2f} Mbps")
             log_print("Round-Trip Time:")
-            log_print(f"  Average: {avgUploadRttMs:.2f} ms")
-            log_print(f"  Minimum: {minUploadRtt:.2f} ms")
-            log_print(f"  Maximum: {maxUploadRtt:.2f} ms")
+            log_print(f"  Average: {avg_upload_rtt_ms:.2f} ms")
+            log_print(f"  Minimum: {min_upload_rtt:.2f} ms")
+            log_print(f"  Maximum: {max_upload_rtt:.2f} ms")
 
             log_print("\n--- DOWNLOAD STATISTICS ---")
             log_print("Throughput:")
             log_print(
-                f"  Average: {avgDownloadThroughputMbps:.2f} Mbps ({avgDownloadThroughputKbps:.2f} Kbps)"
+                f"  Average: {avg_download_throughput_mbps:.2f} Mbps ({avg_download_throughput_kbps:.2f} Kbps)"
             )
-            log_print(f"  Minimum: {minDownloadThroughput:.2f} Mbps")
-            log_print(f"  Maximum: {maxDownloadThroughput:.2f} Mbps")
+            log_print(f"  Minimum: {min_download_throughput:.2f} Mbps")
+            log_print(f"  Maximum: {max_download_throughput:.2f} Mbps")
             log_print("Round-Trip Time:")
-            log_print(f"  Average: {avgDownloadRttMs:.2f} ms")
-            log_print(f"  Minimum: {minDownloadRtt:.2f} ms")
-            log_print(f"  Maximum: {maxDownloadRtt:.2f} ms")
+            log_print(f"  Average: {avg_download_rtt_ms:.2f} ms")
+            log_print(f"  Minimum: {min_download_rtt:.2f} ms")
+            log_print(f"  Maximum: {max_download_rtt:.2f} ms")
         else:
             log_print("\nNo results collected!")
 

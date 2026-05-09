@@ -11,13 +11,13 @@ from interdrone_communication.json_message_utilities import JsonMessageUtilities
 from state_machine.flight_settings import FlightSettings
 
 
-# Used by connectionPool to store TCP connections to other servers.
+# Used by connection_pool to store TCP connections to other servers.
 @dataclass
 class PersistentConnection:
     reader: StreamReader
     writer: StreamWriter
     lock: asyncio.Lock
-    lastUsed: float
+    last_used: float
 
 
 class Client:
@@ -25,40 +25,40 @@ class Client:
     def __init__(
         self,
         flight_settings: FlightSettings,
-        clientInData: Queue[Message],
+        client_in_data: Queue[Message],
         range_test_toggle: bool = False,
     ):
         self.flight_settings: FlightSettings = flight_settings
-        self.clientInData: Queue[Message] = clientInData
+        self.client_in_data: Queue[Message] = client_in_data
 
-        # Check for droneId from flag in main.py
-        self.droneId: int = flight_settings.current_drone_ID
+        # Check for drone_id from flag in main.py
+        self.drone_id: int = flight_settings.current_drone_ID
 
-        # Instantiate otherDrones lists
-        self.otherDronesIps: list[str] = []
-        self.otherDronesPorts: list[int] = []
-        self.otherDronesIds: tuple[
+        # Instantiate other_drones lists
+        self.other_drones_ips: list[str] = []
+        self.other_drones_ports: list[int] = []
+        self.other_drones_ids: tuple[
             int, ...
         ] = ()  # Needs to be a tuple to align with dronesToSendData in Message class
 
         # Variables used
-        self.connectionPool: dict[tuple[str, int], PersistentConnection] = {}
-        self.connectionIdleTimeoutSec: float = 30.0
-        self.lastCleanupTime: float = time.monotonic()
+        self.connection_pool: dict[tuple[str, int], PersistentConnection] = {}
+        self.connection_idle_timeout_sec: float = 30.0
+        self.last_cleanup_time: float = time.monotonic()
 
         # Cap concurrent per message handlers to avoid unbounded task buildup (buildup kills performance).
-        self.maxInFlightMessageTasks: int = 6
+        self.max_in_flight_message_tasks: int = 6
 
-        # Create a temporary list to update tuple with otherDronesIds
-        tempOtherDronesIds: list[int] = list[int](self.otherDronesIds)
+        # Create a temporary list to update tuple with other_drones_ids
+        temp_other_drones_ids: list[int] = list[int](self.other_drones_ids)
         # Loop through other drones to get IPs, Ports, and IDs of drones to connect to
         for drone in flight_settings.other_drone_info:
-            self.otherDronesIps.append(str(drone["IP"]))
-            self.otherDronesPorts.append(int(drone["port"]))
-            tempOtherDronesIds.append(drone["id"])
-        # Update otherDronesIds tuple with tempOtherDronesIds values
-        self.otherDronesIds = tuple[int, ...](tempOtherDronesIds)
-        self.rangeTestEnabled: bool = range_test_toggle
+            self.other_drones_ips.append(str(drone["IP"]))
+            self.other_drones_ports.append(int(drone["port"]))
+            temp_other_drones_ids.append(drone["id"])
+        # Update other_drones_ids tuple with temp_other_drones_ids values
+        self.other_drones_ids = tuple[int, ...](temp_other_drones_ids)
+        self.range_test_enabled: bool = range_test_toggle
 
     # Start client code and call the client_loop()
     async def start_client_async(self):
@@ -66,117 +66,117 @@ class Client:
 
     # Check for new messages to send and create tasks to send them
     async def client_loop(self) -> None:
-        # Keep track of background clientMessageTasks
-        clientMessageTasks: set[asyncio.Task[None]] = set()
+        # Keep track of background client_message_tasks
+        client_message_tasks: set[asyncio.Task[None]] = set()
         while True:
-            handledMessage = False
-            # Check for new message from clientInData
-            while not self.clientInData.empty():
-                handledMessage = True
-                # Get new message from clientInData
-                message: Message = await self.clientInData.get()
+            handled_message = False
+            # Check for new message from client_in_data
+            while not self.client_in_data.empty():
+                handled_message = True
+                # Get new message from client_in_data
+                message: Message = await self.client_in_data.get()
 
                 # If too many messages tasks are currently running, wait for one to finish before adding next one
-                while len(clientMessageTasks) >= self.maxInFlightMessageTasks:
+                while len(client_message_tasks) >= self.max_in_flight_message_tasks:
                     done, _ = await asyncio.wait(
-                        clientMessageTasks,
+                        client_message_tasks,
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                     # Consume task exceptions so they do not get logged as un-retrieved.
-                    for finishedTask in done:
+                    for finished_task in done:
                         try:
-                            finishedTask.result()
+                            finished_task.result()
                         except Exception:
                             pass
                 # Create a background task to handle this message (allows for asynchronous messaging)
-                clientMessageTask = asyncio.create_task(self.handle_message(message))
-                clientMessageTasks.add(clientMessageTask)
-                clientMessageTask.add_done_callback(
-                    clientMessageTasks.discard
+                client_message_task = asyncio.create_task(self.handle_message(message))
+                client_message_tasks.add(client_message_task)
+                client_message_task.add_done_callback(
+                    client_message_tasks.discard
                 )  # Clean up completed tasks
 
             # Remove any idle TCP connections
             await self._cleanup_idle_connections()
 
             # If no message was handled, pause briefly to avoid busy-waiting.
-            if not handledMessage:
+            if not handled_message:
                 await asyncio.sleep(0.001)
 
-    # Create messageTasks to send data to all other drones
+    # Create message_tasks to send data to all other drones
     async def handle_message(self, message: Message):
         # Determine which drones to send message to
-        dronesToSendData: tuple[int, ...] = ()  # NOTE COULD BE SPOT OF ERROR
+        drones_to_send_data: tuple[int, ...] = ()  # NOTE COULD BE SPOT OF ERROR
 
-        # If dronesToSendData list has id values, only send message to those drones
-        sendToApp: bool = False
-        sendToSelf: bool = False
+        # If drones_to_send_data list has id values, only send message to those drones
+        send_to_app: bool = False
+        send_to_self: bool = False
         if message.dronesToSendData != ():
             # If you to send data to the app, use ID 0
             if message.dronesToSendData == (0,):
-                sendToApp = True
-            elif message.dronesToSendData == (self.droneId,):
-                sendToSelf = True
+                send_to_app = True
+            elif message.dronesToSendData == (self.drone_id,):
+                send_to_self = True
             else:
-                dronesToSendData = message.dronesToSendData
-        # Else dronesToSendData list is empty, attempt to send data to all other drones
+                drones_to_send_data = message.dronesToSendData
+        # Else drones_to_send_data list is empty, attempt to send data to all other drones
         else:
-            dronesToSendData = self.otherDronesIds
+            drones_to_send_data = self.other_drones_ids
 
         # Message Preprocessing
         # Update time value for Network Speed Test message
         if message.id == MessageType.SPEED_TEST_REQUEST:
             message.data["initialUploadTime"] = time.perf_counter()
 
-        # Create messageTasks list to store tasks for all drone connections
-        messageTasks: list[asyncio.Task[None]] = []
+        # Create message_tasks list to store tasks for all drone connections
+        message_tasks: list[asyncio.Task[None]] = []
 
-        # Loop through otherDronesIds and create to task to send message data to them if they're in dronesToSendData to list
-        if sendToApp:
-            messageTask = asyncio.create_task(
+        # Loop through other_drones_ids and create to task to send message data to them if they're in drones_to_send_data to list
+        if send_to_app:
+            message_task = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=self.flight_settings.app_IP,
-                    serverPort=self.flight_settings.app_port,
+                    server_ip=self.flight_settings.app_IP,
+                    server_port=self.flight_settings.app_port,
                     message=message,
                 )
             )
-            messageTasks.append(messageTask)
+            message_tasks.append(message_task)
         # Allow for messages to be sent to self in some special cases
-        elif sendToSelf:
-            messageTask = asyncio.create_task(
+        elif send_to_self:
+            message_task = asyncio.create_task(
                 self.send_data_async(
-                    serverIP=str(self.flight_settings.get_drone_by_id(self.droneId)["IP"]),
-                    serverPort=int(self.flight_settings.get_drone_by_id(self.droneId)["port"]),
+                    server_ip=str(self.flight_settings.get_drone_by_id(self.drone_id)["IP"]),
+                    server_port=int(self.flight_settings.get_drone_by_id(self.drone_id)["port"]),
                     message=message,
                 )
             )
-            messageTasks.append(messageTask)
+            message_tasks.append(message_task)
         else:
-            for i in range(len(self.otherDronesIds)):
-                if self.otherDronesIds[i] in dronesToSendData:
-                    messageTask = asyncio.create_task(
+            for i in range(len(self.other_drones_ids)):
+                if self.other_drones_ids[i] in drones_to_send_data:
+                    message_task = asyncio.create_task(
                         self.send_data_async(
-                            serverIP=self.otherDronesIps[i],
-                            serverPort=self.otherDronesPorts[i],
+                            server_ip=self.other_drones_ips[i],
+                            server_port=self.other_drones_ports[i],
                             message=message,
                         )
                     )
-                    messageTasks.append(messageTask)
+                    message_tasks.append(message_task)
 
-        # Run all messageTasks concurrently
-        if messageTasks:
-            _ = await asyncio.gather(*messageTasks, return_exceptions=True)
+        # Run all message_tasks concurrently
+        if message_tasks:
+            _ = await asyncio.gather(*message_tasks, return_exceptions=True)
 
     # Takes Message and sends it to passed in server
-    async def send_data_async(self, serverIP: str, serverPort: int, message: Message) -> None:
+    async def send_data_async(self, server_ip: str, server_port: int, message: Message) -> None:
         try:
-            clientMessageDump: str = JsonMessageUtilities.message_to_json(message=message)
+            client_message_dump: str = JsonMessageUtilities.message_to_json(message=message)
             # Get the connection passed in ip and port
-            conn = await self._get_or_create_connection(serverIP, serverPort)
+            conn = await self._get_or_create_connection(server_ip, server_port)
 
             async with (
                 conn.lock
             ):  # conn.lock is used to reserve the socket so two threads/tasks don't send data at the same time
-                conn.writer.write((clientMessageDump + "\n").encode())
+                conn.writer.write((client_message_dump + "\n").encode())
                 await conn.writer.drain()
 
         except (
@@ -186,7 +186,7 @@ class Client:
             BrokenPipeError,
             ConnectionRefusedError,
         ):
-            await self._drop_connection(serverIP, serverPort)
+            await self._drop_connection(server_ip, server_port)
             # Messages that need to be resent if they fail to send
             messages_that_need_resend: set[MessageType] = {
                 MessageType.ARM,
@@ -207,57 +207,57 @@ class Client:
             match message.id:
                 # If ping message failed to send, send a PING_NACK to self server
                 case MessageType.PING:
-                    await self.clientInData.put(
+                    await self.client_in_data.put(
                         Message.create(
                             id=MessageType.PING_NACK,
-                            dronesToSendData=(self.droneId,),
+                            dronesToSendData=(self.drone_id,),
                             senderId=(
-                                serverPort - 5000
+                                server_port - 5000
                             ),  # NACK is coming from drone it failed to contact
                             data={},
                         )
                     )
                 case _ if message.id in messages_that_need_resend:
                     print(f"Failed to send message. dronesToSendData = {message.dronesToSendData}")
-                    await self.clientInData.put(message)
-            if self.rangeTestEnabled:
+                    await self.client_in_data.put(message)
+            if self.range_test_enabled:
                 print(
-                    f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{serverPort - 5000}"
+                    f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{server_port - 5000}"
                 )
 
         except Exception as e:
-            await self._drop_connection(serverIP, serverPort)
-            raise Exception(f"Error connecting to {serverIP}:{serverPort}: {str(e)}")
+            await self._drop_connection(server_ip, server_port)
+            raise Exception(f"Error connecting to {server_ip}:{server_port}: {str(e)}")
 
     # Used to get or create a TCP connection to a specific ip and port
     async def _get_or_create_connection(
-        self, serverIP: str, serverPort: int
+        self, server_ip: str, server_port: int
     ) -> PersistentConnection:
-        key = (serverIP, serverPort)
-        conn = self.connectionPool.get(key)
+        key = (server_ip, server_port)
+        conn = self.connection_pool.get(key)
 
         # If connection already exists, return it
         if conn is not None and not conn.writer.is_closing():
-            conn.lastUsed = time.monotonic()
+            conn.last_used = time.monotonic()
             return conn
 
         # Else, establish a new connection
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(serverIP, serverPort), timeout=1.0
+            asyncio.open_connection(server_ip, server_port), timeout=1.0
         )
         conn = PersistentConnection(
             reader=reader,
             writer=writer,
             lock=asyncio.Lock(),
-            lastUsed=time.monotonic(),
+            last_used=time.monotonic(),
         )
-        self.connectionPool[key] = conn
+        self.connection_pool[key] = conn
         return conn  # Return new connections
 
     # Used to kill a TCP connection to a specific ip and port
-    async def _drop_connection(self, serverIP: str, serverPort: int) -> None:
-        key = (serverIP, serverPort)
-        conn = self.connectionPool.pop(key, None)
+    async def _drop_connection(self, server_ip: str, server_port: int) -> None:
+        key = (server_ip, server_port)
+        conn = self.connection_pool.pop(key, None)
         if conn is None:
             return
         conn.writer.close()
@@ -268,26 +268,26 @@ class Client:
         now = time.monotonic()
 
         # Only perform cleanup every 5 seconds (saves performance)
-        if now - self.lastCleanupTime < 5.0:
+        if now - self.last_cleanup_time < 5.0:
             return
-        self.lastCleanupTime = now
+        self.last_cleanup_time = now
 
-        keysToClose: list[tuple[str, int]] = []
-        for key, conn in self.connectionPool.items():
+        keys_to_close: list[tuple[str, int]] = []
+        for key, conn in self.connection_pool.items():
             # If connection is closing or is over idle time, flag connection to be closed
-            if conn.writer.is_closing() or (now - conn.lastUsed) > self.connectionIdleTimeoutSec:
-                keysToClose.append(key)
+            if conn.writer.is_closing() or (now - conn.last_used) > self.connection_idle_timeout_sec:
+                keys_to_close.append(key)
 
         # Close all connections flagged above
-        for serverIP, serverPort in keysToClose:
-            await self._drop_connection(serverIP, serverPort)
+        for server_ip, server_port in keys_to_close:
+            await self._drop_connection(server_ip, server_port)
 
     # Called when program ends to close all connections
     # TODO INTEGRATE THIS WHEN WE CREATE A SHUTDOWN STATE!!!
     async def close_all_connections(self) -> None:
-        keys = list(self.connectionPool.keys())
-        for serverIP, serverPort in keys:
-            await self._drop_connection(serverIP, serverPort)
+        keys = list(self.connection_pool.keys())
+        for server_ip, server_port in keys:
+            await self._drop_connection(server_ip, server_port)
 
     # Helper method to run the async client
     def run(self):

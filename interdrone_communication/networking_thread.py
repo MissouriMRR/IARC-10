@@ -17,29 +17,29 @@ class NetworkingThread:
     # Run the async networking stack on its own thread
     def run_networking_thread(
         self,
-        resourcesReady: queue.Queue[NetworkingInterface],
+        resources_ready: queue.Queue[NetworkingInterface],
         flight_settings: FlightSettings,
         range_test_toggle: bool = False,
     ) -> None:
         loop: AbstractEventLoop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        clientIn: AsyncQueue[Message] = asyncio.Queue()
-        serverOut: AsyncQueue[Message] = asyncio.Queue()
+        client_in: AsyncQueue[Message] = asyncio.Queue()
+        server_out: AsyncQueue[Message] = asyncio.Queue()
 
         interface = NetworkingInterface(
             loop=loop,
-            clientIn=clientIn,
-            serverOut=serverOut,
+            client_in=client_in,
+            server_out=server_out,
         )
 
         loop.run_until_complete(
             self.start_networking(
-                clientInData=clientIn,
-                serverOutData=serverOut,
+                client_in_data=client_in,
+                server_out_data=server_out,
                 flight_settings=flight_settings,
                 range_test_toggle=range_test_toggle,
-                resourcesReady=resourcesReady,
+                resources_ready=resources_ready,
                 interface=interface,
             )
         )
@@ -47,31 +47,31 @@ class NetworkingThread:
 
     async def start_networking(
         self,
-        clientInData: AsyncQueue[Message],
-        serverOutData: AsyncQueue[Message],
+        client_in_data: AsyncQueue[Message],
+        server_out_data: AsyncQueue[Message],
         flight_settings: FlightSettings,
-        resourcesReady: queue.Queue[NetworkingInterface],
+        resources_ready: queue.Queue[NetworkingInterface],
         interface: NetworkingInterface,
         range_test_toggle: bool = False,
     ) -> None:
         # Instantiate Server and Client
-        serverInstance = Server(
+        server_instance = Server(
             flight_settings=flight_settings,
-            serverOutData=serverOutData,
-            clientInData=clientInData,
+            server_out_data=server_out_data,
+            client_in_data=client_in_data,
         )
-        clientInstance = Client(
+        client_instance = Client(
             flight_settings=flight_settings,
-            clientInData=clientInData,
+            client_in_data=client_in_data,
             range_test_toggle=range_test_toggle,
         )
 
         # Start server and wait until it is bound before signalling the main thread
-        serverTask = asyncio.create_task(serverInstance.start_server_async())
-        await serverInstance.server_ready.wait()
-        resourcesReady.put(interface)
+        server_task = asyncio.create_task(server_instance.start_server_async())
+        await server_instance.server_ready.wait()
+        resources_ready.put(interface)
 
-        clientTask = asyncio.create_task(clientInstance.start_client_async())
+        client_task = asyncio.create_task(client_instance.start_client_async())
         print("Server and Client started")
 
         try:
@@ -80,5 +80,5 @@ class NetworkingThread:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             print("Networking shutting down...")
-            serverTask.cancel()
-            clientTask.cancel()
+            server_task.cancel()
+            client_task.cancel()

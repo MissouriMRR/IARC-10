@@ -120,80 +120,80 @@ async def main():
     flight_settings = FlightSettings.from_mission_config(self_id=args.id)
 
     # Declare flag variables
-    droneId: int
-    numDrones: int
-    dronesToSendData: list[int]
-    getPerf: bool
-    uwbEnabled: bool
-    continuousTesting: bool
+    drone_id: int
+    num_drones: int
+    drones_to_send_data: list[int]
+    get_perf: bool
+    uwb_enabled: bool
+    continuous_testing: bool
 
-    droneId = flight_settings.current_drone_ID
+    drone_id = flight_settings.current_drone_ID
 
     if args.targets is not None:
-        dronesToSendData = args.targets
-        if args.numDrones is not None and len(dronesToSendData) != args.numDrones:
+        drones_to_send_data = args.targets
+        if args.numDrones is not None and len(drones_to_send_data) != args.numDrones:
             parser.error(
                 "--numDrones must match the number of values passed to --targets"
             )
-        numDrones = len(dronesToSendData)
+        num_drones = len(drones_to_send_data)
     elif args.numDrones is not None:
-        numDrones = args.numDrones
-        dronesToSendData = []
-        for i in range(numDrones):
-            drone_id = int(
+        num_drones = args.numDrones
+        drones_to_send_data = []
+        for i in range(num_drones):
+            drone_id_input = int(
                 input(f"Input ID of drone {i + 1} you are talking to in test: ")
             )
-            dronesToSendData.append(drone_id)
+            drones_to_send_data.append(drone_id_input)
     else:
-        dronesToSendData = []
-        numDrones = 3  # Needed for edge case later on
+        drones_to_send_data = []
+        num_drones = 3  # Needed for edge case later on
 
-    getPerf = args.perf
-    uwbEnabled = args.uwb
-    continuousTesting = args.continuousTesting
+    get_perf = args.perf
+    uwb_enabled = args.uwb
+    continuous_testing = args.continuousTesting
 
     if args.batmanLocation is not None:
-        batmanLocation = args.batmanLocation
+        batman_location = args.batmanLocation
     else:
-        batmanLocation = parse_batman_location(
+        batman_location = parse_batman_location(
             input(
                 "Is batman running on the pi's network card or the wifi adapter (1 or 2): "
             )
         )
 
     # Setup JSON logging file
-    batmanLocationStr = ""
-    if batmanLocation == 1:
-        batmanLocationStr = "PI Network Card"
+    batman_location_str = ""
+    if batman_location == 1:
+        batman_location_str = "PI Network Card"
     else:
-        batmanLocationStr = "Wifi Adapter"
-    logTitle = f"Range Test from {droneId} to {dronesToSendData} on {batmanLocationStr}. GetPerf: {getPerf}, UWB: {uwbEnabled} "
-    fileName = (
-        f"RT_{droneId}_{str(dronesToSendData)}_Perf({getPerf})_UWB({uwbEnabled}))"
+        batman_location_str = "Wifi Adapter"
+    log_title = f"Range Test from {drone_id} to {drones_to_send_data} on {batman_location_str}. GetPerf: {get_perf}, UWB: {uwb_enabled} "
+    file_name = (
+        f"RT_{drone_id}_{str(drones_to_send_data)}_Perf({get_perf})_UWB({uwb_enabled}))"
     )
 
     # Start networking thread
-    networkingThreadClassInstance: NetworkingThread = NetworkingThread()
-    resourcesReady: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
-    networkingThread = threading.Thread(
-        target=networkingThreadClassInstance.run_networking_thread,
-        args=(resourcesReady, flight_settings),
+    networking_thread_obj: NetworkingThread = NetworkingThread()
+    resources_ready: queue.Queue[NetworkingInterface] = queue.Queue(maxsize=1)
+    networking_thread = threading.Thread(
+        target=networking_thread_obj.run_networking_thread,
+        args=(resources_ready, flight_settings),
         kwargs={"range_test_toggle": True},
         daemon=True,
     )
-    networkingThread.start()
-    backgroundTasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
+    networking_thread.start()
+    background_tasks: set[Task[None]] = set[Task[None]]()  # Used for logging thread
 
     # Wait for networking to be ready
-    networking: NetworkingInterface = resourcesReady.get()
+    networking: NetworkingInterface = resources_ready.get()
     print("Networking interface ready")
 
-    speedTestMessage: Message = Message.create(
+    speed_test_message: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
         dronesToSendData=tuple(
-            dronesToSendData
+            drones_to_send_data
         ),  # Modify this for selective speed test
-        senderId=droneId,
+        senderId=drone_id,
         data={
             "initialUploadTime": 0.0,  # Set when queued to send
             "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
@@ -204,34 +204,34 @@ async def main():
         },
     )
 
-    speedResults: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
-    numTestsPerTarget: list[int] = [0, 0, 0, 0, 0]
-    testsFinishedPerTarget: list[bool] = [False, False, False, False, False]
-    numQueriesPerTest = 100
-    networking.queue_client_message(message=speedTestMessage)
-    testFinished = False
+    speed_results: dict[int, list[Message]] = {0: [], 1: [], 2: [], 3: [], 4: []}
+    num_tests_per_target: list[int] = [0, 0, 0, 0, 0]
+    tests_finished_per_target: list[bool] = [False, False, False, False, False]
+    num_queries_per_test = 100
+    networking.queue_client_message(message=speed_test_message)
+    test_finished = False
 
     print("Starting range test")
     while True:
         try:
             # Check for client responses
-            serverMsg = networking.try_get_server_message(timeout=0.02)
-            if serverMsg is not None:
+            server_msg = networking.try_get_server_message(timeout=0.02)
+            if server_msg is not None:
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    targetId: int = serverMsg.data["targetId"]
-                    # print(targetId)
-                    if targetId not in speedResults:
-                        speedResults[targetId] = []
-                    speedResults[targetId].append(serverMsg)
-                    if len(speedResults[targetId]) >= numQueriesPerTest:
+                    target_id: int = server_msg.data["targetId"]
+                    # print(target_id)
+                    if target_id not in speed_results:
+                        speed_results[target_id] = []
+                    speed_results[target_id].append(server_msg)
+                    if len(speed_results[target_id]) >= num_queries_per_test:
                         # Copy data and clear original list so we can keep receiving immediately
-                        results_to_log = list(speedResults[targetId])
-                        speedResults[targetId].clear()
+                        results_to_log = list(speed_results[target_id])
+                        speed_results[target_id].clear()
 
                         # Increment test counter
-                        current_test_num = numTestsPerTarget[targetId]
-                        numTestsPerTarget[targetId] += 1
+                        current_test_num = num_tests_per_target[target_id]
+                        num_tests_per_target[target_id] += 1
 
                         # Run logging in a separate thread
                         task: Task[None] = asyncio.create_task(
@@ -240,53 +240,53 @@ async def main():
                                 results_to_log,
                                 flight_settings,
                                 current_test_num,
-                                logTitle,
-                                fileName,
-                                getPerf,
+                                log_title,
+                                file_name,
+                                get_perf,
                             )
                         )
-                        testsFinishedPerTarget[targetId] = True
+                        tests_finished_per_target[target_id] = True
 
                         # Add to set to prevent garbage collection
-                        backgroundTasks.add(task)
+                        background_tasks.add(task)
 
                         # Remove from set when done
-                        task.add_done_callback(backgroundTasks.discard)
+                        task.add_done_callback(background_tasks.discard)
 
                         print(
-                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {targetId}"
+                            f"Test {current_test_num} completed from {flight_settings.current_drone_ID} -> {target_id}"
                         )
                         # If all drones in range tests tests have finished
-                        if sum(testsFinishedPerTarget) >= numDrones:
-                            testFinished = True
-                    elif len(speedResults[targetId]) % 10 == 0:
+                        if sum(tests_finished_per_target) >= num_drones:
+                            test_finished = True
+                    elif len(speed_results[target_id]) % 10 == 0:
                         print(
-                            f"Test #{len(speedResults[targetId])} completed for drone {targetId}"
+                            f"Test #{len(speed_results[target_id])} completed for drone {target_id}"
                         )
 
                 except Exception:
                     # print(f"Error processing result: {e}")
                     traceback.print_exc()
 
-                    # print(f"Client Data: {serverMsg}")
-            if testFinished:
+                    # print(f"Client Data: {server_msg}")
+            if test_finished:
                 # Wait for logging tasks to finish
-                while len(backgroundTasks) != 0:
+                while len(background_tasks) != 0:
                     await asyncio.sleep(0.05)
                 _ = (
                     networking.empty_queues()
                 )  # flush out old data to ensure next test is clean
-                if not continuousTesting:
+                if not continuous_testing:
                     print("Individual test finished and data has been logged.")
                     _ = input(
                         "Please press enter when you wish to start another one or press ctrl + c to exit"
                     )
                     print("Next test is running!")
-                testsFinishedPerTarget = [False, False, False, False, False]
-                testFinished = False
+                tests_finished_per_target = [False, False, False, False, False]
+                test_finished = False
             # If previous message has been sent, add new one to queue
             if networking.is_client_in_empty():
-                networking.queue_client_message(message=speedTestMessage)
+                networking.queue_client_message(message=speed_test_message)
             await asyncio.sleep(0.1)  # Adjust sleep time as needed
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("Shutting down...")
@@ -294,22 +294,22 @@ async def main():
 
 
 def log_data(
-    speedResults: list[Message],
+    speed_results: list[Message],
     flight_settings: FlightSettings,
-    testNumber: int,
-    logTitle: str,
-    fileName: str,
-    getPerf: bool,
+    test_number: int,
+    log_title: str,
+    file_name: str,
+    get_perf: bool,
 ):
     # Sanitize directory name (remove >) and create path structure
-    folderName = "Logs/Range_Test"
-    os.makedirs(folderName, exist_ok=True)
+    folder_name = "Logs/Range_Test"
+    os.makedirs(folder_name, exist_ok=True)
 
-    jsonPath = Path(f"{folderName}/{fileName}.json")
+    json_path = Path(f"{folder_name}/{file_name}.json")
 
-    if not jsonPath.exists():
-        initialData = {
-            "title": logTitle,
+    if not json_path.exists():
+        initial_data = {
+            "title": log_title,
             "data": {
                 "targetDrone": [],  # Contains ID for drone getting sent data
                 "avgUploadThroughputMbps": [],
@@ -329,63 +329,63 @@ def log_data(
                 "memoryUsage": [],
             },
         }  # Leave unused keys blank and filter out later
-        jsonPath.parent.mkdir(
+        json_path.parent.mkdir(
             parents=True, exist_ok=True
         )  # safe if parent folder already exists
-        jsonPath.write_text(json.dumps(initialData, indent=2), encoding="utf-8")
+        json_path.write_text(json.dumps(initial_data, indent=2), encoding="utf-8")
 
     # If json file does not exist, set it up then append
 
-    with jsonPath.open("r", encoding="utf-8") as f:
-        jsonData = json.load(f)
+    with json_path.open("r", encoding="utf-8") as f:
+        json_data = json.load(f)
 
-    if jsonData is None:
+    if json_data is None:
         print("Failed to read json data :(")
         return
 
-    if speedResults:
-        targetDrone = speedResults[0].data["targetId"]
-        uploadThroughputs = [
-            float(r.data["uploadThroughputKbps"]) for r in speedResults
+    if speed_results:
+        target_drone = speed_results[0].data["targetId"]
+        upload_throughputs = [
+            float(r.data["uploadThroughputKbps"]) for r in speed_results
         ]
-        uploadRttms = [float(r.data["uploadRttMs"]) for r in speedResults]
-        downloadThroughputs = [
-            float(r.data["downloadThroughputKbps"]) for r in speedResults
+        upload_rttms = [float(r.data["uploadRttMs"]) for r in speed_results]
+        download_throughputs = [
+            float(r.data["downloadThroughputKbps"]) for r in speed_results
         ]
-        downloadRttMs = [float(r.data["downloadRttMs"]) for r in speedResults]
-        for i in range(len(downloadRttMs)):
-            if downloadRttMs[i] > 1:
+        download_rtt_ms = [float(r.data["downloadRttMs"]) for r in speed_results]
+        for i in range(len(download_rtt_ms)):
+            if download_rtt_ms[i] > 1:
                 pass
                 # log_print(
-                #     f"Download rttms was {downloadRttMs[i]} ms at index {i}"
+                #     f"Download rttms was {download_rtt_ms[i]} ms at index {i}"
                 # )
         # Calculate upload statistics
-        avgUploadThroughputKbps = sum(uploadThroughputs) / len(uploadThroughputs)
-        avgUploadThroughputMbps = avgUploadThroughputKbps / 1000
-        avgUploadRttMs = sum(uploadRttms) / len(uploadRttms)
-        minUploadThroughput = min(uploadThroughputs) / 1000
-        maxUploadThroughput = max(uploadThroughputs) / 1000
-        minUploadRtt = min(uploadRttms)
-        maxUploadRtt = max(uploadRttms)
+        avg_upload_throughput_kbps = sum(upload_throughputs) / len(upload_throughputs)
+        avg_upload_throughput_mbps = avg_upload_throughput_kbps / 1000
+        avg_upload_rtt_ms = sum(upload_rttms) / len(upload_rttms)
+        min_upload_throughput = min(upload_throughputs) / 1000
+        max_upload_throughput = max(upload_throughputs) / 1000
+        min_upload_rtt = min(upload_rttms)
+        max_upload_rtt = max(upload_rttms)
 
         # Calculate download statistics
-        avgDownloadThroughputKbps = sum(downloadThroughputs) / len(downloadThroughputs)
-        avgDownloadThroughputMbps = avgDownloadThroughputKbps / 1000
-        avgDownloadRttMs = sum(downloadRttMs) / len(downloadRttMs)
-        minDownloadThroughput = min(downloadThroughputs) / 1000
-        maxDownloadThroughput = max(downloadThroughputs) / 1000
-        minDownloadRtt = min(downloadRttMs)
-        maxDownloadRtt = max(downloadRttMs)
+        avg_download_throughput_kbps = sum(download_throughputs) / len(download_throughputs)
+        avg_download_throughput_mbps = avg_download_throughput_kbps / 1000
+        avg_download_rtt_ms = sum(download_rtt_ms) / len(download_rtt_ms)
+        min_download_throughput = min(download_throughputs) / 1000
+        max_download_throughput = max(download_throughputs) / 1000
+        min_download_rtt = min(download_rtt_ms)
+        max_download_rtt = max(download_rtt_ms)
 
         # Calculate range from UWB
-        uwbRange = 0  # TODO SET THIS UP
+        uwb_range = 0  # TODO SET THIS UP
 
         # Get processing specs from PI
-        cpuLoad = 0
-        totalMemory = 0
-        availableMemory = 0
-        memoryUsage = 0
-        if getPerf:
+        cpu_load = 0
+        total_memory = 0
+        available_memory = 0
+        memory_usage = 0
+        if get_perf:
             try:
                 result = subprocess.run(
                     ["free", "-m"], capture_output=True, text=True, check=True
@@ -394,11 +394,11 @@ def log_data(
                 for line in result.stdout.splitlines():
                     if line.startswith("Mem:"):
                         parts = line.split()
-                        totalMemory = int(parts[1])
-                        availableMemory = int(parts[6])
+                        total_memory = int(parts[1])
+                        available_memory = int(parts[6])
                         break
 
-                memoryUsage = ((totalMemory - availableMemory) / totalMemory) * 100
+                memory_usage = ((total_memory - available_memory) / total_memory) * 100
 
                 # Get processor usage (takes 2 seconds to run due to delay from top)
                 result = subprocess.run(
@@ -408,70 +408,70 @@ def log_data(
                 for line in result.stdout.splitlines():
                     if line.startswith("%Cpu(s):"):
                         parts = line.split()
-                        cpuLoad = parts[1]
+                        cpu_load = parts[1]
             except Exception as e:  # Exceptions are likely due to code running powershell and not a linux based cli
                 print(e)
 
-        # log_print(f"Target: {speedResults[0].data['target']}")
-        jsonData["data"]["targetDrone"].append(targetDrone)
-        jsonData["data"]["avgUploadThroughputMbps"].append(avgUploadThroughputMbps)
-        jsonData["data"]["avgUploadRttMs"].append(avgUploadRttMs)
-        jsonData["data"]["minUploadThroughput"].append(minUploadThroughput)
-        jsonData["data"]["maxUploadThroughput"].append(maxUploadThroughput)
-        jsonData["data"]["minUploadRtt"].append(minUploadRtt)
-        jsonData["data"]["maxUploadRtt"].append(maxUploadRtt)
-        jsonData["data"]["avgDownloadThroughputMbps"].append(avgDownloadThroughputMbps)
-        jsonData["data"]["avgDownloadRttMs"].append(avgDownloadRttMs)
-        jsonData["data"]["minDownloadThroughput"].append(minDownloadThroughput)
-        jsonData["data"]["maxDownloadThroughput"].append(maxDownloadThroughput)
-        jsonData["data"]["minDownloadRtt"].append(minDownloadRtt)
-        jsonData["data"]["maxDownloadRtt"].append(maxDownloadRtt)
-        jsonData["data"]["uwbRange"].append(uwbRange)
-        jsonData["data"]["cpuLoad"].append(cpuLoad)
-        jsonData["data"]["memoryUsage"].append(memoryUsage)
+        # log_print(f"Target: {speed_results[0].data['target']}")
+        json_data["data"]["targetDrone"].append(target_drone)
+        json_data["data"]["avgUploadThroughputMbps"].append(avg_upload_throughput_mbps)
+        json_data["data"]["avgUploadRttMs"].append(avg_upload_rtt_ms)
+        json_data["data"]["minUploadThroughput"].append(min_upload_throughput)
+        json_data["data"]["maxUploadThroughput"].append(max_upload_throughput)
+        json_data["data"]["minUploadRtt"].append(min_upload_rtt)
+        json_data["data"]["maxUploadRtt"].append(max_upload_rtt)
+        json_data["data"]["avgDownloadThroughputMbps"].append(avg_download_throughput_mbps)
+        json_data["data"]["avgDownloadRttMs"].append(avg_download_rtt_ms)
+        json_data["data"]["minDownloadThroughput"].append(min_download_throughput)
+        json_data["data"]["maxDownloadThroughput"].append(max_download_throughput)
+        json_data["data"]["minDownloadRtt"].append(min_download_rtt)
+        json_data["data"]["maxDownloadRtt"].append(max_download_rtt)
+        json_data["data"]["uwbRange"].append(uwb_range)
+        json_data["data"]["cpuLoad"].append(cpu_load)
+        json_data["data"]["memoryUsage"].append(memory_usage)
 
-        with jsonPath.open("w", encoding="utf-8") as f:
-            json.dump(jsonData, f, indent=2)
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump(json_data, f, indent=2)
 
         print("\n" + "=" * 70)
         print(
-            f"RANGE TEST RESULTS (Test #{testNumber}) FROM {flight_settings.current_drone_ID} -> {targetDrone}"
+            f"RANGE TEST RESULTS (Test #{test_number}) FROM {flight_settings.current_drone_ID} -> {target_drone}"
         )
         print("=" * 70)
 
-        print(f"\nTotal Samples: {len(speedResults)}")
+        print(f"\nTotal Samples: {len(speed_results)}")
 
         print("\n--- UPLOAD STATISTICS ---")
         print("Throughput:")
         print(
-            f"  Average: {avgUploadThroughputMbps:.2f} Mbps ({avgUploadThroughputMbps * 1000:.2f} Kbps)"
+            f"  Average: {avg_upload_throughput_mbps:.2f} Mbps ({avg_upload_throughput_mbps * 1000:.2f} Kbps)"
         )
-        print(f"  Minimum: {minUploadThroughput:.2f} Mbps")
-        print(f"  Maximum: {maxUploadThroughput:.2f} Mbps")
+        print(f"  Minimum: {min_upload_throughput:.2f} Mbps")
+        print(f"  Maximum: {max_upload_throughput:.2f} Mbps")
         print("Round-Trip Time:")
-        print(f"  Average: {avgUploadRttMs:.2f} ms")
-        print(f"  Minimum: {minUploadRtt:.2f} ms")
-        print(f"  Maximum: {maxUploadRtt:.2f} ms")
+        print(f"  Average: {avg_upload_rtt_ms:.2f} ms")
+        print(f"  Minimum: {min_upload_rtt:.2f} ms")
+        print(f"  Maximum: {max_upload_rtt:.2f} ms")
 
         print("\n--- DOWNLOAD STATISTICS ---")
         print("Throughput:")
         print(
-            f"  Average: {avgDownloadThroughputMbps:.2f} Mbps ({avgDownloadThroughputMbps * 1000:.2f} Kbps)"
+            f"  Average: {avg_download_throughput_mbps:.2f} Mbps ({avg_download_throughput_mbps * 1000:.2f} Kbps)"
         )
-        print(f"  Minimum: {minDownloadThroughput:.2f} Mbps")
-        print(f"  Maximum: {maxDownloadThroughput:.2f} Mbps")
+        print(f"  Minimum: {min_download_throughput:.2f} Mbps")
+        print(f"  Maximum: {max_download_throughput:.2f} Mbps")
         print("Round-Trip Time:")
-        print(f"  Average: {avgDownloadRttMs:.2f} ms")
-        print(f"  Minimum: {minDownloadRtt:.2f} ms")
-        print(f"  Maximum: {maxDownloadRtt:.2f} ms")
+        print(f"  Average: {avg_download_rtt_ms:.2f} ms")
+        print(f"  Minimum: {min_download_rtt:.2f} ms")
+        print(f"  Maximum: {max_download_rtt:.2f} ms")
 
         print("\n--- RANGE & PERFORMANCE ---")
-        print(f"  UWB Range: {uwbRange} m")
-        if getPerf:
-            print(f"  CPU Load:     {cpuLoad}%")
-            print(f"  Memory Total: {totalMemory} MB")
-            print(f"  Memory Avail: {availableMemory} MB")
-            print(f"  Memory Usage: {memoryUsage:.1f}%")
+        print(f"  UWB Range: {uwb_range} m")
+        if get_perf:
+            print(f"  CPU Load:     {cpu_load}%")
+            print(f"  Memory Total: {total_memory} MB")
+            print(f"  Memory Avail: {available_memory} MB")
+            print(f"  Memory Usage: {memory_usage:.1f}%")
 
         print("=" * 70 + "\n")
 
