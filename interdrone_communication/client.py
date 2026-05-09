@@ -275,7 +275,10 @@ class Client:
         keys_to_close: list[tuple[str, int]] = []
         for key, conn in self.connection_pool.items():
             # If connection is closing or is over idle time, flag connection to be closed
-            if conn.writer.is_closing() or (now - conn.last_used) > self.connection_idle_timeout_sec:
+            if (
+                conn.writer.is_closing()
+                or (now - conn.last_used) > self.connection_idle_timeout_sec
+            ):
                 keys_to_close.append(key)
 
         # Close all connections flagged above
