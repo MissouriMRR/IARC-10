@@ -526,7 +526,7 @@ class Interdrone:
             dronesToSendData=tuple(
                 self.flight_settings.other_drones_in_mission,
             ),
-            sendId=self.flight_settings.current_drone_ID,
+            senderId=self.flight_settings.current_drone_ID,
             data={
                 "photos": photos,
             },
@@ -549,7 +549,9 @@ class Interdrone:
                 self.flight_settings.other_drones_in_mission,
             ),
             senderId=self.flight_settings.current_drone_ID,
-            checksum=checksum,
+            data={
+                "checksum": checksum,
+            },
         )
 
         self.send(checksum_message)
@@ -707,7 +709,7 @@ class Interdrone:
                                     await self.send_arm_ack()
                             # Send ARM_NACK if drone can't arm
                             else:
-                                await self.send_arm_nack(dronesToSendData=(message.senderId,))
+                                await self.send_arm_nack()
 
                         case MessageType.ARM_ACK:
                             # When drone 1 receives an ACK, set others drone arm state to true

@@ -26,6 +26,8 @@ class DroneInfo(TypedDict):
 class AppInfo(TypedDict):
     ip: str
     port: str | int
+    latitude: float
+    longitude: float
 
 
 class MissionConfig(TypedDict):

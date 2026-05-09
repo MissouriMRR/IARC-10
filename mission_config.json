@@ -13,7 +13,7 @@
   "simple_takeoff": false,
   "app_opperable": false,
   "self_id": 1,
-  "drones_in_mission": [1,2],
+  "drones_in_mission": [1, 2],
   "drone_info": [
     { "id": 1, "IP": "127.0.0.1", "port": 5001 },
     { "id": 2, "IP": "127.0.0.2", "port": 5002 },
@@ -22,7 +22,9 @@
   ],
   "app_info": {
     "ip": "127.0.0.8",
-    "port": "1234"
+    "port": "1234",
+    "latitude": 0.0,
+    "longitude": 0.0
   },
   "speed_test_kb_data_size": 16,
   "range_test_toggle": false,
