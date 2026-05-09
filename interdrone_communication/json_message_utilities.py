@@ -34,8 +34,8 @@ class JsonMessageUtilities:
 
         return Message.create(
             id=message_type,
-            dronesToSendData=tuple(data.get("dronesToSendData", ())),
-            senderId=data.get("senderId"),
+            drones_to_send_data=tuple(data.get("drones_to_send_data", ())),
+            sender_id=data.get("sender_id"),
             data=nested_data,
         )
 
@@ -49,8 +49,8 @@ class JsonMessageUtilities:
         return json.dumps(
             {
                 "id": message.id.value,
-                "dronesToSendData": message.dronesToSendData,
-                "senderId": message.senderId,
+                "drones_to_send_data": message.drones_to_send_data,
+                "sender_id": message.sender_id,
                 "data": message.data,
             },
             default=_default,

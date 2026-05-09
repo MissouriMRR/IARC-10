@@ -38,7 +38,7 @@ async def main():
     if flight_settings.current_drone_ID == 1:
         print("trying to send arm")
         await interdrone.send_ARM(
-            dronesToSendData=tuple(
+            drones_to_send_data=tuple(
                 interdrone.flight_settings.other_drones_in_mission,
             )
         )
@@ -48,7 +48,7 @@ async def main():
 
         print("Trying to takeoff")
         await interdrone.send_takeoff(
-            dronesToSendData=tuple(
+            drones_to_send_data=tuple(
                 interdrone.flight_settings.other_drones_in_mission,
             )
         )
@@ -70,7 +70,7 @@ async def main():
         drone.waypoints = waypoints
         drone.waypoints += new_waypoints
         await interdrone.send_new_waypoints(
-            dronesToSendData=tuple(
+            drones_to_send_data=tuple(
                 flight_settings.other_drones_in_mission,
             ),
             waypoints=new_waypoints,

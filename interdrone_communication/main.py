@@ -43,8 +43,8 @@ def main() -> None:
     # Message templates
     heartbeat_message: Message = Message.create(
         id=MessageType.HEARTBEAT,
-        dronesToSendData=(),
-        senderId=drone_id,
+        drones_to_send_data=(),
+        sender_id=drone_id,
         data={
             "payload": "Hello server!",
         },

@@ -7,10 +7,10 @@ import time
 def test_creating_message():
     msg = Message.create(
         id=MessageType.HEARTBEAT,
-        dronesToSendData=(1, 2),
+        drones_to_send_data=(1, 2),
+        sender_id = 3,
         data={
             "timestamp": time.time(),
-            "senderId": 3,
             "payload": "Hello server!",
         },
     )

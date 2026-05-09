@@ -39,7 +39,7 @@ class Client:
         self.other_drones_ports: list[int] = []
         self.other_drones_ids: tuple[
             int, ...
-        ] = ()  # Needs to be a tuple to align with dronesToSendData in Message class
+        ] = ()  # Needs to be a tuple to align with drones_to_send_data in Message class
 
         # Variables used
         self.connection_pool: dict[tuple[str, int], PersistentConnection] = {}
@@ -110,14 +110,14 @@ class Client:
         # If drones_to_send_data list has id values, only send message to those drones
         send_to_app: bool = False
         send_to_self: bool = False
-        if message.dronesToSendData != ():
+        if message.drones_to_send_data != ():
             # If you to send data to the app, use ID 0
-            if message.dronesToSendData == (0,):
+            if message.drones_to_send_data == (0,):
                 send_to_app = True
-            elif message.dronesToSendData == (self.drone_id,):
+            elif message.drones_to_send_data == (self.drone_id,):
                 send_to_self = True
             else:
-                drones_to_send_data = message.dronesToSendData
+                drones_to_send_data = message.drones_to_send_data
         # Else drones_to_send_data list is empty, attempt to send data to all other drones
         else:
             drones_to_send_data = self.other_drones_ids
@@ -125,7 +125,7 @@ class Client:
         # Message Preprocessing
         # Update time value for Network Speed Test message
         if message.id == MessageType.SPEED_TEST_REQUEST:
-            message.data["initialUploadTime"] = time.perf_counter()
+            message.data["initial_upload_time"] = time.perf_counter()
 
         # Create message_tasks list to store tasks for all drone connections
         message_tasks: list[asyncio.Task[None]] = []
@@ -210,15 +210,15 @@ class Client:
                     await self.client_in_data.put(
                         Message.create(
                             id=MessageType.PING_NACK,
-                            dronesToSendData=(self.drone_id,),
-                            senderId=(
+                            drones_to_send_data=(self.drone_id,),
+                            sender_id=(
                                 server_port - 5000
                             ),  # NACK is coming from drone it failed to contact
                             data={},
                         )
                     )
                 case _ if message.id in messages_that_need_resend:
-                    print(f"Failed to send message. dronesToSendData = {message.dronesToSendData}")
+                    print(f"Failed to send message. drones_to_send_data = {message.drones_to_send_data}")
                     await self.client_in_data.put(message)
             if self.range_test_enabled:
                 print(

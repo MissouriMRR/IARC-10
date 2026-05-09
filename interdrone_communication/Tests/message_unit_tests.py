@@ -9,18 +9,18 @@ class TestMessages(unittest.TestCase):
     def test_message_creation(self):
         message = Message.create(
             id=MessageType.HEARTBEAT,
-            dronesToSendData=(),
+            drones_to_send_data=(),
+            sender_id = 1,
             data={
-                "senderId": 1,
                 "payload": "Hello, world!",
             },
         )
         self.assertEqual(message.id, MessageType.HEARTBEAT)
-        self.assertEqual(message.dronesToSendData, ())
+        self.assertEqual(message.drones_to_send_data, ())
         self.assertEqual(
             message.data,
             {
-                "senderId": 1,
+                "sender_id": 1,
                 "payload": "Hello, world!",
             },
         )
@@ -34,9 +34,9 @@ class TestMessages(unittest.TestCase):
     #     with self.assertWarns(Warning):
     #         message = Message.create(
     #             id=MessageType(-1),
-    #             dronesToSendData=(),
+    #             drones_to_send_data=(),
     #             data={
-    #                 "senderId": 1,
+    #                 "sender_id": 1,
     #                 "payload": "Hello, world!",
     #             },
     #         )
@@ -47,9 +47,9 @@ class TestMessages(unittest.TestCase):
         with self.assertWarns(Warning):
             message = Message.create(
                 id=MessageType.HEARTBEAT,
-                dronesToSendData=(),
+                drones_to_send_data=(),
                 data={
-                    "senderId": 1,
+                    "sender_id": 1,
                 },
             )
             self.assertEqual(message.data, {})
@@ -58,9 +58,9 @@ class TestMessages(unittest.TestCase):
         with self.assertWarns(Warning):
             message = Message.create(
                 id=MessageType.HEARTBEAT,
-                dronesToSendData=(),
+                drones_to_send_data=(),
                 data={
-                    "senderId": 1,
+                    "sender_id": 1,
                     "payload": "Hello, world!",
                     "extra": "extra",
                 },
@@ -71,28 +71,28 @@ class TestMessages(unittest.TestCase):
         with self.assertWarns(Warning):
             message = Message.create(
                 id=MessageType.HEARTBEAT,
-                dronesToSendData=(),
-                data={"senderId": 1, "payload": 42},
+                drones_to_send_data=(),
+                data={"sender_id": 1, "payload": 42},
             )
             self.assertEqual(message.data, {})
 
     def test_frozen_keys(self):
         message = Message.create(
             id=MessageType.HEARTBEAT,
-            dronesToSendData=(),
+            drones_to_send_data=(),
             data={
-                "senderId": 1,
+                "sender_id": 1,
                 "payload": "Hello, world!",
             },
         )
         with self.assertWarns(Warning):
             message.data["extra"] = "extra"
         with self.assertWarns(Warning):
-            del message.data["senderId"]
+            del message.data["sender_id"]
         with self.assertWarns(Warning):
             message.data.clear()
         with self.assertWarns(Warning):
-            message.data.pop("senderId")
+            message.data.pop("sender_id")
         with self.assertWarns(Warning):
             _ = message.data.popitem()
         with self.assertWarns(Warning):

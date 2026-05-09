@@ -64,10 +64,10 @@ class Server:
                 # Message Handling for all messages sent to the server. Some messages are processed here if they are simple while others are sent back to interdrone to be processed.
                 match message.id:
                     case MessageType.APP_CONFIG:
-                        self.flight_settings.app_IP = str(message.data["IP"])
-                        self.flight_settings.app_port = int(message.data["Port"])
+                        self.flight_settings.app_IP = str(message.data["ip"])
+                        self.flight_settings.app_port = int(message.data["port"])
                     case MessageType.APP_DEBUG:
-                        writer.write((str(message.data["embeddedDebugMessage"]) + "\n").encode())
+                        writer.write((str(message.data["embedded_debug_message"]) + "\n").encode())
                         await writer.drain()
                     case MessageType.HEARTBEAT:
                         await self.server_out_data.put(item=message)
@@ -75,38 +75,38 @@ class Server:
                         final_upload_time = time.perf_counter()
                         response_message = Message.create(
                             id=MessageType.SPEED_TEST_RESPONSE,
-                            dronesToSendData=(message.senderId,),
-                            senderId=self.flight_settings.current_drone_ID,
+                            drones_to_send_data=(message.sender_id,),
+                            sender_id=self.flight_settings.current_drone_ID,
                             data={
-                                "initialUploadTime": message.data.get("initialUploadTime", 0.0),
-                                "finalUploadTime": final_upload_time,
-                                "initialDownloadTime": 0.0,
-                                "targetId": self.flight_settings.current_drone_ID,
-                                "uploadRttMs": 0.0,
-                                "uploadThroughputKbps": 0.0,
-                                "downloadRttMs": 0.0,
-                                "downloadThroughputKbps": 0.0,
+                                "initial_upload_time": message.data.get("initial_upload_time", 0.0),
+                                "final_upload_time": final_upload_time,
+                                "initial_download_time": 0.0,
+                                "target_id": self.flight_settings.current_drone_ID,
+                                "upload_rtt_ms": 0.0,
+                                "upload_throughput_kbps": 0.0,
+                                "download_rtt_ms": 0.0,
+                                "download_throughput_kbps": 0.0,
                                 "payload": message.data["payload"],
                             },
                         )  # From here update processing response and then go onto making sure response_message is sent to server
-                        response_message.data["initialDownloadTime"] = time.perf_counter()
+                        response_message.data["initial_download_time"] = time.perf_counter()
                         # Send response message to server
                     # Receive response data, calculate values, and return to server_out_data
                     case MessageType.SPEED_TEST_RESPONSE:
                         # Client receives response - set final download time
                         receive_time = time.perf_counter()
 
-                        if "initialUploadTime" not in message.data:
-                            print("SPEED_TEST_RESPONSE missing initialUploadTime, skipping")
+                        if "initial_upload_time" not in message.data:
+                            print("SPEED_TEST_RESPONSE missing initial_upload_time, skipping")
                             continue
 
                         # Calculate Server Processing Time (Delta on Server Clock)
                         server_processing_time: float = float(
-                            message.data["initialDownloadTime"]
-                        ) - float(message.data["finalUploadTime"])
+                            message.data["initial_download_time"]
+                        ) - float(message.data["final_upload_time"])
 
                         # Calculate Total Round Trip Time (Delta on Client Clock)
-                        total_rtt = receive_time - message.data["initialUploadTime"]
+                        total_rtt = receive_time - message.data["initial_upload_time"]
 
                         # Calculate Network RTT (Total - Processing)
                         network_rtt = total_rtt - server_processing_time
@@ -136,17 +136,17 @@ class Server:
                             else float("inf")
                         )
 
-                        message.data["uploadRttMs"] = round(upload_time * 1000, 2)
-                        message.data["uploadThroughputKbps"] = round(upload_throughput_kbps, 2)
-                        message.data["downloadRttMs"] = round(download_time * 1000, 2)
-                        message.data["downloadThroughputKbps"] = round(download_throughput_kbps, 2)
+                        message.data["upload_rtt_ms"] = round(upload_time * 1000, 2)
+                        message.data["upload_throughput_kbps"] = round(upload_throughput_kbps, 2)
+                        message.data["download_rtt_ms"] = round(download_time * 1000, 2)
+                        message.data["download_throughput_kbps"] = round(download_throughput_kbps, 2)
                         await self.server_out_data.put(item=message)
                     case MessageType.PING:
                         # Respond to ping with PING_ACK
                         response_message = Message.create(
                             id=MessageType.PING_ACK,
-                            dronesToSendData=(message.senderId,),
-                            senderId=(self.flight_settings.current_drone_ID),
+                            drones_to_send_data=(message.sender_id,),
+                            sender_id=(self.flight_settings.current_drone_ID),
                             data={},
                         )
                     # If message doesn't need specific handling here, just pass out to server_out_data

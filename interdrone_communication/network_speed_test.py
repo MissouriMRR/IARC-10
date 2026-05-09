@@ -45,11 +45,11 @@ async def main():
 
     speed_test_message: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
-        dronesToSendData=(),  # Modify this for selective speed test
-        senderId=drone_id,
+        drones_to_send_data=(),  # Modify this for selective speed test
+        sender_id=drone_id,
         data={
-            "initialUploadTime": 0.0,  # Set when queued to send
-            "payloadSize": SPEED_TEST_PAYLOAD_KB * 1024,
+            "initial_upload_time": 0.0,  # Set when queued to send
+            "payload_size": SPEED_TEST_PAYLOAD_KB * 1024,
             "payload": "X"
             * (
                 SPEED_TEST_PAYLOAD_KB * 1024
@@ -71,7 +71,7 @@ async def main():
             ):
                 # Print speed test results
                 try:  # Append client Message to dict list
-                    target_id: int = server_msg.data["targetId"]
+                    target_id: int = server_msg.data["target_id"]
                     # print(target_id)
                     if target_id not in speed_results:
                         speed_results[target_id] = []
@@ -130,7 +130,7 @@ def log_data(
 ):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
-    folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speed_results[0].data['targetId']}"
+    folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speed_results[0].data['target_id']}"
     os.makedirs(folder_name, exist_ok=True)
 
     file_path = f"{folder_name}/test-results-{test_number}.txt"
@@ -143,19 +143,19 @@ def log_data(
 
         log_print("\n" + "=" * 70)
         log_print(
-            f"NETWORK SPEED TEST RESULTS FROM {flight_settings.current_drone_ID} -> {speed_results[0].data['targetId']}"
+            f"NETWORK SPEED TEST RESULTS FROM {flight_settings.current_drone_ID} -> {speed_results[0].data['target_id']}"
         )
         log_print("=" * 70)
 
         if speed_results:
             upload_throughputs = [
-                float(r.data["uploadThroughputKbps"]) for r in speed_results
+                float(r.data["upload_throughput_kbps"]) for r in speed_results
             ]
-            upload_rttms = [float(r.data["uploadRttMs"]) for r in speed_results]
+            upload_rttms = [float(r.data["upload_rtt_ms"]) for r in speed_results]
             download_throughputs = [
-                float(r.data["downloadThroughputKbps"]) for r in speed_results
+                float(r.data["download_throughput_kbps"]) for r in speed_results
             ]
-            download_rtt_ms = [float(r.data["downloadRttMs"]) for r in speed_results]
+            download_rtt_ms = [float(r.data["download_rtt_ms"]) for r in speed_results]
             for i in range(len(download_rtt_ms)):
                 if download_rtt_ms[i] > 1:
                     pass
