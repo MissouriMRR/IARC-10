@@ -2,19 +2,19 @@
 Visualization module for drone waypoints and paths with local grid conversion.
 """
 
-import time
 from typing import Optional
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.colors import TABLEAU_COLORS
 import math
-from waypoint import Waypoint
+from waypoint import Line, Waypoint
 
 
 class CoordinateConverter:
     """Convert lat/lon coordinates to a local Cartesian grid."""
 
     EARTH_RADIUS_M = 6371000  # Earth radius in meters
+    INCHES_PER_METER = 39.3701
 
     def __init__(self, reference_lat: float, reference_lon: float):
         """
@@ -27,6 +27,25 @@ class CoordinateConverter:
         self.ref_lat = reference_lat
         self.ref_lon = reference_lon
 
+    def local_to_lat_lon(self, x: float, y: float) -> tuple[float, float]:
+        """
+        Convert local x/y coordinates in inches back to lat/lon.
+
+        Args:
+            x: X coordinate in inches from reference point
+            y: Y coordinate in inches from reference point
+
+        Returns:
+            Tuple of (latitude, longitude)
+        """
+        x_m = x / self.INCHES_PER_METER
+        y_m = y / self.INCHES_PER_METER
+        ref_lat_rad = math.radians(self.ref_lat)
+        ref_lon_rad = math.radians(self.ref_lon)
+        lat_rad = y_m / self.EARTH_RADIUS_M + ref_lat_rad
+        lon_rad = x_m / (self.EARTH_RADIUS_M * math.cos(ref_lat_rad)) + ref_lon_rad
+        return math.degrees(lat_rad), math.degrees(lon_rad)
+
     def lat_lon_to_local(self, lat: float, lon: float) -> tuple[float, float]:
         """
         Convert lat/lon to local x/y coordinates in meters.
@@ -38,7 +57,7 @@ class CoordinateConverter:
             lon: Longitude
 
         Returns:
-            Tuple of (x, y) in meters from the reference point
+            Tuple of (x, y) in inches from the reference point
         """
         # Convert to radians
         lat_rad = math.radians(lat)
@@ -46,9 +65,14 @@ class CoordinateConverter:
         ref_lat_rad = math.radians(self.ref_lat)
         ref_lon_rad = math.radians(self.ref_lon)
 
-        # Calculate distances in meters using equirectangular approximation
-        x = (lon_rad - ref_lon_rad) * self.EARTH_RADIUS_M * math.cos(ref_lat_rad)
-        y = (lat_rad - ref_lat_rad) * self.EARTH_RADIUS_M
+        # Calculate distances using equirectangular approximation, converted to inches
+        x = (
+            (lon_rad - ref_lon_rad)
+            * self.EARTH_RADIUS_M
+            * math.cos(ref_lat_rad)
+            * self.INCHES_PER_METER
+        )
+        y = (lat_rad - ref_lat_rad) * self.EARTH_RADIUS_M * self.INCHES_PER_METER
 
         return x, y
 
@@ -102,8 +126,8 @@ class LiveWaypointVisualizer:
         self.ax = None
         self.converter = None
         self.waypoints = None
+        self._drag_wp: Optional[Waypoint] = None
 
-        # Enable interactive mode for live updates
         plt.ion()
 
     def update(self, waypoints: list[Waypoint]) -> None:
@@ -134,6 +158,9 @@ class LiveWaypointVisualizer:
             self.ax.clear()
         else:
             self.fig, self.ax = plt.subplots(figsize=self.figsize)
+            self.fig.canvas.mpl_connect("button_press_event", self._on_press)
+            self.fig.canvas.mpl_connect("motion_notify_event", self._on_motion)
+            self.fig.canvas.mpl_connect("button_release_event", self._on_release)
 
         if not self.waypoints:
             return
@@ -216,14 +243,94 @@ class LiveWaypointVisualizer:
                     )
 
         # Formatting
-        self.ax.set_xlabel("X (meters)", fontsize=12)
-        self.ax.set_ylabel("Y (meters)", fontsize=12)
+        self.ax.set_xlabel("X (inches)", fontsize=12)
+        self.ax.set_ylabel("Y (inches)", fontsize=12)
         self.ax.set_title(self.title, fontsize=14, fontweight="bold")
         self.ax.legend(loc="best", fontsize=10)
         self.ax.grid(True, alpha=0.3)
         self.ax.set_aspect("equal", adjustable="box")
 
         plt.tight_layout()
+
+    def _print_collision_debug(self) -> None:
+        if not self.waypoints:
+            return
+        print("\nNew Print Collision Debug:")
+        drone_waypoints: dict[int, list[Waypoint]] = {}
+        for wp in self.waypoints:
+            drone_id = wp._get_drone_id()
+            if drone_id not in drone_waypoints:
+                drone_waypoints[drone_id] = []
+            drone_waypoints[drone_id].append(wp)
+
+        for drone_id in drone_waypoints:
+            drone_waypoints[drone_id].sort(key=lambda wp: wp._get_waypoint_id())
+
+        drone_ids = list(drone_waypoints.keys())
+        if len(drone_ids) < 2:
+            return
+        collision_points = Waypoint.check_for_collision(drone_waypoints[1], drone_waypoints[2])
+        for waypoint_group in collision_points:
+            print(
+                f"Collision at: {waypoint_group[0][0].name} -> {waypoint_group[0][1].name} and {waypoint_group[1][0].name} -> {waypoint_group[1][1].name} "
+            )
+        # for i in range(len(drone_ids)):
+        #     # print(f"i: {i}")
+        #     for j in range(i + 1, len(drone_ids)):
+        #         # print(f"j: {j}")
+        #         # issue is seg 2 isn't existing
+        #         wps1 = drone_waypoints[drone_ids[i]]
+        #         wps2 = drone_waypoints[drone_ids[j]]
+
+        #         lines1 = [Line(wps1[k], wps1[k + 1]) for k in range(len(wps1) - 1)]
+        #         lines2 = [Line(wps2[k], wps2[k + 1]) for k in range(len(wps2) - 1)]
+        #         # print(f"For i = {i} and j = {j}, Lines are: \nlines1: {lines1}\nlines2: {lines2} ")
+        #         for pi, l1 in enumerate(lines1):
+        #             for pj, l2 in enumerate(lines2):
+        #                 s1_x = l1.dx
+        #                 s1_y = l1.dy
+        #                 s2_x = l2.dx
+        #                 s2_y = l2.dy
+        #                 denom = s1_x * s2_y - s2_x * s1_y
+        #                 s02_x = l1.start._get_longitude() - l2.start._get_longitude()
+        #                 s02_y = l1.start._get_latitude() - l2.start._get_latitude()
+        #                 s_numer = s1_x * s02_y - s1_y * s02_x
+        #                 t_numer = s2_x * s02_y - s2_y * s02_x
+        #                 print(
+        #                     f"Drone {drone_ids[i]} seg {pi} vs Drone {drone_ids[j]} seg {pj}: "
+        #                     f"denom={denom:.9f}, s_numer={s_numer:.9f}, t_numer={t_numer:.9f}"
+        #                 )
+
+    def _on_press(self, event) -> None:
+        if event.inaxes != self.ax or event.button != 1 or not self.waypoints:
+            return
+
+        min_dist_sq = float("inf")
+        closest = None
+
+        for wp in self.waypoints:
+            x, y = self.converter.lat_lon_to_local(wp._get_latitude(), wp._get_longitude())
+            disp = self.ax.transData.transform((x, y))
+            dist_sq = (disp[0] - event.x) ** 2 + (disp[1] - event.y) ** 2
+            if dist_sq < min_dist_sq:
+                min_dist_sq = dist_sq
+                closest = wp
+
+        if min_dist_sq < 15**2:
+            self._drag_wp = closest
+
+    def _on_motion(self, event) -> None:
+        if self._drag_wp is None or event.inaxes != self.ax:
+            return
+        lat, lon = self.converter.local_to_lat_lon(event.xdata, event.ydata)
+        self._drag_wp._set_latitude(lat)
+        self._drag_wp._set_longitude(lon)
+        self._print_collision_debug()
+        self._draw()
+        self.fig.canvas.draw_idle()
+
+    def _on_release(self, event) -> None:
+        self._drag_wp = None
 
     def show(self, pause_duration: float = 0.1) -> None:
         """
@@ -326,7 +433,7 @@ if __name__ == "__main__":
     for wp_dict in data["Set 1"]:
         waypoints.append(
             Waypoint(
-                drone_id=0,
+                drone_id=1,
                 lat=wp_dict["latitude"],
                 long=wp_dict["longitude"],
                 waypoint_id=wp_id,
@@ -339,7 +446,7 @@ if __name__ == "__main__":
     for wp_dict in data["Set 2"]:
         waypoints.append(
             Waypoint(
-                drone_id=1,
+                drone_id=2,
                 lat=wp_dict["latitude"],
                 long=wp_dict["longitude"],
                 waypoint_id=wp_id,
@@ -348,32 +455,8 @@ if __name__ == "__main__":
         )
         wp_id += 1
 
-    # Example: Live update demonstration with interactive mode
-    print("Creating live visualization with interactive updates...")
-    visualizer = LiveWaypointVisualizer(title="Live Waypoint Visualization")
-
-    # First update with initial waypoints
-    print("Initial visualization...")
+    print("Drag waypoints to reposition them. Close the window to exit.")
+    visualizer = LiveWaypointVisualizer(title="Interactive Waypoint Visualization")
     visualizer.update(waypoints)
-    visualizer.show(pause_duration=2)
-
-    # Modify waypoints and update (in same window)
-    print("Updating with modified waypoints (drone 0 moved slightly)...")
-    for wp in waypoints:
-        if wp._get_drone_id() == 0:
-            wp._set_latitude(wp._get_latitude() + 0.0001)
-
-    visualizer.update(waypoints)
-    visualizer.show(pause_duration=2)
-
-    # Another update
-    print("Updating again (drone 1 moved slightly)...")
-    for wp in waypoints:
-        if wp._get_drone_id() == 1:
-            wp._set_longitude(wp._get_longitude() - 0.0001)
-
-    visualizer.update(waypoints)
-    visualizer.show(pause_duration=2)
-
-    print("Done! Close the window to exit.")
+    plt.ioff()
     plt.show()
