@@ -1,7 +1,11 @@
 from typing import Any, NamedTuple
 import json
+import math
 
 from numpy import random
+
+# 32 inches in latitude degrees (1 inch ≈ 2.28e-7 degrees)
+COLLISION_RADIUS: float = 0.000000228 * 32  # NOTE edit this as needed for more spacing
 
 
 class WaypointGroups(NamedTuple):
@@ -118,6 +122,52 @@ class Waypoint:
         return sum(wp._get_waypoint_id() for wp in waypoints)
 
     @staticmethod
+    def _segment_min_distance(l1: Line, l2: Line) -> float:
+        # Minimum Euclidean distance between two line segments in lat/lon space.
+        d1x, d1y = l1.dx, l1.dy
+        d2x, d2y = l2.dx, l2.dy
+        rx = l1.start._get_longitude() - l2.start._get_longitude()
+        ry = l1.start._get_latitude() - l2.start._get_latitude()
+
+        a = d1x * d1x + d1y * d1y
+        e = d2x * d2x + d2y * d2y
+        f = d2x * rx + d2y * ry
+
+        DEGEN_EPS = 1e-20  # for zero-length segment detection
+        if a <= DEGEN_EPS and e <= DEGEN_EPS:
+            # If a and e are both <= DEGEN_EPS, they are zero length (a point)
+            # So, return distance between points (c^2=a^2+b^2)
+            return math.sqrt(rx * rx + ry * ry)
+
+        if a <= DEGEN_EPS:
+            # l1 is a point; s=0, find closest point on l2 to l1.start
+            s, t = 0.0, max(0.0, min(1.0, f / e))
+        else:
+            c = d1x * rx + d1y * ry
+            if e <= DEGEN_EPS:
+                # l2 is a point; t=0, find closest point on l1 to l2.start
+                s, t = max(0.0, min(1.0, -c / a)), 0.0
+            else:
+                b = d1x * d2x + d1y * d2y
+                denom = a * e - b * b
+                # relative threshold: avoids misclassifying short non-parallel segments as parallel
+                s = (
+                    max(0.0, min(1.0, (b * f - c * e) / denom))
+                    if abs(denom) > 1e-10 * a * e
+                    else 0.0
+                )
+                t = (b * s + f) / e
+                if t < 0.0:
+                    t, s = 0.0, max(0.0, min(1.0, -c / a))
+                elif t > 1.0:
+                    t, s = 1.0, max(0.0, min(1.0, (b - c) / a))
+
+        # s parameterizes l1, t parameterizes l2
+        dx = (l1.start._get_longitude() + s * d1x) - (l2.start._get_longitude() + t * d2x)
+        dy = (l1.start._get_latitude() + s * d1y) - (l2.start._get_latitude() + t * d2y)
+        return math.sqrt(dx * dx + dy * dy)
+
+    @staticmethod
     def check_for_collision(
         drone1_waypoints: list[Waypoint], drone2_waypoints: list[Waypoint]
     ) -> list[WaypointGroups]:
@@ -130,51 +180,22 @@ class Waypoint:
             for i in range(len(drone2_waypoints) - 1)
         ]
 
-        waypoint_groups: list[WaypointGroups] = []
+        collision_waypoint_groups: list[WaypointGroups] = []
 
+        # Check distance between segments for each line and return one's that could collide
         for i in range(len(drone1_waypoints) - 1):
             for j in range(len(drone2_waypoints) - 1):
-                s1_x: float = drone1_lines[i].dx
-                s1_y: float = drone1_lines[i].dy
-                s2_x: float = drone2_lines[j].dx
-                s2_y: float = drone2_lines[j].dy
-
-                denom: float = (s1_x * s2_y) - (s2_x * s1_y)
-
-                EPS = 1e-9
-                if abs(denom) < EPS:
-                    continue  # Lines are parallel, no collision
-
-                denom_is_positive: bool = denom > 0
-
-                s02_x: float = (
-                    drone1_lines[i].start._get_longitude() - drone2_lines[j].start._get_longitude()
-                )
-                s02_y: float = (
-                    drone1_lines[i].start._get_latitude() - drone2_lines[j].start._get_latitude()
-                )
-
-                s_numer: float = (s1_x * s02_y) - (s1_y * s02_x)
-
-                if (s_numer < 0) == denom_is_positive:
-                    continue  # No collision
-
-                t_numer: float = (s2_x * s02_y) - (s2_y * s02_x)
-
-                if (t_numer < 0) == denom_is_positive:
-                    continue  # No collision
-
-                if (s_numer > denom) == denom_is_positive or (t_numer > denom) == denom_is_positive:
-                    continue  # No collision
-
-                # Collision detected
-                waypoint_groups.append(
-                    WaypointGroups(
-                        (drone1_waypoints[i], drone1_waypoints[i + 1]),
-                        (drone2_waypoints[j], drone2_waypoints[j + 1]),
+                if (
+                    Waypoint._segment_min_distance(drone1_lines[i], drone2_lines[j])
+                    < COLLISION_RADIUS
+                ):
+                    collision_waypoint_groups.append(
+                        WaypointGroups(
+                            (drone1_waypoints[i], drone1_waypoints[i + 1]),
+                            (drone2_waypoints[j], drone2_waypoints[j + 1]),
+                        )
                     )
-                )
-        return waypoint_groups
+        return collision_waypoint_groups
 
 
 # Testing code
