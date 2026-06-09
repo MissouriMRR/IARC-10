@@ -8,6 +8,7 @@
    "pathToPics": "./captures",
    "pathToDetections": "./captures/detections",
    "pathToMetadata": "./metadata",
+   "pathToLabels": "./labels",
    "droneAddress": "/dev/ttyUSB0",
    "baudRate": 921600,
    "shutterSpeed": 5000
