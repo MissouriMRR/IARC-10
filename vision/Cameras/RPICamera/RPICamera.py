@@ -1,31 +1,19 @@
 import os
-
-
-
-import apriltag
-import argparse
-from random import random
 import time
 import numpy as np
+import apriltag
 from picamera2 import Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
-from typing import Tuple
-from datetime import datetime
 
-import baseCamera
 from vision.common.detection import Detection
 from vision.common.image import Image
-from vision.common.detection import Detection
 from Cameras.baseCamera import BaseCamera
-
-import time
-import json
 
 
 class RPICamera(BaseCamera):
    def __init__(self, visionConfig):
-      
+      super().__init__()
       self.config = visionConfig
       
       self.input_h=-1
@@ -57,12 +45,10 @@ class RPICamera(BaseCamera):
       """
       config = self.picam2.create_preview_configuration()
 
-      self.picam2.configure(self.camera_config)
+      self.picam2.configure(config)
       self.picam2.set_controls({"ExposureTime": self.config["shutterSpeed"]}) # in microseconds
-      self.picam2.start_preview(config, show_preview=False) # show_preview=False -> no Qt window
+      self.picam2.start_preview(False)
       self.picam2.start()
-      
-      self.input_w, self.input_h = self.imx500.get_input_size()
 
       with open(self.config["labelsPath"]) as f:
          self.labels = [line.strip() for line in f if line.strip()]
@@ -88,7 +74,10 @@ class RPICamera(BaseCamera):
          return []
       metadata = self.capture_image(only_metadata = True).metadata
       outputs = self.imx500.get_outputs(metadata, add_batch=True)
-      if outputs is None or len(outputs) < 3:
+      if outputs is None:
+            print("WARNING: model returned no outputs.")
+            return []
+      if len(outputs) < 3:
             print(f"WARNING: model returned {len(outputs)} output tensors, "
                      f"expected >=3 (boxes, scores, classes). "
                      f"Output format may not match this parser.")
@@ -102,7 +91,13 @@ class RPICamera(BaseCamera):
 
 
       
-      boxes = boxes[:, [1, 0, 3, 2]] #Boxes must be in xy order
+      boxes = boxes[:, [1, 0, 3, 2]]  # reorder from [y1,x1,y2,x2] to [x1,y1,x2,y2]
+      boxes = np.stack([
+         (boxes[:, 0] + boxes[:, 2]) / 2,
+         (boxes[:, 1] + boxes[:, 3]) / 2,
+         boxes[:, 2] - boxes[:, 0],
+         boxes[:, 3] - boxes[:, 1],
+      ], axis=1)  # convert to (cx, cy, w, h) to match Detection format
 
       dets = []
       for box, score, cls in zip(boxes, scores, classes):
@@ -130,24 +125,24 @@ class RPICamera(BaseCamera):
 
       detections=[]
       for i in apriltags:
-         width = i.bbox[2][0] - i.bbox[0][0]
-         height = i.bbox[2][1] - i.bbox[0][1]
+         width = i.corners[2][0] - i.corners[0][0]
+         height = i.corners[2][1] - i.corners[0][1]
          detections.append(Detection(1.0, (i.center[0], i.center[1], width, height), (self.input_w, self.input_h)))
       return detections
    
    def capture_image(self, only_metadata: bool) -> Image:
       # capture image and return as Cameras.Camera_utils.image.Image object
       # also return metadata for detection parsing
-      if(self.input_w == -1 or self.input_h == -1):
+      if self.input_w == -1 or self.input_h == -1 or self.picam2 is None:
          print("Camera not initialized, call initialize_camera()")
          return None
-      metadata = self.picam2.capture_metadata()
-      
-      if not(only_metadata):
-         im = self.picam2.capture_image()
-         
-      else: 
-         im = None
+      if only_metadata:
+         return Image(None, self.picam2.capture_metadata())
+
+      request = self.picam2.capture_request()
+      im = request.make_image("main")
+      metadata = request.get_metadata()
+      request.release()
       return Image(im, metadata)
 
       """                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
