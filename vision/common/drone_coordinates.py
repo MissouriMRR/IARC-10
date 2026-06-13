@@ -11,11 +11,7 @@ class DronePose:  #these float values should be given by the flight controller
     pitch: float      # degrees
     roll: float       # degrees
 
-@dataclass
-class TargetCoordinates:
-    lat: float
-    lon: float
-
+#The target coordinates default parameters are irrelevant for competition since the location of mines are unknown.
 @dataclass
 class GimbalPose:       #yaw pitch role values of gimbal----converted to default parameter
     yaw: float = 0        # degrees (relative to drone)
@@ -49,35 +45,11 @@ def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z d
 
 # Geometrics
 
-def meters_to_latlon(deltax, deltay, lat):  #coverts meters into latitude and longitude coordinates
+def meters_to_latlon(east, north, latitude):  #coverts meters into latitude and longitude coordinates
     earth_radius = 6378137.0
-    dlat = deltax / earth_radius    #dlat and dlong are measured in radians; this is the arc length formula s=rtheta
-    dlon = deltay / (earth_radius * cos(radians(lat)))
+    dlat = north / earth_radius    #dlat and dlong are measured in radians; this is the arc length formula s=rtheta
+    dlon = east / (earth_radius * cos(radians(latitude)))
     return degrees(dlat), degrees(dlon)
-
-def compute_offset_from_target(lat, lon, target: TargetCoordinates):
-    """
-    Compute offset from computed GPS point to target GPS point
-
-    Returns:
-        dx: meters east (+) / west (-)
-        dy: meters north (+) / south (-)
-    """
-    dx, dy = latlon_to_meters(lat, lon, target.lat, target.lon)
-
-    return dx, dy
-def latlon_to_meters(lat1, lon1, lat2, lon2):
-    earth_radius = 6378137.0
-
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-
-    avg_lat = radians((lat1 + lat2) / 2)
-
-    mx = dlat * earth_radius
-    my = dlon * earth_radius * cos(avg_lat)
-
-    return mx, my
 
 def intersect_ground(ray_world, altitude):
     """
@@ -139,9 +111,18 @@ def pixel_to_geocoord_gimbal(
     if ground_point is None:
         return None
 
-    dx, dy = ground_point[0], ground_point[1]
-    dlat, dlon = meters_to_latlon(dx, dy, drone.lat)
-    return drone.lat + dlat, drone.lon + dlon, dx,dy #Returns the latitude and longitude of pixel. Drone position plus the change in lat and lon
+    east = ground_point[0]
+    north = ground_point[1]
+
+    dlat, dlon = meters_to_latlon(
+    east,
+    north,
+    drone.lat
+    )
+
+    lat = drone.lat + dlat
+    lon = drone.lon + dlon
+    return lat, lon #Returns the latitude and longitude of pixel. Drone position plus the change in lat and lon
     # replace with real value
 if __name__ == "__main__":
     drone_pose = DronePose(
@@ -153,10 +134,10 @@ if __name__ == "__main__":
         roll=140.02309214544962
     )
 
-    actual_target_coordinates = TargetCoordinates(
-        lat=37,   # change this to test
-        lon=91
-    )
+   # actual_target_coordinates = TargetCoordinates(
+    #    lat=37,   # change this to test
+    #    lon=91
+    #)
 
     # Gimbal stabilizes roll & pitch, points slightly forward
     gimbal_pose = GimbalPose(
@@ -166,7 +147,7 @@ if __name__ == "__main__":
     )
 
     # ---- Compute ground point FIRST ----
-    ground = pixel_to_geocoord_gimbal(
+    result = pixel_to_geocoord_gimbal(
         px=900,
         py=30,
         image_width=1280,
@@ -177,15 +158,8 @@ if __name__ == "__main__":
         gimbal=gimbal_pose
     )
 
-    if ground is not None:
-        lat, lon, dx, dy = ground
-
-        offset_x, offset_y = compute_offset_from_target(
-            lat, lon, actual_target_coordinates
-        )
-
+    if result is not None:
+        lat, lon= result
         print("Ground coordinate:", (lat, lon))
-        print("Target Coordinates:", (actual_target_coordinates.lat, actual_target_coordinates.lon))
-        print("Offset from target (meters):", (offset_x, offset_y))
     else:
         print("Ray does not intersect ground")
