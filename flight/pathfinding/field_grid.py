@@ -3,15 +3,15 @@ from enum import IntEnum
 
 
 class BlockState(IntEnum):
-    EMPTY  = 0
-    PATH   = 1  # Square where drone will travel through
+    EMPTY = 0
+    PATH = 1  # Square where drone will travel through
     UNSAFE = 2  # Within the cityblock radius of a mine
-    MINE   = 3  # Contains the mine itself
+    MINE = 3  # Contains the mine itself
 
 
 class BlockField:
-    NUM_COLS   = 40
-    NUM_ROWS   = 150
+    NUM_COLS = 40
+    NUM_ROWS = 150
     BLOCK_SIZE = 2  # ft
 
     def __init__(self, warning_radius: int = 1):
@@ -21,9 +21,8 @@ class BlockField:
         """
         self.warning_radius = warning_radius
         self.grid = np.zeros((self.NUM_ROWS, self.NUM_COLS), dtype=np.int8)
-        self.mines: list[tuple[int, int]] = []      # (col, row) position of each mine
-        self.path_order: list[tuple[int, int]] = [] # ordered path blocks for IARC output
-
+        self.mines: list[tuple[int, int]] = []  # (col, row) position of each mine
+        self.path_order: list[tuple[int, int]] = []  # ordered path blocks for IARC output
 
     """
     Coordinate functions
@@ -48,7 +47,6 @@ class BlockField:
 
     def in_bounds(self, col: int, row: int) -> bool:
         return 0 <= col < self.NUM_COLS and 0 <= row < self.NUM_ROWS
-
 
     """
     Mine functions
@@ -96,7 +94,6 @@ class BlockField:
                 self.grid[row, col] = BlockState.PATH
                 self.path_order.append((col, row))
 
-
     """
     Path functions
     """
@@ -133,7 +130,6 @@ class BlockField:
     def reset_path(self) -> None:
         self.grid[self.grid == BlockState.PATH] = BlockState.EMPTY
         self.path_order.clear()
-
 
     """
     Queries
@@ -178,7 +174,6 @@ class BlockField:
     def get_path_blocks(self) -> list[tuple[int, int]]:
         return list(self.path_order)
 
-
     """
     IARC scoring conversion
     """
@@ -197,10 +192,15 @@ class BlockField:
         cardinal move (meaning the path is not a valid cityblock path).
         """
         if not self.path_order:
-            raise ValueError("No path marked. Call path_from_waypoints or path_from_commands first.")
+            raise ValueError(
+                "No path marked. Call path_from_waypoints or path_from_commands first."
+            )
 
         STEP_TO_DIR: dict[tuple[int, int], str] = {
-            (0, 1): "U", (0, -1): "D", (-1, 0): "L", (1, 0): "R"
+            (0, 1): "U",
+            (0, -1): "D",
+            (-1, 0): "L",
+            (1, 0): "R",
         }
         start_col: int = self.path_order[0][0]
         lines: list[str] = [f"S,{start_col},{buffer_width}"]
@@ -225,11 +225,9 @@ class BlockField:
 
         return "\n".join(lines)
 
-
     """
     Scoring
     """
-
 
     # Counts the number of mines that fall into the buffer zone
     def count_buffer_mines(self, buffer_width: int) -> int:
@@ -273,19 +271,15 @@ class BlockField:
             score = 150000 * W / ((1 + B) * L * (1 + 7 * A + 100 * N))
 
         return {
-            "score":        round(score, 4),
-            "W":            W,
-            "B":            B,
-            "L":            L,
-            "A":            A,
-            "N":            N,
+            "score": round(score, 4),
+            "W": W,
+            "B": B,
+            "L": L,
+            "A": A,
+            "N": N,
             "buffer_width": G,
         }
 
-
-    
-    
-    
     """
     Visualization
     """
@@ -308,16 +302,16 @@ class BlockField:
         import tkinter as tk
 
         COLORS = {
-            BlockState.EMPTY:  "#EEEEEE",
-            BlockState.PATH:   "#1565C0",  # IARC blue path
+            BlockState.EMPTY: "#EEEEEE",
+            BlockState.PATH: "#1565C0",  # IARC blue path
             BlockState.UNSAFE: "#FF8F00",  # orange warning zone
-            BlockState.MINE:   "#C62828",  # IARC red square
+            BlockState.MINE: "#C62828",  # IARC red square
         }
         LABELS = {
-            BlockState.EMPTY:  "Empty",
-            BlockState.PATH:   "Path (blue)",
+            BlockState.EMPTY: "Empty",
+            BlockState.PATH: "Path (blue)",
             BlockState.UNSAFE: "Mine buffer",
-            BlockState.MINE:   "Mine (red)",
+            BlockState.MINE: "Mine (red)",
         }
         BUFFER_COLOR = "#43A047"  # IARC green zone
 
@@ -327,8 +321,8 @@ class BlockField:
 
         canvas_w = self.NUM_COLS * cell_size
         canvas_h = self.NUM_ROWS * cell_size
-        view_w   = canvas_w  # exact fit — no horizontal expansion needed
-        view_h   = min(canvas_h, 820)
+        view_w = canvas_w  # exact fit — no horizontal expansion needed
+        view_h = min(canvas_h, 820)
 
         # ── left: scrollable canvas (fixed width = field width) ──────────
         left = tk.Frame(root, bg="#F0F0F0")
@@ -343,7 +337,7 @@ class BlockField:
             highlightthickness=1,
             highlightbackground="#AAAAAA",
         )
-        vsb = tk.Scrollbar(left, orient=tk.VERTICAL,   command=canvas.yview)
+        vsb = tk.Scrollbar(left, orient=tk.VERTICAL, command=canvas.yview)
         hsb = tk.Scrollbar(left, orient=tk.HORIZONTAL, command=canvas.xview)
         canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -383,8 +377,9 @@ class BlockField:
         for bc, br in buffer_set:
             x0 = bc * cell_size
             y0 = (self.NUM_ROWS - 1 - br) * cell_size
-            canvas.create_rectangle(x0, y0, x0 + cell_size, y0 + cell_size,
-                                    fill=BUFFER_COLOR, outline="", width=0)
+            canvas.create_rectangle(
+                x0, y0, x0 + cell_size, y0 + cell_size, fill=BUFFER_COLOR, outline="", width=0
+            )
 
         # Draw non-empty cells on top of buffer (background already fills EMPTY colour)
         for row in range(self.NUM_ROWS):
@@ -395,8 +390,13 @@ class BlockField:
                 x0 = col * cell_size
                 y0 = (self.NUM_ROWS - 1 - row) * cell_size
                 canvas.create_rectangle(
-                    x0, y0, x0 + cell_size, y0 + cell_size,
-                    fill=COLORS[state], outline="", width=0,
+                    x0,
+                    y0,
+                    x0 + cell_size,
+                    y0 + cell_size,
+                    fill=COLORS[state],
+                    outline="",
+                    width=0,
                 )
 
         # Individual cell grid lines drawn on top of colored cells
@@ -412,8 +412,17 @@ class BlockField:
             canvas.create_line(0, r * cell_size, canvas_w, r * cell_size, fill="#888888", width=1)
 
         # N / S labels (plain ASCII — unicode arrows break on some Windows fonts)
-        canvas.create_text(canvas_w // 2, 6,            text="N", fill="#444444", font=("Arial", 8, "bold"), anchor="n")
-        canvas.create_text(canvas_w // 2, canvas_h - 6, text="S", fill="#444444", font=("Arial", 8, "bold"), anchor="s")
+        canvas.create_text(
+            canvas_w // 2, 6, text="N", fill="#444444", font=("Arial", 8, "bold"), anchor="n"
+        )
+        canvas.create_text(
+            canvas_w // 2,
+            canvas_h - 6,
+            text="S",
+            fill="#444444",
+            font=("Arial", 8, "bold"),
+            anchor="s",
+        )
 
         # Scroll to South end (path start) after the event loop is running
         root.after(10, lambda: canvas.yview_moveto(1.0))
@@ -424,47 +433,73 @@ class BlockField:
 
         def section(text):
             tk.Frame(right, height=1, bg="#CCCCCC").pack(fill=tk.X, pady=(10, 6))
-            tk.Label(right, text=text, font=("Arial", 11, "bold"), bg="#FAFAFA", anchor="w").pack(fill=tk.X)
+            tk.Label(right, text=text, font=("Arial", 11, "bold"), bg="#FAFAFA", anchor="w").pack(
+                fill=tk.X
+            )
 
         def row_label(label, value):
             f = tk.Frame(right, bg="#FAFAFA")
             f.pack(anchor=tk.W, pady=1)
-            tk.Label(f, text=label, width=22, anchor=tk.W, bg="#FAFAFA", font=("Arial", 10)).pack(side=tk.LEFT)
+            tk.Label(f, text=label, width=22, anchor=tk.W, bg="#FAFAFA", font=("Arial", 10)).pack(
+                side=tk.LEFT
+            )
             tk.Label(f, text=value, bg="#FAFAFA", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
 
-        tk.Label(right, text="IARC Mission 10", font=("Arial", 14, "bold"), bg="#FAFAFA").pack(anchor=tk.W)
-        tk.Label(right,
-                 text=f"{self.NUM_COLS} cols × {self.NUM_ROWS} rows  |  {self.BLOCK_SIZE} ft/block",
-                 font=("Arial", 9), fg="#777777", bg="#FAFAFA").pack(anchor=tk.W, pady=(2, 0))
+        tk.Label(right, text="IARC Mission 10", font=("Arial", 14, "bold"), bg="#FAFAFA").pack(
+            anchor=tk.W
+        )
+        tk.Label(
+            right,
+            text=f"{self.NUM_COLS} cols × {self.NUM_ROWS} rows  |  {self.BLOCK_SIZE} ft/block",
+            font=("Arial", 9),
+            fg="#777777",
+            bg="#FAFAFA",
+        ).pack(anchor=tk.W, pady=(2, 0))
 
         section("Legend")
         for state in [BlockState.EMPTY, BlockState.PATH, BlockState.UNSAFE, BlockState.MINE]:
             f = tk.Frame(right, bg="#FAFAFA")
             f.pack(anchor=tk.W, pady=3)
-            tk.Canvas(f, width=18, height=18, bg=COLORS[state],
-                      highlightthickness=1, highlightbackground="#AAAAAA").pack(side=tk.LEFT)
-            tk.Label(f, text=f"  {LABELS[state]}", bg="#FAFAFA", font=("Arial", 10)).pack(side=tk.LEFT)
+            tk.Canvas(
+                f,
+                width=18,
+                height=18,
+                bg=COLORS[state],
+                highlightthickness=1,
+                highlightbackground="#AAAAAA",
+            ).pack(side=tk.LEFT)
+            tk.Label(f, text=f"  {LABELS[state]}", bg="#FAFAFA", font=("Arial", 10)).pack(
+                side=tk.LEFT
+            )
         if buffer_width > 0:
             f = tk.Frame(right, bg="#FAFAFA")
             f.pack(anchor=tk.W, pady=3)
-            tk.Canvas(f, width=18, height=18, bg=BUFFER_COLOR,
-                      highlightthickness=1, highlightbackground="#AAAAAA").pack(side=tk.LEFT)
-            tk.Label(f, text=f"  Green zone (G={buffer_width})", bg="#FAFAFA", font=("Arial", 10)).pack(side=tk.LEFT)
+            tk.Canvas(
+                f,
+                width=18,
+                height=18,
+                bg=BUFFER_COLOR,
+                highlightthickness=1,
+                highlightbackground="#AAAAAA",
+            ).pack(side=tk.LEFT)
+            tk.Label(
+                f, text=f"  Green zone (G={buffer_width})", bg="#FAFAFA", font=("Arial", 10)
+            ).pack(side=tk.LEFT)
 
         section("Field Info")
         path_len_ft = max(0, (len(self.path_order) - 1)) * self.BLOCK_SIZE
-        row_label("Mines placed:",    str(len(self.mines)))
-        row_label("Path blocks:",     str(len(self.path_order)))
-        row_label("Path length:",     f"{path_len_ft} ft")
-        row_label("Warning radius:",  f"{self.warning_radius} block(s)")
+        row_label("Mines placed:", str(len(self.mines)))
+        row_label("Path blocks:", str(len(self.path_order)))
+        row_label("Path length:", f"{path_len_ft} ft")
+        row_label("Warning radius:", f"{self.warning_radius} block(s)")
 
         if score_info:
             section("IARC Score")
-            row_label("Score:",             f"{score_info['score']:.2f}")
-            row_label("W  (path width):",   f"{score_info['W']} ft")
-            row_label("B  (buffer mines):", str(score_info['B']))
-            row_label("L  (path length):",  f"{score_info['L']} ft")
-            row_label("A  (flight time):",  f"{score_info['A']} min")
+            row_label("Score:", f"{score_info['score']:.2f}")
+            row_label("W  (path width):", f"{score_info['W']} ft")
+            row_label("B  (buffer mines):", str(score_info["B"]))
+            row_label("L  (path length):", f"{score_info['L']} ft")
+            row_label("A  (flight time):", f"{score_info['A']} min")
             row_label("N  (excess weight):", f"{score_info['N']} oz")
             row_label("G  (buffer width):", f"{score_info['buffer_width']} sq")
 
@@ -472,8 +507,12 @@ class BlockField:
 
     # Fallback ASCII view (kept for headless environments)
     def print_grid(self) -> None:
-        symbols = {BlockState.EMPTY: ".", BlockState.PATH: "P",
-                   BlockState.UNSAFE: "X", BlockState.MINE: "M"}
+        symbols = {
+            BlockState.EMPTY: ".",
+            BlockState.PATH: "P",
+            BlockState.UNSAFE: "X",
+            BlockState.MINE: "M",
+        }
         for row in range(self.NUM_ROWS - 1, -1, -1):
             print("".join(symbols[BlockState(int(v))] for v in self.grid[row]))
 

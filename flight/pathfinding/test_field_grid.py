@@ -10,20 +10,20 @@ from field_grid import BlockField
 """
 Config
 """
-WARNING_RADIUS = 1   # blocks of unsafe buffer around each mine (cityblock)
-BUFFER_WIDTH   = 2   # green zone half-width in squares (G in IARC formula)
-FLIGHT_TIME    = 5.5 # minutes (score = 0 if > 7)
-DRONE_WEIGHT   = 14  # oz total  (N = max(0, weight - 16))
+WARNING_RADIUS = 1  # blocks of unsafe buffer around each mine (cityblock)
+BUFFER_WIDTH = 2  # green zone half-width in squares (G in IARC formula)
+FLIGHT_TIME = 5.5  # minutes (score = 0 if > 7)
+DRONE_WEIGHT = 14  # oz total  (N = max(0, weight - 16))
 
 # Mine positions as (col 0-39, row 0-149)
 MINES = [
-    (5,  15),
+    (5, 15),
     (28, 30),
     (10, 47),
     (35, 58),
-    (7,  72),
+    (7, 72),
     (30, 83),
-    (5,  96),
+    (5, 96),
     (33, 108),
     (18, 122),
     (38, 137),
@@ -33,15 +33,15 @@ MINES = [
 #   U = north, D = south, L = west, R = east
 START_COL = 19
 COMMANDS = [
-    ("U", 30),   # north to row 30
-    ("L", 5),    # west  to col 14
-    ("U", 20),   # north to row 50
-    ("R", 8),    # east  to col 22
-    ("U", 25),   
-    ("L", 10),   
-    ("U", 20),  
-    ("R", 15),   
-    ("U", 25),   
+    ("U", 30),  # north to row 30
+    ("L", 5),  # west  to col 14
+    ("U", 20),  # north to row 50
+    ("R", 8),  # east  to col 22
+    ("U", 25),
+    ("L", 10),
+    ("U", 20),
+    ("R", 15),
+    ("U", 25),
 ]
 
 """
@@ -55,9 +55,11 @@ bf = BlockField(warning_radius=WARNING_RADIUS)
 print("=" * 50)
 print("IARC Mission 10 — Field Simulation")
 print("=" * 50)
-print(f"\nField:   {BlockField.NUM_COLS} cols × {BlockField.NUM_ROWS} rows  "
-      f"({BlockField.NUM_COLS * BlockField.BLOCK_SIZE} ft × "
-      f"{BlockField.NUM_ROWS * BlockField.BLOCK_SIZE} ft)")
+print(
+    f"\nField:   {BlockField.NUM_COLS} cols × {BlockField.NUM_ROWS} rows  "
+    f"({BlockField.NUM_COLS * BlockField.BLOCK_SIZE} ft × "
+    f"{BlockField.NUM_ROWS * BlockField.BLOCK_SIZE} ft)"
+)
 print(f"Warning radius: {WARNING_RADIUS} block(s)\n")
 
 print("── Mines ──────────────────────────────────────")
