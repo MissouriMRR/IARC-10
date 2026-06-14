@@ -1,0 +1,17 @@
+[Unit]
+Description=B.A.T.M.A.N. Mesh Network Setup
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/batman-mesh-setup.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+User=root
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

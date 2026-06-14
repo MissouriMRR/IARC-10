@@ -1,0 +1,16 @@
+[project]
+name = "iarc_10"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dronekit>=2.9.2",
+    "future>=1.0.0",
+    "utm>=0.7.0",
+    "numpy>=1.0.0",
+    "matplotlib>=3.10.8",
+    "pyqt5-qt5 == 5.15.2; platform_machine != 'aarch64'",
+    "pyserial==3.5",
+    "mavproxy>=1.8.74",
+]

@@ -1,0 +1,41 @@
+{
+  "run_title": "IARC Test Flight",
+  "run_description": "Test flight for IARC 2026",
+  "real_mode_config": {
+    "mission_data_path": "flight/data/golf_data.json"
+  },
+  "sim_mode_config": {
+    "mission_data_path": "flight/data/golf_data.json"
+  },
+  "airsim_mode_config": {
+    "mission_data_path": "flight/data/golf_data.json"
+  },
+  "simple_takeoff": false,
+  "app_opperable": false,
+  "self_id": 2,
+  "drones_in_mission": [1,2],
+  "drone_info": [
+    { "id": 1, "IP": "127.0.0.1", "port": 5001 },
+    { "id": 2, "IP": "127.0.0.2", "port": 5002 },
+    { "id": 3, "IP": "127.0.0.3", "port": 5003 },
+    { "id": 4, "IP": "127.0.0.4", "port": 5004 }
+  ],
+  "app_info": {
+    "ip": "127.0.0.8",
+    "port": "1234"
+  },
+  "speed_test_kb_data_size": 16,
+  "range_test_toggle": false,
+  "mission_field_corners": [
+    { "lat": 36.021683, "lon": -95.941831 },
+    { "lat": 36.020694, "lon": -95.941856 },
+    { "lat": 36.021694, "lon": -95.942372 },
+    { "lat": 36.020703, "lon": -95.942397 }
+  ],
+  "start_coord": {
+    "lat": 36.021683,
+    "lon": -95.941831
+  },
+  "max_flight_height": 10,
+  "mission_type": "Automatic"
+}
