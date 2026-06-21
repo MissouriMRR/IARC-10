@@ -1,0 +1,11 @@
+{
+   "modelPath": "models/network.rpk",
+   "labelsPath": "models/label.txt",
+   "shutterSpeed": 3000,
+   "confThreshold": 0.65,
+   "maxDetections": 5,
+   "printDetections": true,
+   "pathToPics": "./captures",
+   "pathToDetections": "./captures/detections",
+   "pathToMetadata": "./metadata"
+}
