@@ -59,7 +59,6 @@ class RPICamera(BaseCamera):
          nthreads=4,
          quad_decimate=2.0,
          refine_edges=True,
-         decode_sharpening=0.25,
          debug=False
       )
 
