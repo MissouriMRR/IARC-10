@@ -55,13 +55,12 @@ class RPICamera(BaseCamera):
 
 
       options = apriltag.DetectorOptions(
-         families="tag36h11", # Tag family
-         nthreads=4, # Parallel threads
-         quad_decimate=2.0, # Downsampling factor
-         quad_sigma=0.0, # Gaussian blur sigma
-         refine_edges=True, # Edge refinement
-         decode_sharpening=0.25, # Sharpening factor
-         debug=False # Debug image output
+         families="tag36h11",
+         nthreads=4,
+         quad_decimate=2.0,
+         refine_edges=True,
+         decode_sharpening=0.25,
+         debug=False
       )
 
       # Detect tags
