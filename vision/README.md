@@ -4,7 +4,7 @@
 
 ```bash
 sudo apt update
-sudo apt install python3-picamera2 python3-libcamera python3-apriltag
+sudo apt install python3-picamera2 python3-libcamera python3-apriltag cmake python3-dev
 ```
 
 ## 2. Install uv
@@ -68,8 +68,9 @@ cat .venv/pyvenv.cfg | grep system-site
 
 ```bash
 uv pip install -e .
+uv pip install apriltags
 ```
 
 > **Note:** do not run `uv sync` — it recreates the venv without `--system-site-packages`.
 
-## 9. Run vision code!
+## 9. Run vision code (from the vision directory)!
