@@ -1,6 +1,6 @@
 {
-   "modelPath": "models/network.rpk",
-   "labelsPath": "models/label.txt",
+   "modelPath": "models/best_imx_model/network.rpk",
+   "labelsPath": "models/best_imx_model/label.txt",
    "shutterSpeed": 3000,
    "confThreshold": 0.65,
    "maxDetections": 5,
