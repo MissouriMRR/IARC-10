@@ -5,7 +5,7 @@ import logging
 
 import flight.pathfinding.path_subdivision as gotoDiv
 from flight.extract_gps import extract_gps
-from flight.pathfinding.node_generation import Connection, Field, Mine, Node
+from flight.pathfinding.node_generation.node_generation import Connection, Field, Mine, Node
 from flight.pathfinding.path_calculation import Graph
 from state_machine.state_tracker import (
     update_drone,

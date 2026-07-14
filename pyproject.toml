@@ -13,4 +13,5 @@ dependencies = [
     "pyqt5-qt5 == 5.15.2; platform_machine != 'aarch64'",
     "pyserial==3.5",
     "mavproxy>=1.8.74",
+    "quads>=1.1.0",
 ]
