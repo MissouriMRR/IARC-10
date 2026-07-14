@@ -296,6 +296,9 @@ class MineNode(Node):
         return self.__str__()
 
 
+    
+
+
 def _link():
     global Mine, Connection, Node, MineNode, seg, Field
     Mine = m.Mine

@@ -120,6 +120,7 @@ class Connection:
 
     # Checks if a newly created path is valid, checks all mines for collisions
     def validPath(self):
+        print("1")
         if self.node1 == self.node2:
             return False
         x1 = float(self.node1.x)
@@ -149,6 +150,7 @@ class Connection:
                           `         `
                              `   `
                                p3(Origin)
+        """
         """
         # Node 1 boundary check
         if self.node1.nType == "default":
@@ -194,9 +196,10 @@ class Connection:
                 # print(x2,y2)
                 # self.node1.labeled = True
                 return False
-
+        """
+        print("2")
         # Connection intersecting mine test
-
+        
         if self.connectionType == seg.LINE:
             boundingBox = quads.BoundingBox(
                 min_x=min(x1, x2) - self.mineRadius,
@@ -245,6 +248,12 @@ class Connection:
                 if self.node2.parentMine != mine:
                     if n2distance <= mine.radius:
                         return False
+        
+            for polygonObstacle in self.field.polygonObstacles:
+                if polygonObstacle.intersects(((x1, y1), (x2, y2))):
+                    print("Polygon Obstacle Intersected")
+                    return False
+        
         elif self.connectionType == seg.ARC:
             parentMine = self.node1.parentMine
             validEdge = True
@@ -264,7 +273,7 @@ class Connection:
             return validEdge
 
         return True
-
+        
     # checks if a path collides with a specific mine
     def mineCollision(self, mine) -> bool:
         if self.node1 == self.node2:
