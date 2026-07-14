@@ -45,10 +45,8 @@ async def run(self: AppShare) -> State:
 
         # App share code here
 
-
         # needs to be conditional, go to scan or recall
         # return Scan(self.drone, self.flight_settings)
-    
 
     except asyncio.CancelledError as ex:
         logging.error("AppShare state canceled")

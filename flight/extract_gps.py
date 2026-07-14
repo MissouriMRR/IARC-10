@@ -82,6 +82,7 @@ class GPSData:
     altitude_limits : AltitudeLimit
         The altitude limits for the flight.
     """
+
     boundary_points: list[BoundaryPoint]
     boundary_points_utm: list[BoundaryPointUtm]
     altitude_limits: AltitudeLimit

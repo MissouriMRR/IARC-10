@@ -36,7 +36,7 @@
 "number_of_total_drones": **int** *The number of drones active in the swarm*
 
 "other_drone_info": [
----{"id": **int** *The "other" drone's ID int*, "IP": **int IP of the target drone** *What's the IP of the Drone associated with this ID*} 
+---{"id": **int** *The "other" drone's ID int*, "IP": **int IP of the target drone** *What's the IP of the Drone associated with this ID*}
 ---*Copy the above format for each drone and add to this list of objects*
 ]
 

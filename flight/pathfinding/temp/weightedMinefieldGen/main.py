@@ -1,8 +1,8 @@
 from flight.pathfinding.weightedMinefieldGen.minefield import *
 
-length, width =30,30 # Change to 3737x3737 later
+length, width = 30, 30  # Change to 3737x3737 later
 
-field = Minefield(length,width,True)
+field = Minefield(length, width, True)
 """
 Please compatible numbers is reconmended,
 unless you want to fill everything with mines.
@@ -16,9 +16,9 @@ Same goes for start points of safe paths.
 # field.createPath([length-1,width//4]) # Starts in bottom left quarter
 # field.createPath([length-1,0]) # Starts in bottom left corner
 # field.createPath([length-1,width - (width//3)]) # Starts in bottom right third
-field.createPath([length-1,width-1]) # Starts in bottom right corner
+field.createPath([length - 1, width - 1])  # Starts in bottom right corner
 
-field.generateMines(500,2)
+field.generateMines(500, 2)
 field.generateOtherObstacles(2)
 field.displayOnlyMines()
 print()

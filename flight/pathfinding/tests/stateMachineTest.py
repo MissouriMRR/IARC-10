@@ -9,12 +9,12 @@ import time
 startLocation = (100,-105)
 fieldCorners=((100, -105), (100, 105), (-100, 105), (-100, -105)) #get from coord converter
 
-mineRadius = 3 #Calculated based on size of image that can consistently detect mines. 
+mineRadius = 3 #Calculated based on size of image that can consistently detect mines.
 #Information about width of image in feet that the camera can detect mines at is given.
-#We put into arb coord conversion to get relevent mineRadius in arbitrary units. 
+#We put into arb coord conversion to get relevent mineRadius in arbitrary units.
 
 
 
-field = 
+field =
 
 while True:

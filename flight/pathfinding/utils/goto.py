@@ -46,7 +46,7 @@ async def move_to(
         The tolerance in meters, or None to use the default tolerance of 6 meters.
     """
     if tolerance is None:
-        tolerance = 6
+        tolerance = 2
 
     drone.simple_goto(
         dronekit.LocationGlobalRelative(latitude, longitude, altitude),
@@ -79,5 +79,5 @@ async def move_to(
             break
 
         # tell machine to sleep to prevent constant polling, preventing battery drain
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.5)
     return

@@ -2,7 +2,7 @@ import random
 
 # Parameters
 numM = 30
-mine, danger, safe = 'M', 'm', '-'
+mine, danger, safe = "M", "m", "-"
 dx, dy = 3, 3
 
 # Grid settings

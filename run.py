@@ -11,7 +11,6 @@ import logging
 from state_machine.flight_manager import FlightManager
 from state_machine.flight_settings import FlightSettings
 
-
 if __name__ == "__main__":
     # Run multiprocessing function
     try:
