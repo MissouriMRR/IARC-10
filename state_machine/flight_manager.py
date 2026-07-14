@@ -5,6 +5,8 @@ import logging
 
 import dronekit
 
+from flight.lidar import LidarConfig, LidarController, MavlinkRangefinderBackend
+from flight.pathfinding.utils.coord_convert import field_transformer_ft
 from state_machine.drone import Drone
 from state_machine.drone_state import DroneState
 from state_machine.state_machine import StateMachine
@@ -62,6 +64,19 @@ class FlightManager:
             self.drone.remove_arming_check()
 
         interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
+
+        if flight_settings.lidar_enabled:
+            logging.info("Starting LIDAR proximity monitor")
+            transformer = field_transformer_ft(flight_settings.mission_field_corners)
+            backend = MavlinkRangefinderBackend(self.drone.vehicle)
+            self.drone.lidar = LidarController(
+                backend,
+                transformer,
+                LidarConfig.from_dict(flight_settings.lidar_config),
+                self.drone.vehicle,
+            )
+            backend.start()
+            asyncio.ensure_future(self.drone.lidar.monitor())
 
         logging.info("Starting processes")
         state_machine_task: asyncio.Task[None] = asyncio.ensure_future(

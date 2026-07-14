@@ -18,8 +18,9 @@ from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
-import flight.pathfinding.node_generation.node_generation as nodeGen
+import flight.pathfinding.node_generation as nodeGen
 from state_machine.flight_settings import SimMode
+from flight.lidar import LidarController
 from flight.waypoint import Waypoint
 import flight.collisionAvoidance
 from flight.pathfinding.utils.goto import move_to
@@ -102,6 +103,10 @@ class Drone:
         self.start_node = None
         self.end_nodes = []
         self.waypoints = []
+        # LIDAR obstacle detection/mapping; set up by the FlightManager when
+        # the mission config enables it. Scanned obstacle vertices live in
+        # self.lidar.scanned_objects.
+        self.lidar: LidarController | None = None
         # TODO: add reference to mine and path data classes
 
     @property

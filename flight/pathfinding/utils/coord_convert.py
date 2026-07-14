@@ -1,6 +1,10 @@
 import numpy as np
 import math
 
+from flight.pathfinding.utils.geo import latlon_distance_m
+
+FT_PER_M = 3.280839895
+
 
 class SimToLatLonTransformer:
     def __init__(self, corner_coords: tuple[tuple[float, float]], sim_width: float):
@@ -90,7 +94,7 @@ class SimToLatLonTransformer:
             self.origin_lat, self.origin_lon
         )
 
-    def latlon_to_local(self, lat, lon):
+    def latlon_to_local(self, lat: float, lon: float) -> list[float]:
         # 1. Convert to relative meters
         dy = (lat - self.origin_lat) * self.m_per_lat
         dx = (lon - self.origin_lon) * self.m_per_lon
@@ -104,7 +108,7 @@ class SimToLatLonTransformer:
         # 3. Scale to sim units
         return [rx * self.scale, ry * self.scale]
 
-    def local_to_latlon(self, x, y):
+    def local_to_latlon(self, x: float, y: float) -> list[float]:
         # 1. Unscale
         ux, uy = x / self.scale, y / self.scale
 
@@ -118,11 +122,32 @@ class SimToLatLonTransformer:
         lon = self.origin_lon + (dx / self.m_per_lon)
         return [lat, lon]
 
-    def get_arb_corners(self):
+    def get_arb_corners(self) -> list[list[float]]:
         arb_corners = []
         for [lat, lon] in self.real_corners:
             arb_corners.append(self.latlon_to_local(lat, lon))
         return arb_corners
+
+
+def field_transformer_ft(corners: list[dict[str, float]]) -> SimToLatLonTransformer:
+    """
+    Build a transformer whose local units are FEET from the field origin
+    (corner 3), matching the frame used by BlockField.real_to_block().
+
+    Setting sim_width to the corner 3 -> corner 4 edge length in feet makes
+    the transformer's scale exactly ft/m, so latlon_to_local() returns
+    field-frame feet.
+
+    Parameters
+    ----------
+    corners : list[dict[str, float]]
+        The four field corners as read from mission_config's
+        "mission_field_corners" ({"lat": ..., "lon": ...} each), in the
+        1/2/3/4 order documented on SimToLatLonTransformer.
+    """
+    tuples = [(c["lat"], c["lon"]) for c in corners]
+    edge_m = latlon_distance_m(*tuples[2], *tuples[3])
+    return SimToLatLonTransformer(tuples, sim_width=edge_m * FT_PER_M)
 
 
 """

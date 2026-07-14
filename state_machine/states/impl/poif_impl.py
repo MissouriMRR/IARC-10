@@ -2,12 +2,14 @@ import asyncio
 import logging
 
 from flight.circlePath import circle_waypoints
+from flight.lidar import lidar_approach_is_safe
 from state_machine.state_tracker import (
     update_state,
     update_drone,
     update_flight_settings,
 )
 from state_machine.states.land import Land
+from state_machine.states.lidar_map import LidarMap
 from state_machine.states.poif import POIF
 
 
@@ -34,30 +36,32 @@ async def run(self: POIF) -> None:
         update_flight_settings(self.flight_settings)
         logging.info("POIF state running")
 
-        # Instruct the drone to land
         self.drone.vehicle.airspeed = 20
-        location = (
-            self.drone.vehicle.location.global_relative_frame.lat,
-            self.drone.vehicle.location.global_relative_frame.lon,
-        )
-        circleWaypoints = []
-        for i in range(10):
-            circleWaypoints.extend(circle_waypoints(*location, 10, drone_id=self.drone.id))
-        self.drone.updateWaypoints(circleWaypoints[:5])
 
-        await self.interdrone.send_new_waypoints(
-            tuple(self.flight_settings.other_drones_in_mission), circleWaypoints[:5]
-        )
-        circleWaypoints = circleWaypoints[5:]
-        for state in self.interdrone.drone_states:
-            self.drone.checkForCollision(state.list_of_waypoints)
+        # Only generate a fresh path when there is no backlog: after a
+        # LidarMap diversion this state is re-entered with the remaining
+        # waypoints still queued on the drone
+        if not self.drone.waypoints:
+            location = (
+                self.drone.vehicle.location.global_relative_frame.lat,
+                self.drone.vehicle.location.global_relative_frame.lon,
+            )
+            circleWaypoints = []
+            for i in range(10):
+                circleWaypoints.extend(circle_waypoints(*location, 10, drone_id=self.drone.id))
+            self.drone.updateWaypoints(circleWaypoints)
 
-        while True:
+            await self.interdrone.send_new_waypoints(
+                tuple(self.flight_settings.other_drones_in_mission), circleWaypoints[:5]
+            )
+            for state in self.interdrone.drone_states:
+                self.drone.checkForCollision(state.list_of_waypoints)
+
+        while self.drone.waypoints:
             curWaypoint = await self.drone.gotoWaypoint()
             await self.interdrone.reached_waypoint(
                 tuple(self.flight_settings.other_drones_in_mission), curWaypoint
             )
-            self.drone.updateWaypoints([circleWaypoints.pop(0)])
             for drone in self.interdrone.drone_states:
                 await self.interdrone.send_new_waypoints(
                     tuple(self.flight_settings.other_drones_in_mission), [curWaypoint]
@@ -65,8 +69,17 @@ async def run(self: POIF) -> None:
 
                 self.drone.checkForCollision(drone.list_of_waypoints)
 
-            if len(circleWaypoints) == 0:
-                break
+            # Divert to map a LIDAR-detected object once the current leg is
+            # done, but only if the approach to it is clear
+            if self.drone.lidar is not None and self.drone.lidar.scan_pending:
+                if lidar_approach_is_safe(self.drone.lidar, self.drone.vehicle):
+                    return LidarMap(
+                        self.drone,
+                        self.flight_settings,
+                        self.interdrone,
+                        resume_state=POIF(self.drone, self.flight_settings, self.interdrone),
+                    )
+                self.drone.lidar.clear_pending()
 
         return Land(self.drone, self.flight_settings, self.interdrone)
 

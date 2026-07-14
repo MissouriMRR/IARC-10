@@ -5,11 +5,9 @@ Uses the equirectangular approximation with proper Earth radius math.
 For radii up to ~100km this is accurate to within a few meters.
 """
 
-import math
-from typing import List, Tuple
+from typing import List
 from flight.waypoint import Waypoint
-
-EARTH_RADIUS_M = 6_378_137.0  # WGS-84 equatorial radius in meters
+from flight.pathfinding.utils.geo import offset_latlon
 
 
 def circle_waypoints(
@@ -44,25 +42,11 @@ def circle_waypoints(
     if num_points < 3:
         raise ValueError(f"num_points must be >= 3, got {num_points}")
 
-    lat_rad = math.radians(center_lat)
-
-    # Degrees of latitude per meter (constant)
-    deg_lat_per_m = 1.0 / (math.pi * EARTH_RADIUS_M / 180.0)
-    # Degrees of longitude per meter (depends on latitude)
-    deg_lon_per_m = 1.0 / (math.pi * EARTH_RADIUS_M * math.cos(lat_rad) / 180.0)
-
-    waypoints: List[Tuple[float, float]] = []
+    waypoints: List[Waypoint] = []
     for i in range(num_points):
-        # Bearing in radians, 0 = North, increasing clockwise
-        bearing = 2.0 * math.pi * i / num_points
-        d_north = radius_m * math.cos(bearing)
-        d_east = radius_m * math.sin(bearing)
-
-        lat = center_lat + d_north * deg_lat_per_m
-        lon = center_lon + d_east * deg_lon_per_m
-
-        # Normalize longitude to [-180, 180]
-        lon = ((lon + 180.0) % 360.0) - 180.0
+        # Bearing in degrees, 0 = North, increasing clockwise
+        bearing_deg = 360.0 * i / num_points
+        lat, lon = offset_latlon(center_lat, center_lon, bearing_deg, radius_m)
         waypoints.append(Waypoint(drone_id=drone_id, lat=lat, long=lon))
 
     if closed:

@@ -107,6 +107,7 @@ class FlightSettings:
         mission_type: str = "",
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
+        lidar_config: mission_config.LidarConfig | None = None,
     ) -> None:
         """
         Default Constructor for flight settings
@@ -141,6 +142,7 @@ class FlightSettings:
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
         self.__mission_type: str = mission_type
+        self.__lidar_config: mission_config.LidarConfig | None = lidar_config
         self.__yolo_status: Event = Event()
 
     @staticmethod
@@ -217,6 +219,7 @@ class FlightSettings:
             mission_type=config["mission_type"],
             sim_mode=sim_mode,
             mission_data_path=sim_mode_config["mission_data_path"],
+            lidar_config=config.get("lidar_config"),
         )
         return config_settings
 
@@ -567,6 +570,43 @@ class FlightSettings:
         mission_data_path : str
             The path to the JSON file containing the boundary data.
         """
+
+    @property
+    def lidar_config(self) -> mission_config.LidarConfig | None:
+        """
+        Returns the LIDAR mode settings block, or None if the mission
+        config does not define one.
+
+        Returns
+        -------
+        lidar_config : mission_config.LidarConfig | None
+            The raw "lidar_config" block from the mission config.
+        """
+        return self.__lidar_config
+
+    @lidar_config.setter
+    def lidar_config(self, lidar_config: mission_config.LidarConfig | None) -> None:
+        """
+        Sets the LIDAR mode settings block.
+
+        Parameters
+        ----------
+        lidar_config : mission_config.LidarConfig | None
+            New LIDAR mode settings.
+        """
+        self.__lidar_config = lidar_config
+
+    @property
+    def lidar_enabled(self) -> bool:
+        """
+        Whether the LIDAR obstacle detection and mapping mode is enabled.
+
+        Returns
+        -------
+        lidar_enabled : bool
+            True when a lidar_config block exists and has "enabled": true.
+        """
+        return bool(self.__lidar_config and self.__lidar_config.get("enabled", False))
 
     def get_drone_by_id(self, drone_id: int) -> mission_config.DroneInfo:
         for drone in self.__drone_info:

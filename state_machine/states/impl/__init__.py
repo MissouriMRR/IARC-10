@@ -10,3 +10,4 @@ from state_machine.states.impl.initial_calc_scan_path_impl import InitialCalcSca
 from state_machine.states.impl.recall_impl import Recall
 from state_machine.states.impl.scan_impl import Scan
 from state_machine.states.impl.poif_impl import POIF
+from state_machine.states.impl.lidar_map_impl import LidarMap

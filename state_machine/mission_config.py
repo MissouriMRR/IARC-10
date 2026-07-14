@@ -30,6 +30,36 @@ class AppInfo(TypedDict):
     longitude: float
 
 
+class LidarConfig(TypedDict):
+    """
+    Settings for the LIDAR obstacle detection and mapping mode.
+
+    Attributes
+    ----------
+    enabled : bool
+        Whether the background proximity monitor runs at all.
+    proximity_threshold_m : float
+        Range in meters below which an object queues a mapping scan.
+    standoff_radius_m : float
+        Radius in meters of the circle flown around a detected object.
+    circle_num_points : int
+        Number of waypoints (sampling stops) on the scan circle.
+    dedupe_radius_ft : float
+        Objects whose centers are within this many feet of an already
+        scanned object are considered the same object and skipped.
+    max_object_radius_ft : float
+        Scan returns farther than this from the object center are treated
+        as belonging to a different obstacle and discarded.
+    """
+
+    enabled: bool
+    proximity_threshold_m: float
+    standoff_radius_m: float
+    circle_num_points: int
+    dedupe_radius_ft: float
+    max_object_radius_ft: float
+
+
 class MissionConfig(TypedDict):
     """
     A configuration for a flight mission.
@@ -66,6 +96,9 @@ class MissionConfig(TypedDict):
         Starting GPS coordinate (lat/lon).
     max_flight_height : float
         Maximum flight altitude in metres.
+    lidar_config : LidarConfig
+        Settings for the LIDAR obstacle detection and mapping mode.
+        Optional; LIDAR mode is disabled when absent.
     """
 
     run_title: str
@@ -85,6 +118,7 @@ class MissionConfig(TypedDict):
     start_coord: dict[str, float]
     mission_type: str
     max_flight_height: float
+    lidar_config: LidarConfig
 
 
 def get_mission_config(config_path: str) -> MissionConfig:

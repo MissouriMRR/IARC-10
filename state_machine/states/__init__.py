@@ -8,6 +8,7 @@ from state_machine.states.impl import (
     CalcScanPath,
     DroneShare,
     InitialCalcScanPath,
+    LidarMap,
     Recall,
     Scan,
 )
