@@ -1,7 +1,7 @@
 from typing import List, Tuple
 from shapely.geometry import Polygon, LineString, Point
 from scipy.spatial import ConvexHull
-from flight.pathfinding.node_generation.node import Connection, Node
+from flight.pathfinding.nodeField.node import Connection, Node
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon as polyPlt
