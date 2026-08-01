@@ -51,6 +51,7 @@ class RPICamera(BaseCamera):
       self.picam2.configure(config)
       self.picam2.set_controls({"ExposureTime": self.config["shutterSpeed"]}) # in microseconds
       self.picam2.start_preview(False)
+      self.imx500.show_network_fw_progress_bar()
       self.picam2.start()
 
       with open(self.config["labelsPath"]) as f:
