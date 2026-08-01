@@ -1,7 +1,7 @@
 import os
 import time
 import numpy as np
-import apriltag
+from dt_apriltags import Detector
 from picamera2 import Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
