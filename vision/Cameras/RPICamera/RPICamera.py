@@ -43,7 +43,10 @@ class RPICamera(BaseCamera):
       lores = {"size": self.config["loresRes"], "format": "YUV420"}
       )
       """
-      config = self.picam2.create_preview_configuration()
+      config = self.picam2.create_preview_configuration(
+         controls={"FrameRate": intrinsics.inference_rate},
+         buffer_count=12
+      )
 
       self.picam2.configure(config)
       self.picam2.set_controls({"ExposureTime": self.config["shutterSpeed"]}) # in microseconds
