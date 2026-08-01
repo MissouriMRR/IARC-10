@@ -54,16 +54,14 @@ class RPICamera(BaseCamera):
          self.labels = [line.strip() for line in f if line.strip()]
 
 
-      options = apriltag.DetectorOptions(
+      # Detect tags
+      self.apriltagDetector = Detector(
          families="tag36h11",
          nthreads=4,
          quad_decimate=2.0,
-         refine_edges=True,
-         debug=False
+         refine_edges=1,
+         debug=0
       )
-
-      # Detect tags
-      self.apriltagDetector = apriltag.Detector(options)
       
 
    def capture_and_detect_mines(self) -> list[Detection]:
