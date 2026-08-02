@@ -54,7 +54,9 @@ echo "3.X.Y" > .python-version
 ## 6. Create the venv
 
 ```bash
+uv lock
 uv venv --system-site-packages --python python3.X
+source .venv/bin/activate
 ```
 
 Verify it worked:
@@ -72,5 +74,11 @@ uv pip install apriltags
 ```
 
 > **Note:** do not run `uv sync` — it recreates the venv without `--system-site-packages`.
+
+## 8. Setup Camera Model
+
+'''bash
+
+'''
 
 ## 9. Run vision code (from the vision directory)!

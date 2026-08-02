@@ -38,6 +38,7 @@ def main():
                 print(
                     f"  [{i}] score={det.score:.3f}  cx={cx:.4f}  cy={cy:.4f}  w={w:.4f}  h={h:.4f}"
                 )
+            time.sleep(1.0)
     except KeyboardInterrupt:
         print("\nStopped.")
 
