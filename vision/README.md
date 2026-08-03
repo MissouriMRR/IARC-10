@@ -14,6 +14,15 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 ```
 
+## 2.5. Setup the Camera Firmware
+
+Setup the camera firmware.
+'''bash
+sudo apt update && sudo apt full-upgrade
+sudo apt install imx500-all
+sudo reboot
+'''
+
 ## 3. Clone the repo
 
 ```bash
@@ -77,8 +86,21 @@ uv pip install apriltags
 
 ## 8. Setup Camera Model
 
-'''bash
+Go to vision\models and run the following:
 
-'''
+```bash
+imx500-package -i packerOut.zip -o .
+```
 
 ## 9. Run vision code (from the vision directory)!
+
+```bash
+uv run tests/\[test\]RPICamera.py
+```
+
+## Trouble Shooting
+
+If you're still getting issues running the code, try the following:
+
+- Delete the .venv and walk back through steps 4-7
+- Reboot the PI
