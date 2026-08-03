@@ -83,6 +83,14 @@ class FlightSettings:
         Returns the longitude of the app
     app_longitude(longitude: float) -> None
         Sets the longitude of the app
+    gps_lat_offset() -> float
+        Returns this drone's calculated/received GPS latitude offset
+    gps_lat_offset(lat_offset: float) -> None
+        Sets this drone's GPS latitude offset
+    gps_lon_offset() -> float
+        Returns this drone's calculated/received GPS longitude offset
+    gps_lon_offset(lon_offset: float) -> None
+        Sets this drone's GPS longitude offset
     """
 
     _read_sim_mode: bool = False
@@ -101,6 +109,8 @@ class FlightSettings:
         app_port: int = 0,
         app_latitude: float = 0.0,
         app_longitude: float = 0.0,
+        gps_lat_offset: float = 0.0,
+        gps_lon_offset: float = 0.0,
         mission_corners: list[dict[str, float]] | None = None,
         max_height: float = 10,
         start_coord: dict = {},
@@ -132,6 +142,8 @@ class FlightSettings:
         self.__app_port: int = app_port
         self.__app_latitude: float = app_latitude
         self.__app_longitude: float = app_longitude
+        self.__gps_lat_offset: float = gps_lat_offset
+        self.__gps_lon_offset: float = gps_lon_offset
         self.__current_drone_ID = drone_ID
         self.__drones_in_mission: list[int] = list(drones_in_mission)
         self.__drone_info: list[mission_config.DroneInfo] = list(drone_info)
@@ -440,6 +452,22 @@ class FlightSettings:
     @app_longitude.setter
     def app_longitude(self, longitude: float) -> None:
         self.__app_longitude = longitude
+
+    @property
+    def gps_lat_offset(self) -> float:
+        return self.__gps_lat_offset
+
+    @gps_lat_offset.setter
+    def gps_lat_offset(self, lat_offset: float) -> None:
+        self.__gps_lat_offset = lat_offset
+
+    @property
+    def gps_lon_offset(self) -> float:
+        return self.__gps_lon_offset
+
+    @gps_lon_offset.setter
+    def gps_lon_offset(self, lon_offset: float) -> None:
+        self.__gps_lon_offset = lon_offset
 
     @property
     def number_of_total_drones(self) -> int:

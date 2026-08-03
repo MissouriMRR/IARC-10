@@ -91,6 +91,7 @@ class Interdrone:
         self.interdrone_messages = {
             MessageType.PING_ACK: queue.Queue(),
             MessageType.PING_NACK: queue.Queue(),
+            MessageType.SEND_GPS_OFFSET_ACK: queue.Queue(),
             # NOTE ADD OTHER MESSAGES HERE AS NEEDED
         }
 
@@ -595,6 +596,86 @@ class Interdrone:
 
         return
 
+    async def send_ground_truth_ack(self) -> None:
+        """
+        Message ID = 441
+        Sends SEND_GROUND_TRUTH_COORDS_ACK back to the app.
+        If this drone is drone 1, it can address the app directly.
+        Otherwise the ack must be routed through drone 1 first, since the app
+        only holds a connection to drone 1.
+        calculating_drone_id is carried explicitly in the payload because drone 1's
+        relay (see SEND_GROUND_TRUTH_COORDS_ACK case below) rewrites sender_id to its own id.
+        """
+        ground_truth_ack_message: Message = Message.create(
+            id=MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+            drones_to_send_data=(0,) if self.flight_settings.current_drone_ID == 1 else (1,),
+            sender_id=self.flight_settings.current_drone_ID,
+            data={"calculating_drone_id": self.flight_settings.current_drone_ID},
+        )
+
+        self.send(ground_truth_ack_message)
+
+        return
+
+    async def distribute_gps_offset(self) -> None:
+        """
+        Message IDs = 444, 445, 443
+        Used only by the drone commanded (via COMMAND_OFFSET_DISTRIBUTION) to distribute
+        its calculated GPS offset.
+        Sends SEND_GPS_OFFSET to every other drone in the mission, waits (with a timeout)
+        for SEND_GPS_OFFSET_ACK from each, then reports the results back to the app via
+        COMMAND_OFFSET_DISTRIBUTION_ACK (routed through drone 1 if this isn't drone 1).
+        Run as a background task (see COMMAND_OFFSET_DISTRIBUTION case) since it can block
+        for up to gps_offset_ack_timeout_sec waiting on acks.
+        """
+        gps_offset_ack_timeout_sec = 5.0
+
+        other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
+        ack_by_id: dict[int, bool] = {drone_id: False for drone_id in other_drone_ids}
+
+        # Send GPS offset to all other drones
+        offset_message: Message = Message.create(
+            id=MessageType.SEND_GPS_OFFSET,
+            drones_to_send_data=other_drone_ids,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "lat_offset": self.flight_settings.gps_lat_offset,
+                "lon_offset": self.flight_settings.gps_lon_offset,
+            },
+        )
+        self.send(offset_message)
+
+        # Wait up to 5s to get acks back from all other drones that they've updated their GPS offset values
+        ack_queue: queue.Queue[Message] = self.interdrone_messages.setdefault(
+            MessageType.SEND_GPS_OFFSET_ACK, queue.Queue()
+        )
+        deadline = time.time() + gps_offset_ack_timeout_sec
+        while time.time() < deadline and not all(ack_by_id.values()):
+            try:
+                ack: Message = ack_queue.get_nowait()
+                if ack.sender_id in ack_by_id:
+                    ack_by_id[ack.sender_id] = True
+            except queue.Empty:
+                await asyncio.sleep(0.05)
+
+        drone_ack_list: list[dict[str, Any]] = [
+            {"drone_id": drone_id, "acked": acked} for drone_id, acked in ack_by_id.items()
+        ]
+
+        # Send COMMAND_OFFSET_DISTRIBUTION_ACK back to app with list of drones who set their offset
+        distribution_ack_message: Message = Message.create(
+            id=MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+            drones_to_send_data=(0,) if self.flight_settings.current_drone_ID == 1 else (1,),
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "num_drones": len(other_drone_ids),
+                "drone_ack_list": drone_ack_list,
+            },
+        )
+        self.send(distribution_ack_message)
+
+        return
+
     async def cancel_state(self) -> None:
         """
         Cancels the current state being executed.
@@ -675,7 +756,6 @@ class Interdrone:
 
     # Check for new messages to send and create tasks to send them
     async def interdrone_loop(self) -> None:
-
         startTime = time.time()
         try:
             while True:
@@ -960,6 +1040,83 @@ class Interdrone:
                         case MessageType.SEND_APP_COORDS_ACK:
                             # TODO Harper implement this or something
                             pass
+                        case MessageType.SEND_GROUND_TRUTH_COORDS:
+                            # If this message isn't addressed to us, only drone 1 (the app's
+                            # only connection) should be relaying it on to the real target.
+                            if message.drones_to_send_data != (
+                                self.flight_settings.current_drone_ID,
+                            ):
+                                if self.flight_settings.current_drone_ID == 1:
+                                    self.send(message)
+                            # Else: message is at the target
+                            # Calculate offset
+                            else:
+                                # TODO: calculate this drone's actual GPS offset from
+                                # message.data["lat"]/["lon"] (ground truth) vs its onboard GPS
+                                # TODO Set ardupilot param as well
+                                self.flight_settings.gps_lat_offset = 0.0
+                                self.flight_settings.gps_lon_offset = 0.0
+                                await self.send_ground_truth_ack()
+                        case MessageType.SEND_GROUND_TRUTH_COORDS_ACK:
+                            # Relay to the app if we're drone 1 and this ack arrived over the
+                            # network from another drone (rather than being generated locally).
+                            if (
+                                self.flight_settings.current_drone_ID == 1
+                                and message.sender_id != 1
+                            ):
+                                relay_message: Message = Message.create(
+                                    id=MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+                                    drones_to_send_data=(0,),
+                                    sender_id=self.flight_settings.current_drone_ID,
+                                    data={
+                                        "calculating_drone_id": message.data["calculating_drone_id"]
+                                    },
+                                )
+                                self.send(relay_message)
+                        case MessageType.COMMAND_OFFSET_DISTRIBUTION:
+                            # Same drone-1-relay pattern as SEND_GROUND_TRUTH_COORDS above.
+                            # (sends message to target drone since app always sends to 1)
+                            if message.drones_to_send_data != (
+                                self.flight_settings.current_drone_ID,
+                            ):
+                                if self.flight_settings.current_drone_ID == 1:
+                                    self.send(message)
+                            else:
+                                # Runs as a background task since it waits on SEND_GPS_OFFSET_ACK
+                                # responses and shouldn't block the interdrone loop.
+                                asyncio.ensure_future(self.distribute_gps_offset())
+                        case MessageType.SEND_GPS_OFFSET:
+                            # Update GPS offset values based on message values
+                            self.flight_settings.gps_lat_offset = message.data["lat_offset"]
+                            self.flight_settings.gps_lon_offset = message.data["lon_offset"]
+                            gps_offset_ack_message: Message = Message.create(
+                                id=MessageType.SEND_GPS_OFFSET_ACK,
+                                drones_to_send_data=(message.sender_id,),
+                                sender_id=self.flight_settings.current_drone_ID,
+                                data={},
+                            )
+                            self.send(gps_offset_ack_message)
+                        case MessageType.SEND_GPS_OFFSET_ACK:
+                            # Consumed directly out of self.interdrone_messages by
+                            # distribute_gps_offset(); nothing to do here.
+                            pass
+                        case MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK:
+                            # Relay to the app if we're drone 1 and this ack arrived over the
+                            # network from the drone that ran the distribution.
+                            if (
+                                self.flight_settings.current_drone_ID == 1
+                                and message.sender_id != 1
+                            ):
+                                relay_distribution_ack: Message = Message.create(
+                                    id=MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+                                    drones_to_send_data=(0,),
+                                    sender_id=self.flight_settings.current_drone_ID,
+                                    data={
+                                        "num_drones": message.data["num_drones"],
+                                        "drone_ack_list": message.data["drone_ack_list"],
+                                    },
+                                )
+                                self.send(relay_distribution_ack)
 
                             # Check if drone 1 received and then distribute
                     # Catch different messages here and add them to interdrone message queue so other functions can use them

@@ -25,6 +25,12 @@ class MessageType(Enum):
     SEND_DRONE_LOCATIONS = 425
     SEND_APP_COORDS = 435
     SEND_APP_COORDS_ACK = 436
+    SEND_GROUND_TRUTH_COORDS = 440
+    SEND_GROUND_TRUTH_COORDS_ACK = 441
+    COMMAND_OFFSET_DISTRIBUTION = 442
+    COMMAND_OFFSET_DISTRIBUTION_ACK = 443
+    SEND_GPS_OFFSET = 444
+    SEND_GPS_OFFSET_ACK = 445
 
     # Interdrone Communication
     HEARTBEAT = 504
@@ -159,6 +165,52 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     },
     MessageType.SEND_APP_COORDS_ACK: {
         "id": MessageType.SEND_APP_COORDS_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Sent from the app to a target drone (routed through drone 1) with a ground truth
+    # coordinate the target drone uses to calculate its GPS offset.
+    MessageType.SEND_GROUND_TRUTH_COORDS: {
+        "id": MessageType.SEND_GROUND_TRUTH_COORDS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat": float,
+        "lon": float,
+    },
+    # Sent from the drone that calculated its offset back to the app (through drone 1).
+    # calculating_drone_id is included explicitly since drone 1's relay overwrites sender_id.
+    MessageType.SEND_GROUND_TRUTH_COORDS_ACK: {
+        "id": MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "calculating_drone_id": int,
+    },
+    # Sent from the app to the drone that calculated the offset (routed through drone 1),
+    # commanding it to distribute that offset to the rest of the swarm.
+    MessageType.COMMAND_OFFSET_DISTRIBUTION: {
+        "id": MessageType.COMMAND_OFFSET_DISTRIBUTION,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Sent from the distributing drone back to the app (through drone 1) confirming which
+    # drones acked the offset distribution.
+    MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK: {
+        "id": MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "num_drones": int,
+        "drone_ack_list": list[dict[str, Any]],  # [{"drone_id": int, "acked": bool}, ...]
+    },
+    # Sent from the distributing drone to every other drone in the mission.
+    MessageType.SEND_GPS_OFFSET: {
+        "id": MessageType.SEND_GPS_OFFSET,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat_offset": float,
+        "lon_offset": float,
+    },
+    MessageType.SEND_GPS_OFFSET_ACK: {
+        "id": MessageType.SEND_GPS_OFFSET_ACK,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
     },
