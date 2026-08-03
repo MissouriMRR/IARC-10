@@ -1,5 +1,5 @@
 #!/bin/bash
-
+## NOTE: This is currently unused 
 echo "Starting image script..."
 
 set -euo pipefail
