@@ -20,9 +20,11 @@ class MessageType(Enum):
     SET_HOVER_STATUS = 412
     REQUEST_MAP_DATA = 414
     REQUEST_DRONE_LOCATIONS = 415
+    REQUEST_SWARM_STATUS = 416
     SEND_PATHS_TO_APP = 420
     SEND_APP_SCANNING_ERROR = 421
     SEND_DRONE_LOCATIONS = 425
+    SEND_SWARM_STATUS = 426
     SEND_APP_COORDS = 435
     SEND_APP_COORDS_ACK = 436
     SEND_GROUND_TRUTH_COORDS = 440
@@ -37,6 +39,8 @@ class MessageType(Enum):
     SERVER_DEFAULT_RESPONSE = 505
     SPEED_TEST_REQUEST = 513
     SPEED_TEST_RESPONSE = 514
+    REQUEST_DRONE_STATUS = 516
+    SEND_DRONE_STATUS = 517
     ARM = 520
     ARM_ACK = 521
     ARM_NACK = 522
@@ -123,6 +127,23 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.REQUEST_DRONE_LOCATIONS,
         "drones_to_send_data": tuple[int, ...],  # VERIFY WE DON'T NEED DATA
         "sender_id": int,
+    },
+    # Sent from the app to drone 1 asking for the status of every drone in the swarm.
+    MessageType.REQUEST_SWARM_STATUS: {
+        "id": MessageType.REQUEST_SWARM_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Sent from drone 1 back to the app with one entry per drone in the mission
+    # (drone 1 included). drone_cmd_msg is the int value of the CMD_MSG enum in
+    # state_machine/interdrone.py.
+    MessageType.SEND_SWARM_STATUS: {
+        "id": MessageType.SEND_SWARM_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "num_drones": int,
+        # [{"drone_id": int, "drone_available": bool, "drone_cmd_msg": int}, ...]
+        "drone_status": list[dict[str, Any]],
     },
     MessageType.SEND_PATHS_TO_APP: {
         "id": MessageType.SEND_PATHS_TO_APP,
@@ -238,6 +259,20 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "download_rtt_ms": float,
         "download_throughput_kbps": float,
         "payload": str,
+    },
+    # Sent from drone 1 to the rest of the swarm when the app asks for swarm status.
+    MessageType.REQUEST_DRONE_STATUS: {
+        "id": MessageType.REQUEST_DRONE_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Response from each drone back to drone 1. drone_id isn't needed since it's sender_id,
+    # and availability is determined by whether this message comes back at all.
+    MessageType.SEND_DRONE_STATUS: {
+        "id": MessageType.SEND_DRONE_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "drone_cmd_msg": int,  # int value of the CMD_MSG enum
     },
     MessageType.ARM: {
         "id": MessageType.ARM,

@@ -92,6 +92,7 @@ class Interdrone:
             MessageType.PING_ACK: queue.Queue(),
             MessageType.PING_NACK: queue.Queue(),
             MessageType.SEND_GPS_OFFSET_ACK: queue.Queue(),
+            MessageType.SEND_DRONE_STATUS: queue.Queue(),
             # NOTE ADD OTHER MESSAGES HERE AS NEEDED
         }
 
@@ -676,6 +677,108 @@ class Interdrone:
 
         return
 
+    async def send_drone_status(self, drones_to_send_data: tuple[int, ...]) -> None:
+        """
+        Message ID = 517
+        Sends this drone's current cmd message back to the drone that asked for it
+        (drone 1). drone_id isn't included since it's carried in sender_id, and
+        availability is inferred by drone 1 from whether this response arrives at all.
+        drones_to_send_data should just be one drone.
+        """
+        drone_status_message: Message = Message.create(
+            id=MessageType.SEND_DRONE_STATUS,
+            drones_to_send_data=drones_to_send_data,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "drone_cmd_msg": self.cmd_msg.value,
+            },
+        )
+
+        self.send(drone_status_message)
+
+        return
+
+    async def gather_swarm_status(self) -> None:
+        """
+        Message IDs = 516, 517, 426
+        Used only by drone 1 in response to REQUEST_SWARM_STATUS from the app.
+        Sends REQUEST_DRONE_STATUS to every other drone in the mission, waits (with a
+        timeout) for SEND_DRONE_STATUS from each, then reports the whole swarm's status
+        back to the app via SEND_SWARM_STATUS. Drones that don't answer in time are
+        reported with drone_available = False.
+        Run as a background task (see REQUEST_SWARM_STATUS case) since it can block for
+        up to drone_status_timeout_sec waiting on responses.
+        """
+        drone_status_timeout_sec = 2.0
+
+        other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
+        # None = no response yet, otherwise the drone's reported CMD_MSG value
+        cmd_msg_by_id: dict[int, int | None] = {drone_id: None for drone_id in other_drone_ids}
+
+        status_queue: queue.Queue[Message] = self.interdrone_messages.setdefault(
+            MessageType.SEND_DRONE_STATUS, queue.Queue()
+        )
+
+        # Drop any responses left over from a previous request so they aren't
+        # mistaken for answers to this one.
+        while True:
+            try:
+                status_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        if other_drone_ids:
+            request_message: Message = Message.create(
+                id=MessageType.REQUEST_DRONE_STATUS,
+                drones_to_send_data=other_drone_ids,
+                sender_id=self.flight_settings.current_drone_ID,
+                data={},
+            )
+            self.send(request_message)
+
+            deadline = time.time() + drone_status_timeout_sec
+            while time.time() < deadline and None in cmd_msg_by_id.values():
+                try:
+                    response: Message = status_queue.get_nowait()
+                    if response.sender_id in cmd_msg_by_id:
+                        cmd_msg_by_id[response.sender_id] = response.data["drone_cmd_msg"]
+                except queue.Empty:
+                    await asyncio.sleep(0.05)
+
+        # Drone 1 reports itself first, then every other drone in the mission.
+        drone_status: list[dict[str, Any]] = [
+            {
+                "drone_id": self.flight_settings.current_drone_ID,
+                "drone_available": True,
+                "drone_cmd_msg": self.cmd_msg.value,
+            }
+        ]
+        for drone_id, cmd_msg_value in cmd_msg_by_id.items():
+            drone_status.append(
+                {
+                    "drone_id": drone_id,
+                    "drone_available": cmd_msg_value is not None,
+                    # Unreachable drones have no known cmd message, so report NONE
+                    "drone_cmd_msg": (
+                        cmd_msg_value if cmd_msg_value is not None else CMD_MSG.NONE.value
+                    ),
+                }
+            )
+
+        print(drone_status)
+        swarm_status_message: Message = Message.create(
+            id=MessageType.SEND_SWARM_STATUS,
+            drones_to_send_data=(0,),  # 0 addresses the app
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "num_drones": len(drone_status),
+                "drone_status": drone_status,
+            },
+        )
+        self.send(swarm_status_message)
+
+        return
+
     async def cancel_state(self) -> None:
         """
         Cancels the current state being executed.
@@ -1119,6 +1222,19 @@ class Interdrone:
                                 self.send(relay_distribution_ack)
 
                             # Check if drone 1 received and then distribute
+                        case MessageType.REQUEST_SWARM_STATUS:
+                            # Only drone 1 holds the app connection and polls the swarm.
+                            if self.flight_settings.current_drone_ID == 1:
+                                # Runs as a background task since it waits on
+                                # SEND_DRONE_STATUS responses and shouldn't block this loop.
+                                asyncio.ensure_future(self.gather_swarm_status())
+                        case MessageType.REQUEST_DRONE_STATUS:
+                            # Respond to whichever drone asked (drone 1) with our cmd message
+                            await self.send_drone_status(drones_to_send_data=(message.sender_id,))
+                        case MessageType.SEND_DRONE_STATUS:
+                            # Consumed directly out of self.interdrone_messages by
+                            # gather_swarm_status(); nothing to do here.
+                            pass
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")
