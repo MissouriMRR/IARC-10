@@ -886,9 +886,7 @@ class Interdrone:
                 # tick. Handling only one per iteration caps throughput at ~10 msg/sec
                 # (one per sleep below), which lets bursts of traffic build a backlog
                 # and add latency to every other message type.
-                while (
-                    message := self.networking.try_get_server_message(timeout=0.02)
-                ) is not None:
+                while (message := self.networking.try_get_server_message(timeout=0.02)) is not None:
                     # Adds the new message to its respective message queue
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
