@@ -9,7 +9,7 @@ from state_machine.drone import Drone
 from state_machine.drone_state import DroneState
 from state_machine.state_machine import StateMachine
 from state_machine.states import Start
-from state_machine.flight_settings import FlightSettings
+from state_machine.flight_settings import FlightSettings, SimMode
 from state_machine.interdrone import Interdrone
 
 
@@ -58,7 +58,7 @@ class FlightManager:
         logging.info("Initializing drone connection")
         await self.drone.connect_drone()
 
-        if flight_settings.sim_mode.AIRSIM:
+        if flight_settings.sim_mode is SimMode.AIRSIM:
             self.drone.remove_arming_check()
 
         interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
