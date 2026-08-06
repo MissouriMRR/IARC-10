@@ -253,7 +253,9 @@ class FlightSettings:
         config: MissionConfig = mission_config.get_mission_config(config_path)
         cli_id: int | None = getattr(args, "id", None)
         resolved_id: int = (
-            self_id if self_id is not None else (cli_id if cli_id is not None else config["self_id"])
+            self_id
+            if self_id is not None
+            else (cli_id if cli_id is not None else config["self_id"])
         )
 
         sim_mode_config: SimModeConfig = (
