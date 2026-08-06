@@ -5,6 +5,7 @@ import collections
 import collections.abc
 import json
 import logging
+import os
 
 # dronekit uses removed collections aliases (Python 3.10+)
 collections.MutableMapping = collections.abc.MutableMapping  # type: ignore[attr-defined]
@@ -266,7 +267,12 @@ class Drone:
             If `sim_mode` is not a valid SimMode.
         """
         self._sim_mode = sim_mode
-        port = 5762
+        # sim_vehicle.py hands SITL's serial0 (tcp:5760) to MAVProxy as its master, and the
+        # SITL only accepts one client per port, so 5760 is unavailable to us. serial1
+        # (tcp:5762) is the port left free for external clients like dronekit. Override via
+        # SITL_MAVLINK_PORT when running the SITL without MAVProxy (--no-mavproxy), where
+        # 5760 is free and is the right choice.
+        port = int(os.environ.get("SITL_MAVLINK_PORT", "5762"))
 
         match sim_mode:
             case SimMode.REAL:
