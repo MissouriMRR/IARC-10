@@ -3,19 +3,14 @@ from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import CMD_MSG, Interdrone
 from state_machine.drone_state import DroneState
 import asyncio
-import argparse
 
 
 # uv run -m tests.networking.gps_offset_test --id 1
 async def main():
-    # Get drone ID arg
-    parser = argparse.ArgumentParser()  # TODO MOVE ARG PARSER TO FLIGHT SETTINGS
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    args = parser.parse_args()
-
     print("Hello from iarc-10!")
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    # Self ID comes from -i/--id, falling back to self_id in the mission config
+    flight_settings: FlightSettings = FlightSettings.from_mission_config()
     # # Create drone_state to access state of other drones in the test
     # drone_states: list[DroneState] = (
     #     []

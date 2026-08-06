@@ -1,7 +1,6 @@
 # Outside Imports
 from asyncio import Task
 import asyncio
-import argparse
 import queue
 import threading
 import traceback
@@ -19,13 +18,8 @@ SPEED_TEST_PAYLOAD_KB: int = 16
 # Plan for network test updates: Filter logs based on self id and target
 # uv run -m interdrone_communication.network_speed_test -i 1
 async def main():
-    # Parse arguments in main thread
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    args = parser.parse_args()
-
-    # Load config
-    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
+    # Load config. Self ID comes from -i/--id, falling back to self_id in the mission config
+    flight_settings = FlightSettings.from_mission_config()
     drone_id = flight_settings.current_drone_ID
 
     # Start networking thread

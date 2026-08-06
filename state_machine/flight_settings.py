@@ -1,9 +1,9 @@
 """Class to contain setters, getters & parameters for current flight"""
 
+import argparse
 from asyncio import Event
 from enum import Enum
 import logging
-import sys
 from typing import Final
 
 from state_machine import mission_config
@@ -11,6 +11,7 @@ from state_machine.mission_config import MissionConfig, SimModeConfig
 
 DEFAULT_RUN_TITLE: Final[str] = "IARC Test Flight"
 DEFAULT_RUN_DESCRIPTION: Final[str] = "Test flight for IARC 2026"
+DEFAULT_CONFIG_PATH: Final[str] = "mission_config.json"
 
 
 class SimMode(Enum):
@@ -53,6 +54,10 @@ class FlightSettings:
 
     Methods
     -------
+    add_flight_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
+        Adds the flight settings command line arguments to an existing parser
+    parse_args() -> argparse.Namespace
+        Parses the flight settings command line arguments
     from_mission_config() -> FlightSettings
         Creates a new FlightSettings object from the mission config
     simple_takeoff() -> bool
@@ -156,7 +161,57 @@ class FlightSettings:
         self.__yolo_status: Event = Event()
 
     @staticmethod
-    def from_mission_config(self_id: int | None = None) -> "FlightSettings":
+    def add_flight_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+        """
+        Adds the flight settings command line arguments to an existing parser.
+
+        Use this from scripts that need their own extra arguments, then pass the parsed
+        namespace to `from_mission_config(args=...)`.
+
+        Parameters
+        ----------
+        parser : argparse.ArgumentParser
+            The parser to add the flight settings arguments to.
+
+        Returns
+        -------
+        argparse.ArgumentParser
+            The same parser, for convenience.
+        """
+        parser.add_argument("-i", "--id", help="Self ID", type=int, default=None)
+        parser.add_argument("-s", "--sim", help="Run in sim mode", action="store_true")
+        parser.add_argument("-a", "--airsim", help="Run in airsim mode", action="store_true")
+        parser.add_argument(
+            "--config",
+            help="Path to the mission config file",
+            type=str,
+            default=DEFAULT_CONFIG_PATH,
+        )
+        return parser
+
+    @staticmethod
+    def parse_args() -> argparse.Namespace:
+        """
+        Parses the flight settings command line arguments.
+
+        Unknown arguments are ignored so this can be called from scripts that take
+        arguments of their own.
+
+        Returns
+        -------
+        argparse.Namespace
+            The parsed flight settings arguments.
+        """
+        parser: argparse.ArgumentParser = FlightSettings.add_flight_arguments(
+            argparse.ArgumentParser()
+        )
+        args, _ = parser.parse_known_args()
+        return args
+
+    @staticmethod
+    def from_mission_config(
+        self_id: int | None = None, args: argparse.Namespace | None = None
+    ) -> "FlightSettings":
         """
         Creates a new FlightSettings object from the mission config file and command line
         arguments
@@ -164,15 +219,22 @@ class FlightSettings:
         Parameters
         ----------
         self_id : int | None
-            Override for which drone ID is "self". Defaults to self_id in the config file.
+            Override for which drone ID is "self". Takes precedence over -i/--id.
+            Defaults to -i/--id, then to self_id in the config file.
+        args : argparse.Namespace | None
+            Already parsed arguments, for scripts that build their own parser with
+            `add_flight_arguments()`. Defaults to parsing the command line here.
 
         Returns
         -------
         FlightSettings
             A FlightSettings object with settings from mission_config.json.
         """
-        sim_flag: bool = "-s" in sys.argv or "--sim" in sys.argv
-        airsim_flag: bool = "-a" in sys.argv or "--airsim" in sys.argv
+        if args is None:
+            args = FlightSettings.parse_args()
+
+        sim_flag: bool = args.sim
+        airsim_flag: bool = args.airsim
 
         sim_mode: SimMode = (
             SimMode.AIRSIM if airsim_flag else SimMode.SIM if sim_flag else SimMode.REAL
@@ -185,21 +247,14 @@ class FlightSettings:
                 " Pass -a or --airsim to run in airsim mode.",
                 sim_mode.name,
             )
-        config_path: str
-        if "--config" in sys.argv:
-            config_index: int = sys.argv.index("--config") + 1
-            if config_index < len(sys.argv):
-                config_path = sys.argv[config_index]
-                logging.info("Using mission config file at %s", config_path)
-            else:
-                config_path = "mission_config.json"
-
-        else:
-            logging.warning("--config flag passed without a path. Using default mission config.")
-            config_path = "mission_config.json"
+        config_path: str = args.config
+        logging.info("Using mission config file at %s", config_path)
 
         config: MissionConfig = mission_config.get_mission_config(config_path)
-        resolved_id: int = self_id if self_id is not None else config["self_id"]
+        cli_id: int | None = getattr(args, "id", None)
+        resolved_id: int = (
+            self_id if self_id is not None else (cli_id if cli_id is not None else config["self_id"])
+        )
 
         sim_mode_config: SimModeConfig = (
             config["airsim_mode_config"]
