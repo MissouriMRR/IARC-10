@@ -45,15 +45,20 @@ async def run(self: Start) -> State:
 
         await self.drone.connect_drone()
         self.drone.vehicle.mode = dronekit.VehicleMode("GUIDED")
-        print(self.drone._vehicle.is_armable)
-        ping_drones = await self.interdrone.ping_drones()
-        print(f"Ping drones: {ping_drones}")
-        # Continue pinging drones until all are connected
-        while not (await self.interdrone.ping_drones() and self.drone._vehicle.is_armable):
-            logging.info(
-                f"Armable: {self.drone._vehicle.is_armable}, Ping: {await self.interdrone.ping_drones()}"
-            )
-            await asyncio.sleep(0.1)
+
+        # Wait until this drone can arm and every other drone answers a ping.
+        # is_armable is checked first since it's a local property, while pinging
+        # costs a network round trip -- during the (much longer) wait for EKF/GPS
+        # convergence there's no point putting ping traffic on the network at all.
+        ping_ok: bool = False
+        while True:
+            armable: bool = self.drone.vehicle.is_armable
+            if armable:
+                ping_ok = await self.interdrone.ping_drones()
+                if ping_ok:
+                    break
+            logging.info("Waiting to start -- armable: %s, ping: %s", armable, ping_ok)
+            await asyncio.sleep(1.0)
         logging.info("All drones connected and armable")
 
         # Wait until the drone has a global position estimate

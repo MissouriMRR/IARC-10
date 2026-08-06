@@ -7,6 +7,7 @@ and allows for the cancellation and starting of states based on message data.
 import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
+import logging
 from typing import TYPE_CHECKING
 from typing import Any
 from flight.waypoint import Waypoint
@@ -152,15 +153,26 @@ class Interdrone:
     def get_drone_state_from_id(self, drone_id: int) -> DroneState | None:
         return next((s for s in self.drone_states if s.drone_id == drone_id), None)
 
-    async def ping_drones(self) -> bool:
+    async def ping_drones(self, timeout_sec: float = 2.0) -> bool:
         """
         All drones run this function.
-        Sends PING and waits until every other drone has ACK/NACK.
-        Returns True only if all responded with ACK.
+        Sends PING and waits (with a timeout) until every other drone has ACK/NACK.
+        Returns True only if all responded with ACK; drones that don't answer within
+        timeout_sec are treated as failures rather than blocking forever.
         """
         # If only drone in test, return true for ping_drones
         if self.flight_settings.other_drones_in_mission == []:
             return True
+
+        # Drop any responses left over from a previous ping so they aren't
+        # mistaken for answers to this one.
+        for stale_msg_type in (MessageType.PING_ACK, MessageType.PING_NACK):
+            stale_queue: queue.Queue[Message] = self.interdrone_messages[stale_msg_type]
+            while True:
+                try:
+                    stale_queue.get_nowait()
+                except queue.Empty:
+                    break
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
         ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
@@ -175,9 +187,10 @@ class Interdrone:
         )
         self.send(ping_message)
 
-        print(f"Pings have been sent. Current ping response state is {ping_by_id}")
+        logging.debug("Pings have been sent. Current ping response state is %s", ping_by_id)
         # TODO may move this functionality down to the interdrone loop and just wait up here. TBD. Keep this ok solution for now
-        while None in ping_by_id.values():
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline and None in ping_by_id.values():
             updated = False
 
             try:
@@ -199,15 +212,22 @@ class Interdrone:
             if not updated:
                 await asyncio.sleep(0.05)
 
+        # Anything still unanswered at the deadline is a failure, not a wait
+        unanswered: list[int] = [
+            drone_id for drone_id, result in ping_by_id.items() if result is None
+        ]
+        if unanswered:
+            logging.warning("No ping response from drones %s after %.1fs", unanswered, timeout_sec)
+        for drone_id in unanswered:
+            ping_by_id[drone_id] = False
+
         # Copy results back into DroneState objects
         for state in self.drone_states:
-            result = ping_by_id.get(state.drone_id)
-            if result is not None:
-                state.ping_response = result
+            state.ping_response = ping_by_id[state.drone_id]
 
         all_ack: bool = all(result is True for result in ping_by_id.values())
 
-        print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
+        logging.debug("Return %s from ping_drones. Ping status is: %s", all_ack, ping_by_id)
         return all_ack
 
     async def send_ARM(self, drones_to_send_data: tuple[int, ...]) -> None:
@@ -862,9 +882,13 @@ class Interdrone:
         startTime = time.time()
         try:
             while True:
-                # Check for server messages
-                message = self.networking.try_get_server_message(timeout=0.02)
-                if message is not None:
+                # Check for server messages, draining everything already queued this
+                # tick. Handling only one per iteration caps throughput at ~10 msg/sec
+                # (one per sleep below), which lets bursts of traffic build a backlog
+                # and add latency to every other message type.
+                while (
+                    message := self.networking.try_get_server_message(timeout=0.02)
+                ) is not None:
                     # Adds the new message to its respective message queue
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
