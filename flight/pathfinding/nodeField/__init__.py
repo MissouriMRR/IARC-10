@@ -1,16 +1,15 @@
-from . import node_connection
+"""
 from . import node
-from . import field
-from . import mine
+from .archive import field
+from .archive import mine
 
-node_connection._link()
 node._link()
 field._link()
 mine._link()
 
 
 from .node import Node
-from .node_connection import Connection
-from .field import Field
-from .mine import Mine
+from .archive.field import Field
+from .archive.mine import Mine
 from .node_connection import seg
+"""

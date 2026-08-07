@@ -11,14 +11,13 @@ Yes it is intended behavior to generate vertices outside the given bounds, nodeg
 """
 
 from flight.pathfinding.blockField.field_grid import *
-from flight.newPathfinding.diamondMine import *
-from flight.pathfinding.nodeField.field import Field
 SQUARE_SIDE_LENGTH_FT=2
 from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon,Circle
 from matplotlib.lines import Line2D
-
+from flight.pathfinding.common import nodeDirection
+from flight.pathfinding.nodeField.BlockMineNode import BlockMineNode
 
 class protoMine():
     #Saftey radius by which nearby grids may also contain this mine.
@@ -70,30 +69,29 @@ class protoMine():
         touchingX=abs(cx-closestX)<=r and abs(ry+l/2-cy)<=l/2
         return distance <= r or touchingX or touchingY
 
-    def __init__(self,safteyRadius,centerGridOffset):
+    def __init__(self,safteyRadius,mineLatLon,centerGridOffset):
+        self.mineLatLon=mineLatLon
         self.centerGridOffset=centerGridOffset
         self.safteyBlockRadius=round(safteyRadius)
         self.placeholderGridSideLength=safteyRadius*2+1
         self.blockMatrix = np.zeros((self.placeholderGridSideLength, self.placeholderGridSideLength), dtype=int).tolist()
         self.blockMatrix[self.placeholderGridSideLength//2][self.placeholderGridSideLength//2]=1
-        centerBlock=self.centerOfBlock(self.placeholderGridSideLength//2,self.placeholderGridSideLength//2)
-        self.mineLocation=(centerGridOffset[0]+centerBlock[0], centerGridOffset[1]+centerBlock[1])
-        self.vertices=[]
+        self.mineLocation=tuple(self.centerOfBlock(self.placeholderGridSideLength//2,self.placeholderGridSideLength//2))
 
+        self.nodeVertices=[]
         self.generateBlocks()
         self.generateNodes()
-    
 
     def centerOfBlock(self,x,y,offsetX=0,offsetY=0):
-        yCoord=(y)*SQUARE_SIDE_LENGTH_FT+SQUARE_SIDE_LENGTH_FT/2
-        xCoord=x*SQUARE_SIDE_LENGTH_FT+SQUARE_SIDE_LENGTH_FT/2
+        yCoord=(y)*SQUARE_SIDE_LENGTH_FT+SQUARE_SIDE_LENGTH_FT/2 + self.centerGridOffset[1]
+        xCoord=x*SQUARE_SIDE_LENGTH_FT+SQUARE_SIDE_LENGTH_FT/2 + self.centerGridOffset[0]
         return [xCoord+offsetX,yCoord+offsetY]
     def generateBlocks(self):
 
         for y in range(len(self.blockMatrix)):
             for x in range(len(self.blockMatrix[y])):
-                xCoord=x*SQUARE_SIDE_LENGTH_FT
-                yCoord=(y)*SQUARE_SIDE_LENGTH_FT
+                xCoord=x*SQUARE_SIDE_LENGTH_FT + self.centerGridOffset[0]
+                yCoord=(y)*SQUARE_SIDE_LENGTH_FT + self.centerGridOffset[1]
                 self.blockMatrix[y][x] = int(protoMine.circle_rect_intersects(self.mineLocation[0], self.mineLocation[1], self.safteyBlockRadius, xCoord, yCoord, SQUARE_SIDE_LENGTH_FT))
 
 
@@ -102,6 +100,7 @@ class protoMine():
         rows = len(self.blockMatrix)
         cols = len(self.blockMatrix[0]) if rows else 0
         wrappingVertices=[]
+        wrappingDirections=[]
         for y in range(rows):
             for x in range(cols):
                 if(self.blockMatrix[y][x]==1):
@@ -109,32 +108,35 @@ class protoMine():
                     if(x==0 or self.blockMatrix[y][x-1]==0):
                         
                         wrappingVertices.append(self.centerOfBlock(x-1,y,-0.05,0))
-                    #Up
+                        wrappingDirections.append(nodeDirection.LEFT)
+                    #Down
                     if(y==0 or self.blockMatrix[y-1][x]==0):
                         wrappingVertices.append(self.centerOfBlock(x,y-1,0,-0.05))
+                        wrappingDirections.append(nodeDirection.DOWN)
                     #Right
                     if(x==cols-1 or self.blockMatrix[y][x+1]==0):
                         wrappingVertices.append(self.centerOfBlock(x+1,y,0.05,0))
-                    #Down
+                        wrappingDirections.append(nodeDirection.RIGHT)
+                    #UP
                     if(y==rows-1 or self.blockMatrix[y+1][x]==0):
                         wrappingVertices.append(self.centerOfBlock(x,y+1,0,0.05)) 
-        self.wrappingVertices=wrappingVertices   
+                        wrappingDirections.append(nodeDirection.UP)
         if(wrappingVertices==[]):
-            return
+            return []
         vertexIndicies=ConvexHull(wrappingVertices).vertices
-        self.vertices=[]
-        
+        self.nodeVertices=[]
         for i in vertexIndicies:
-            self.vertices.append(wrappingVertices[i])
+            self.nodeVertices.append(BlockMineNode(wrappingVertices[i][0],wrappingVertices[i][1],wrappingDirections[i]))
+        return self.nodeVertices
     def visualize(self):
         fig, ax = plt.subplots()
         #self.blockMatrix[6][3]=1
         plt.imshow(self.blockMatrix, cmap='gray',origin='lower', extent=[0, self.placeholderGridSideLength*SQUARE_SIDE_LENGTH_FT, 0, self.placeholderGridSideLength*SQUARE_SIDE_LENGTH_FT])
         ax.add_patch(Circle((self.mineLocation[0], self.mineLocation[1]), self.safteyBlockRadius, color='green', alpha=0.5))
         ax.set_facecolor("grey")
-        poly = Line2D([vertex[0] for vertex in self.vertices], [vertex[1] for vertex in self.vertices], color='orangered', linewidth=3)
-        for i in self.vertices:
-            ax.plot(i[0], i[1], marker='o', markersize=12, linestyle='-', color='blue')
+        poly = Line2D([vertex.x for vertex in self.nodeVertices], [vertex.y for vertex in self.nodeVertices], color='orangered', linewidth=3)
+        for i in self.nodeVertices:
+            ax.plot(i.x, i.y, marker='o', markersize=12, linestyle='-', color='blue')
         ax.add_line(poly)
 
 

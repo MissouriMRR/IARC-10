@@ -7,5 +7,5 @@ if __name__ == "__main__":
 
     print(f"Radius: {radius}")
     print(f"Center Offset: {(x,y)}")
-    mine=protoMine(radius,(x,y))
+    mine=protoMine(radius,(0.0,0.0),(x,y))
     mine.visualize()
