@@ -60,6 +60,7 @@ def project_to_meters(
     lon_scale = _DEG_TO_M * math.cos(math.radians(ref_lat))
     return (lon - ref_lon) * lon_scale, (lat - ref_lat) * _DEG_TO_M
 
+
 # Distinct in both light and dark, and distinguishable in grayscale print.
 DRONE_COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b"]
 
@@ -186,9 +187,7 @@ def true_separation(
             distances: list[float] = []
             for t in timeline:
                 pa, pb = drones[a].position_at(t), drones[b].position_at(t)
-                distances.append(
-                    meters_between(pa, pb) if pa and pb else float("nan")
-                )
+                distances.append(meters_between(pa, pb) if pa and pb else float("nan"))
             series[(a, b)] = distances
     return timeline, series
 
@@ -302,9 +301,7 @@ def make_plots(drones: dict[int, DroneLog], out_dir: Path, timeline, series) -> 
         return []
 
     written: list[str] = []
-    ref = next(
-        ((log.lats[0], log.lons[0]) for log in drones.values() if log.times), (0.0, 0.0)
-    )
+    ref = next(((log.lats[0], log.lons[0]) for log in drones.values() if log.times), (0.0, 0.0))
 
     def to_xy(points: Iterable[tuple[float, float]]) -> tuple[list[float], list[float]]:
         xs, ys = [], []
@@ -363,13 +360,7 @@ def make_plots(drones: dict[int, DroneLog], out_dir: Path, timeline, series) -> 
     written.append(path.name)
 
     # --- per-lap panels ---------------------------------------------------
-    all_laps = sorted(
-        {
-            lap
-            for log in drones.values()
-            for lap in lap_tracks(log)
-        }
-    )
+    all_laps = sorted({lap for log in drones.values() for lap in lap_tracks(log)})
     for lap in all_laps:
         fig, ax = plt.subplots(figsize=(9, 9))
         for drone_id in sorted(drones):
@@ -393,9 +384,7 @@ def make_plots(drones: dict[int, DroneLog], out_dir: Path, timeline, series) -> 
                 )
                 for w, x, y in zip(lap_wps, wx, wy):
                     if w["idx"] % 9 == 0:
-                        ax.annotate(
-                            str(w["idx"]), (x, y), fontsize=7, color=color_for(drone_id)
-                        )
+                        ax.annotate(str(w["idx"]), (x, y), fontsize=7, color=color_for(drone_id))
         ax.set_aspect("equal")
         ax.set_xlabel("east (m)")
         ax.set_ylabel("north (m)")
@@ -486,9 +475,7 @@ def write_report(
         if drones[d].of_kind("poif_plan")
     ]
     if len(centers) > 1:
-        spread = max(
-            meters_between(a, b) for i, a in enumerate(centers) for b in centers[i + 1 :]
-        )
+        spread = max(meters_between(a, b) for i, a in enumerate(centers) for b in centers[i + 1 :])
         add(f"Max distance between circle centers: **{spread:.2f} m**\n")
 
     # --- true separation --------------------------------------------------
@@ -558,10 +545,7 @@ def write_report(
                 f"- arrival error vs waypoint: median {errors[len(errors) // 2]:.2f} m,"
                 f" max {errors[-1]:.2f} m"
             )
-            add(
-                f"- leg flight time: median {legs[len(legs) // 2]:.2f}s,"
-                f" max {legs[-1]:.2f}s"
-            )
+            add(f"- leg flight time: median {legs[len(legs) // 2]:.2f}s," f" max {legs[-1]:.2f}s")
             last = arrivals[-1].get("target") or {}
             add(f"- last waypoint reached: lap {last.get('lap')} index {last.get('idx')}")
 
@@ -678,9 +662,7 @@ def write_report(
                     )
                 )
             elif e["kind"] == "hold_blockers_changed":
-                merged.append(
-                    (e["t"], f"d{drone_id} blockers {e['was']} -> {e['now']}")
-                )
+                merged.append((e["t"], f"d{drone_id} blockers {e['was']} -> {e['now']}"))
             else:
                 merged.append((e["t"], f"d{drone_id} POIF COMPLETE"))
 

@@ -246,9 +246,7 @@ class PositionLogger:
                     "reported": getattr(state, "live_position", None),
                     "reported_alt": getattr(state, "live_altitude", None),
                     "drift": (
-                        state.formation_drift()
-                        if hasattr(state, "formation_drift")
-                        else None
+                        state.formation_drift() if hasattr(state, "formation_drift") else None
                     ),
                 }
             )

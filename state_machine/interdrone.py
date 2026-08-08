@@ -1067,14 +1067,10 @@ class Interdrone:
                                 flight_log.event(
                                     "waypoints_recv",
                                     peer=message.sender_id,
-                                    added=flight_log.waypoints_brief(
-                                        message.data["newWaypoints"]
-                                    ),
+                                    added=flight_log.waypoints_brief(message.data["newWaypoints"]),
                                     queued_after=len(state.list_of_waypoints),
                                     checksum=Waypoint.getChecksum(state.list_of_waypoints),
-                                    sender_checksum=message.data[
-                                        "sender_drone_waypoints_checksum"
-                                    ],
+                                    sender_checksum=message.data["sender_drone_waypoints_checksum"],
                                 )
 
                                 # TODO IMPLEMENT CHECKSUM HERE

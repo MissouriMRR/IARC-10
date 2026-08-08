@@ -12,6 +12,7 @@ from flight.waypoint import (
     formation_floor,
     segment_distance,
 )
+
 # state_machine.drone patches the collections aliases dronekit needs on
 # import, so it must come before dronekit.
 from state_machine.drone import (
@@ -159,9 +160,7 @@ async def _broadcast_position(self: POIF, peers: tuple[int, ...]) -> None:
     while True:
         try:
             position = self.drone.vehicle.location.global_relative_frame
-            await self.interdrone.report_position(
-                peers, position.lat, position.lon, position.alt
-            )
+            await self.interdrone.report_position(peers, position.lat, position.lon, position.alt)
             # Also checked in the mission loop; here a breach is caught within a
             # report interval no matter what the loop is doing.
             self.drone.checkSeparation(self.interdrone.drone_states)
@@ -221,9 +220,7 @@ async def _hold_for_lockstep(self: POIF, target: Waypoint, heartbeat) -> None:
 
         if not waiting_logged:
             waiting_logged = True
-            flight_log.event(
-                "sync_wait", target=flight_log.waypoint_brief(target), behind=behind
-            )
+            flight_log.event("sync_wait", target=flight_log.waypoint_brief(target), behind=behind)
 
         now = time.monotonic()
         if now - last_heartbeat >= SYNC_HEARTBEAT_S:
@@ -318,9 +315,7 @@ async def run(self: POIF) -> None:
             )
             last_reached = curWaypoint
             await self.interdrone.reached_waypoint(peers, curWaypoint)
-            flight_log.event(
-                "reached_broadcast", waypoint=flight_log.waypoint_brief(curWaypoint)
-            )
+            flight_log.event("reached_broadcast", waypoint=flight_log.waypoint_brief(curWaypoint))
             if len(circleWaypoints) == 0:
                 break
 
@@ -329,9 +324,7 @@ async def run(self: POIF) -> None:
             # Announce the waypoint we just added, not the one we just left, and
             # send it once — send_new_waypoints already fans out to every peer.
             await self.interdrone.send_new_waypoints(peers, [nextWaypoint])
-            flight_log.event(
-                "waypoint_broadcast", waypoint=flight_log.waypoint_brief(nextWaypoint)
-            )
+            flight_log.event("waypoint_broadcast", waypoint=flight_log.waypoint_brief(nextWaypoint))
             for drone in self.interdrone.drone_states:
                 self.drone.checkForCollision(drone.list_of_waypoints)
 
