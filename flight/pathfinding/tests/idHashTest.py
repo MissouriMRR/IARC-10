@@ -3,6 +3,7 @@ Verification for per-drone node/mine ids (Field.droneNumber-prefixed,
 Field._generateId) and Field.mineHash (order/id-independent, stable across
 expansion, agreeing across drones that share the same mines).
 """
+
 from flight.pathfinding.nodeField.field import Field
 from flight.pathfinding.protoMine import protoMine
 
@@ -37,9 +38,11 @@ def test_ids_start_with_drone_number_and_are_unique():
     all_present = all(i is not None for i in ids)
 
     ok = all_prefixed and all_unique and all_present
-    print(f"test_ids_start_with_drone_number_and_are_unique: count={len(ids)} "
-          f"all_prefixed={all_prefixed} all_unique={all_unique} all_present={all_present} "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_ids_start_with_drone_number_and_are_unique: count={len(ids)} "
+        f"all_prefixed={all_prefixed} all_unique={all_unique} all_present={all_present} "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -70,9 +73,11 @@ def test_different_drones_different_ids_same_hash():
     hashes_match = fieldA.mineHash() == fieldB.mineHash()
 
     ok = ids_disjoint and hashes_match
-    print(f"test_different_drones_different_ids_same_hash: ids_disjoint={ids_disjoint} "
-          f"hashA_prefix={fieldA.mineHash()[:12]} hashB_prefix={fieldB.mineHash()[:12]} "
-          f"hashes_match={hashes_match} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_different_drones_different_ids_same_hash: ids_disjoint={ids_disjoint} "
+        f"hashA_prefix={fieldA.mineHash()[:12]} hashB_prefix={fieldB.mineHash()[:12]} "
+        f"hashes_match={hashes_match} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -116,9 +121,11 @@ def test_hash_stable_across_expand_and_merge():
     after = field.mineHash()
 
     ok = before == after
-    print(f"test_hash_stable_across_expand_and_merge: mines={len(field.mines)} "
-          f"unions={len(field.unionObstacles)} before={before[:12]} after={after[:12]} "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_hash_stable_across_expand_and_merge: mines={len(field.mines)} "
+        f"unions={len(field.unionObstacles)} before={before[:12]} after={after[:12]} "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -136,8 +143,10 @@ def test_hash_accounts_for_mines_inside_unions():
     hash_empty = empty_field.mineHash()
 
     ok = merged and len(nested_mines) == 2 and hash_with_union != hash_empty
-    print(f"test_hash_accounts_for_mines_inside_unions: merged={merged} "
-          f"nested_mine_count={len(nested_mines)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_hash_accounts_for_mines_inside_unions: merged={merged} "
+        f"nested_mine_count={len(nested_mines)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 

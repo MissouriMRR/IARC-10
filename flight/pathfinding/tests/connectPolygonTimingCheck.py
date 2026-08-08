@@ -8,6 +8,7 @@ existed before this change -- none of those were modified except
 connectPolygonObstacle's redundant findClosestNodes gate (a pure dead-code
 removal, not a behavior change), and validPath itself was never touched.
 """
+
 import math
 import random
 import time
@@ -42,6 +43,7 @@ def build_field_and_add(n_obstacles, polys, add_order, connect_fn):
             return
         from flight.pathfinding.nodeField.node import Node
         from flight.pathfinding.nodeField.polygonObstacle import PolygonObstacle
+
         nodeList = [Node(v[0], v[1], False) for v in vertices[:-1]]
         wrapping = True
         newObstacle = PolygonObstacle(vertices, nodeList, wrapping)
@@ -87,7 +89,9 @@ def main():
         _, new_time = build_field_and_add(n, polys, add_order, lambda f, o: f.connectPolygon(o))
 
         speedup = old_time / new_time if new_time > 0 else float("inf")
-        print(f"n={n:3d}  OLD={old_time*1000:8.1f}ms  NEW={new_time*1000:8.1f}ms  speedup={speedup:.2f}x")
+        print(
+            f"n={n:3d}  OLD={old_time*1000:8.1f}ms  NEW={new_time*1000:8.1f}ms  speedup={speedup:.2f}x"
+        )
 
 
 if __name__ == "__main__":

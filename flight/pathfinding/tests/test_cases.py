@@ -18,7 +18,7 @@ mineHistory = "["
 # Paste a past list of mine coords as a string, paste the printed mineHistory outputted previously
 # If wanting to go back to randomized, leave it as empty list7
 
-recordedMineCoords=[] 
+recordedMineCoords = []
 """= [
     (126, 70),
     (78, 128),

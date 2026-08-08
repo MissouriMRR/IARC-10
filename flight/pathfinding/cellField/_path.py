@@ -3,6 +3,7 @@ Path rasterization for CellField: marking every cell a real-world polyline
 passes through, and converting a path into an ordered cell sequence or a
 run-length-compressed list of cardinal (U/D/L/R) block moves.
 """
+
 import math
 from typing import Sequence
 
@@ -65,9 +66,7 @@ class _PathMixin:
         for i in range(len(path) - 1):
             self._mark_segment(path[i], path[i + 1], value)
 
-    def _mark_segment(
-        self, p0: tuple[float, float], p1: tuple[float, float], value: bool
-    ) -> None:
+    def _mark_segment(self, p0: tuple[float, float], p1: tuple[float, float], value: bool) -> None:
         cs_x, cs_y = self._cell_size
         min_x, min_y = self._min_corner
         x0 = (p0[0] - min_x) / cs_x
@@ -314,7 +313,9 @@ class _PathMixin:
 
         cells: list[tuple[int, int]] = []
         for i in range(len(path) - 1):
-            seg_cells = self._segment_cells(path[i], path[i + 1], include_tie_neighbors=include_tie_neighbors)
+            seg_cells = self._segment_cells(
+                path[i], path[i + 1], include_tie_neighbors=include_tie_neighbors
+            )
             if not seg_cells:
                 continue
             if cells and cells[-1] == seg_cells[0]:

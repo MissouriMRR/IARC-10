@@ -3,6 +3,7 @@ CellField's core identity, raw storage, and serialization: construction,
 coordinate conversion, per-cell get/set, and the int<->bytes plumbing every
 other mixin (bitwise ops, fill, path, regions) builds on.
 """
+
 import math
 
 
@@ -42,7 +43,9 @@ class _CoreMixin:
             max_corner = (min_corner[0] + width, min_corner[1] + height)
         self._max_corner = (float(max_corner[0]), float(max_corner[1]))
         if self._max_corner[0] <= self._min_corner[0] or self._max_corner[1] <= self._min_corner[1]:
-            raise ValueError(f"max_corner {self._max_corner} must exceed min_corner {self._min_corner}")
+            raise ValueError(
+                f"max_corner {self._max_corner} must exceed min_corner {self._min_corner}"
+            )
         self._cell_size = (
             (self._max_corner[0] - self._min_corner[0]) / width,
             (self._max_corner[1] - self._min_corner[1]) / height,
@@ -159,7 +162,9 @@ class _CoreMixin:
         # AND/OR/XOR, invert) so a derived field still knows its own extent.
         # type(self), not the literal class name, so this mixin never needs
         # to import the composed CellField class itself.
-        return type(self)(self._width, self._height, self._buffer, self._min_corner, self._max_corner)
+        return type(self)(
+            self._width, self._height, self._buffer, self._min_corner, self._max_corner
+        )
 
     def copy(self):
         new = self._new_like()

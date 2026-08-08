@@ -84,6 +84,7 @@ OR whenever placements will be fed back into accept_image_corner_coord's
 seen-tracking -- the same way real aerial-image surveys never plan for
 exactly 0% overlap either.
 """
+
 import math
 
 
@@ -92,6 +93,7 @@ def _clip_polyline_to_y_range(points, y_lo, y_hi):
     within [y_lo, y_hi], clipping segments that cross a boundary. Mirrors
     what vertical_slice_index does to a rasterized path, but on the
     original geometry -- no cell grid involved."""
+
     def in_range(y):
         return y_lo <= y <= y_hi
 
@@ -146,8 +148,10 @@ def _clip_segment_to_bbox(p0, p1, min_corner, max_corner):
     dx, dy = x1 - x0, y1 - y0
     t_enter, t_exit = 0.0, 1.0
     for p, q in (
-        (-dx, x0 - min_corner[0]), (dx, max_corner[0] - x0),
-        (-dy, y0 - min_corner[1]), (dy, max_corner[1] - y0),
+        (-dx, x0 - min_corner[0]),
+        (dx, max_corner[0] - x0),
+        (-dy, y0 - min_corner[1]),
+        (dy, max_corner[1] - y0),
     ):
         if p == 0:
             if q < 0:
@@ -285,7 +289,11 @@ def _place_along_polyline(points, spacing):
         centers.append((p0[0] + local_t * (p1[0] - p0[0]), p0[1] + local_t * (p1[1] - p0[1])))
         target += spacing
 
-    if not centers or math.hypot(centers[-1][0] - points[-1][0], centers[-1][1] - points[-1][1]) > spacing / 2.0:
+    if (
+        not centers
+        or math.hypot(centers[-1][0] - points[-1][0], centers[-1][1] - points[-1][1])
+        > spacing / 2.0
+    ):
         centers.append(points[-1])
     return centers
 
@@ -333,8 +341,14 @@ def _y_slice_bounds(min_corner, max_corner, drone_id, num_drones):
 
 
 def path_cover(
-    path_points, shape_size, min_corner, max_corner, drone_id, num_drones,
-    overlap: float = 0.0, path_width: float = 0.0,
+    path_points,
+    shape_size,
+    min_corner,
+    max_corner,
+    drone_id,
+    num_drones,
+    overlap: float = 0.0,
+    path_width: float = 0.0,
 ):
     """
     path_points: ordered list of (x, y) real-world waypoints (e.g. from
@@ -413,9 +427,7 @@ def unseen_path_runs(path_points, seen_field):
     last_idx = len(cells) - 1
     for idx, (col, row) in enumerate(cells):
         adjacent = (
-            prev_cell is not None
-            and abs(col - prev_cell[0]) <= 1
-            and abs(row - prev_cell[1]) <= 1
+            prev_cell is not None and abs(col - prev_cell[0]) <= 1 and abs(row - prev_cell[1]) <= 1
         )
         if not adjacent and current:
             runs.append(current)
@@ -439,8 +451,15 @@ def unseen_path_runs(path_points, seen_field):
 
 
 def path_cover_unseen(
-    path_points, seen_field, shape_size, min_corner, max_corner, drone_id, num_drones,
-    overlap: float = 0.0, path_width: float = 0.0,
+    path_points,
+    seen_field,
+    shape_size,
+    min_corner,
+    max_corner,
+    drone_id,
+    num_drones,
+    overlap: float = 0.0,
+    path_width: float = 0.0,
 ):
     """
     Same as path_cover, but only covers the portions of the path that

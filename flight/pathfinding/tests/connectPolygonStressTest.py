@@ -10,6 +10,7 @@ Checks for:
   - unsafe edges: accepted in nodeGraph but actually crossed by a third obstacle
   - false negatives: ground truth says valid but missing from nodeGraph
 """
+
 import math
 import random
 from shapely.geometry import Polygon, LineString
@@ -23,7 +24,10 @@ def make_poly(cx, cy, n, rmin, rmax, rng):
     for i in range(1, len(angs)):
         if angs[i] - angs[i - 1] < 1e-3:
             angs[i] += 1e-3
-    pts = [(cx + rng.uniform(rmin, rmax) * math.cos(a), cy + rng.uniform(rmin, rmax) * math.sin(a)) for a in angs]
+    pts = [
+        (cx + rng.uniform(rmin, rmax) * math.cos(a), cy + rng.uniform(rmin, rmax) * math.sin(a))
+        for a in angs
+    ]
     return list(convex_hull(MultiPoint(pts)).exterior.coords)
 
 
@@ -34,7 +38,9 @@ def valid_layout(polys, min_gap=1e-6):
             return False
     for i in range(len(shp)):
         for j in range(i + 1, len(shp)):
-            if shp[i].exterior.crosses(shp[j].exterior) or shp[i].exterior.overlaps(shp[j].exterior):
+            if shp[i].exterior.crosses(shp[j].exterior) or shp[i].exterior.overlaps(
+                shp[j].exterior
+            ):
                 return False
             if shp[i].distance(shp[j]) < min_gap:
                 return False
@@ -43,7 +49,10 @@ def valid_layout(polys, min_gap=1e-6):
 
 def make_layout(n_obstacles, rng, spread=15.0):
     for _ in range(200):
-        positions = [(rng.uniform(-spread, spread) + 50, rng.uniform(-spread, spread) + 50) for _ in range(n_obstacles)]
+        positions = [
+            (rng.uniform(-spread, spread) + 50, rng.uniform(-spread, spread) + 50)
+            for _ in range(n_obstacles)
+        ]
         polys = []
         for px, py in positions:
             n = rng.randint(3, 7)
@@ -195,7 +204,9 @@ def main():
 
     print(f"Sparse valid trials: {sparse_valid}")
     print(f"Sparse total unsafe edges: {sparse_unsafe}")
-    print(f"Sparse total missing (false-negative) edges: {sparse_missing} / {sparse_truth} true edges")
+    print(
+        f"Sparse total missing (false-negative) edges: {sparse_missing} / {sparse_truth} true edges"
+    )
 
 
 if __name__ == "__main__":

@@ -116,9 +116,13 @@ class _RegionMixin:
             shape_center = (shape_width / 2.0, shape_height / 2.0)
 
         remaining = set(self.on_cells())
-        placed_footprint = set()  # union of every cell any placement so far has covered, including overlap
+        placed_footprint = (
+            set()
+        )  # union of every cell any placement so far has covered, including overlap
         placements = []
-        footprints = []  # this placement's own footprint, kept per-placement (not just merged into placed_footprint) for the off-field center fallback below
+        footprints = (
+            []
+        )  # this placement's own footprint, kept per-placement (not just merged into placed_footprint) for the off-field center fallback below
         while remaining:
             best_offset = None
             best_score = None
@@ -187,7 +191,9 @@ class _RegionMixin:
                 # least one, since it was only chosen to cover an on-field
                 # target cell in the first place).
                 on_field = [
-                    (fx, fy) for fx, fy in footprint if 0 <= fx < self._width and 0 <= fy < self._height
+                    (fx, fy)
+                    for fx, fy in footprint
+                    if 0 <= fx < self._width and 0 <= fy < self._height
                 ]
                 avg_x = sum(fx + 0.5 for fx, fy in on_field) / len(on_field)
                 avg_y = sum(fy + 0.5 for fx, fy in on_field) / len(on_field)

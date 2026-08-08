@@ -9,23 +9,27 @@ import random
 import math
 import bisect
 import random
- 
+
 from shapely.geometry import Polygon, LineString, Point
 from shapely.prepared import prep
 from enum import Enum
 from flight.pathfinding.nodeField.BlockMine import BlockMine
 from flight.pathfinding.nodeField.node import Node
-from flight.pathfinding.nodeField.polygonObstacle import PolygonObstacle, _find_point_tangent, _brute_force_arc, _wrap_angle
+from flight.pathfinding.nodeField.polygonObstacle import (
+    PolygonObstacle,
+    _find_point_tangent,
+    _brute_force_arc,
+    _wrap_angle,
+)
 from flight.pathfinding.nodeField.unionObstacle import unionObstacle
 from flight.pathfinding.protoMine import protoMine
-from shapely import coverage_union, coverage_union_all,unary_union
+from shapely import coverage_union, coverage_union_all, unary_union
 
+SQUARE_SIZE = 2
 
-SQUARE_SIZE=2
 
 # Field generates nodes off of mines, generates mines too
 class Field:
-    
 
     debugPoints = []  # purely for debuging and testing, field will plot these points
 
@@ -58,7 +62,6 @@ class Field:
         self.droneNumber = droneNumber
         self._nextId = 0
 
-
         simCorners = [
             (0, simFieldSizeFT[1]),
             (simFieldSizeFT[0], simFieldSizeFT[1]),
@@ -66,7 +69,7 @@ class Field:
             (simFieldSizeFT[0], 0),
         ]
         self.rawCorners = fieldCorners
-        self.boxes=[[],[]]
+        self.boxes = [[], []]
         # For simulation bounded view
         self.simVertPairLeft = [simCorners[0], simCorners[2]]
         self.simVertPairRight = [simCorners[1], simCorners[3]]
@@ -97,19 +100,17 @@ class Field:
             self.fieldHorzPairLower[0], self.fieldHorzPairLower[1]
         )
 
-        self.floatingNodes =   []# List of floating nodes, necessary so we can connect floating nodes to mines, if mines are created afterwards.
+        self.floatingNodes = (
+            []
+        )  # List of floating nodes, necessary so we can connect floating nodes to mines, if mines are created afterwards.
         self.mines = []
-        self.unionObstacles=[] 
+        self.unionObstacles = []
         self.mineQuadTree = quads.QuadTree(
             (self.xMin + self.xMax / 2, self.yMin + self.yMax / 2), self.xMax, self.yMax
         )  # Used for collision detection, holds mines
 
-        self.polygonObstacles=[]
-        self.fieldConnection=FieldConnections(self)
-        
-
-
-
+        self.polygonObstacles = []
+        self.fieldConnection = FieldConnections(self)
 
     # Every node/mine id issued by this field starts with self.droneNumber
     # and is otherwise a bare sequential counter -- ids carry no positional
@@ -158,14 +159,20 @@ class Field:
         # segments here are usually long (floating node to a tangent point
         # far across the field), but still narrow in one axis, which is
         # exactly what an AABB test is cheap at rejecting.
-        others = [o for o in self.polygonObstacles + self.mines + self.unionObstacles if o is not obstacle]
+        others = [
+            o for o in self.polygonObstacles + self.mines + self.unionObstacles if o is not obstacle
+        ]
         for tangentNode in obstacle.connectFloatingNode(fNode):
             seg_min_x, seg_max_x = min(fNode.x, tangentNode.x), max(fNode.x, tangentNode.x)
             seg_min_y, seg_max_y = min(fNode.y, tangentNode.y), max(fNode.y, tangentNode.y)
             seg = ((fNode.x, fNode.y), (tangentNode.x, tangentNode.y))
             blocked = any(
-                not (seg_max_x < other.xMin or seg_min_x > other.xMax
-                     or seg_max_y < other.yMin or seg_min_y > other.yMax)
+                not (
+                    seg_max_x < other.xMin
+                    or seg_min_x > other.xMax
+                    or seg_max_y < other.yMin
+                    or seg_min_y > other.yMax
+                )
                 and other.intersects(seg)
                 for other in others
             )
@@ -188,8 +195,12 @@ class Field:
         seg_min_y, seg_max_y = min(nodeA.y, nodeB.y), max(nodeA.y, nodeB.y)
         seg = ((nodeA.x, nodeA.y), (nodeB.x, nodeB.y))
         blocked = any(
-            not (seg_max_x < other.xMin or seg_min_x > other.xMax
-                 or seg_max_y < other.yMin or seg_min_y > other.yMax)
+            not (
+                seg_max_x < other.xMin
+                or seg_min_x > other.xMax
+                or seg_max_y < other.yMin
+                or seg_min_y > other.yMax
+            )
             and other.intersects(seg)
             for other in self.polygonObstacles + self.mines + self.unionObstacles
         )
@@ -252,7 +263,7 @@ class Field:
             returnList.append(self.addFloatingNode(pos[0], pos[1], "end"))
         return returnList
 
-    #Returns which competition square a set of coordinates is in.
+    # Returns which competition square a set of coordinates is in.
     def getSquareCoordinates(self, x: float, y: float) -> tuple[int, int]:
         """
         Given a set of coordinates, return which competition square it is in
@@ -265,15 +276,7 @@ class Field:
         squareY = int(y // 2)
         return (squareX, squareY)
 
-
-
-
-        
-
-
-
-
-    def withinField(self, x,y) -> bool:
+    def withinField(self, x, y) -> bool:
 
         # Left line check
         if not (self.isPointRightofLine(self.leftLine, self.leftSlope, (x, y))):
@@ -290,47 +293,46 @@ class Field:
         else:
             return True
 
-    #A union obstacle is made up of two or more regular or mine obstacles
-    #When a union obstacle is created it deletes all connections of it's
-    #constituents's nodes and makes its own for the obstacle.
-    #The constituent nodes still exist, but aren't used for anything.
-    #If a constituent is a mine Obstacle, the expanding nodes function
-    #will search 
-    def mergePolygons(self,polygonObstacleList:list[PolygonObstacle]):
-        polygonList=[]
+    # A union obstacle is made up of two or more regular or mine obstacles
+    # When a union obstacle is created it deletes all connections of it's
+    # constituents's nodes and makes its own for the obstacle.
+    # The constituent nodes still exist, but aren't used for anything.
+    # If a constituent is a mine Obstacle, the expanding nodes function
+    # will search
+    def mergePolygons(self, polygonObstacleList: list[PolygonObstacle]):
+        polygonList = []
         for i in polygonObstacleList:
             for node in i.nodes:
                 self.fieldConnection.purgeConnections(node)
             polygonList.append(i.polygon)
 
-        unionPolygon=unary_union(polygonList)
-        nodes=[]
+        unionPolygon = unary_union(polygonList)
+        nodes = []
         for i in unionPolygon.exterior.coords[:-1]:
-            #print(i)
-            nodes.append(Node(i[0],i[1],False))
-        wrapped=True
+            # print(i)
+            nodes.append(Node(i[0], i[1], False))
+        wrapped = True
 
-        newObstacle=unionObstacle(polygonObstacleList,nodes,wrapped)
-        #self.unionObstacles.append(newObstacle)
-        return newObstacle,wrapped
+        newObstacle = unionObstacle(polygonObstacleList, nodes, wrapped)
+        # self.unionObstacles.append(newObstacle)
+        return newObstacle, wrapped
 
-    def removeObstaclesFromList(self,obstacles):
-        #They are getting sent to the union obstacles
+    def removeObstaclesFromList(self, obstacles):
+        # They are getting sent to the union obstacles
         for i in obstacles:
-            if(isinstance(i,BlockMine)):
+            if isinstance(i, BlockMine):
                 self.mines.remove(i)
-            elif(isinstance(i,unionObstacle)):
+            elif isinstance(i, unionObstacle):
                 self.unionObstacles.remove(i)
             else:
                 self.polygonObstacles.remove(i)
 
-    def checkForObstacleCollisions(self,polygonObstacle):
-        overlaps=[]
-        for i in self.polygonObstacles+self.mines+self.unionObstacles:
-            if(i.obstacleOverlap(polygonObstacle)):
+    def checkForObstacleCollisions(self, polygonObstacle):
+        overlaps = []
+        for i in self.polygonObstacles + self.mines + self.unionObstacles:
+            if i.obstacleOverlap(polygonObstacle):
                 overlaps.append(i)
         return overlaps
-
 
     # Nearest/farthest vertex-to-vertex distance between two obstacles -- cheap
     # (no shapely crossing calls), used to chain obstacles into groups by
@@ -355,18 +357,24 @@ class Field:
     # Retroactively removes existing connections that polygonObstacle now
     # crosses. Split out from connectPolygon so batch callers (expandField)
     # can control exactly when this runs relative to _addOwnConnections.
-    def _cleanupInvalidatedConnections(self,polygonObstacle):
+    def _cleanupInvalidatedConnections(self, polygonObstacle):
         nodeGraph = self.fieldConnection.nodeGraph
-        edges = [(n1, n2) for n1, neighbors in nodeGraph.items() for n2 in neighbors if id(n1) < id(n2)]
+        edges = [
+            (n1, n2) for n1, neighbors in nodeGraph.items() for n2 in neighbors if id(n1) < id(n2)
+        ]
         connectionsToRemove = find_crossed_edges(edges, list(polygonObstacle.vertices[:-1]))
         for i in connectionsToRemove:
-            self.fieldConnection.deleteConnection(i[0],i[1])
+            self.fieldConnection.deleteConnection(i[0], i[1])
 
     # Computes and adds polygonObstacle's own new tangent connections to
     # every other existing obstacle (group/arc occlusion algorithm). Split
     # out from connectPolygon for the same reason as _cleanupInvalidatedConnections.
-    def _addOwnConnections(self,polygonObstacle):
-        others = [o for o in self.polygonObstacles+self.mines+self.unionObstacles if o is not polygonObstacle]
+    def _addOwnConnections(self, polygonObstacle):
+        others = [
+            o
+            for o in self.polygonObstacles + self.mines + self.unionObstacles
+            if o is not polygonObstacle
+        ]
         ranges = {o: self._obstacleDistanceRange(polygonObstacle, o) for o in others}
         sorted_others = sorted(others, key=lambda o: ranges[o][0])
 
@@ -385,7 +393,7 @@ class Field:
                     combined_far = far if combined_far is None else max(combined_far, far)
                 else:
                     break
-            remaining = remaining[len(group):]
+            remaining = remaining[len(group) :]
 
             # up to 4 (selfNode, otherNode) tangent pairs per group member --
             # commonTangents runs for every group member regardless of how
@@ -397,7 +405,9 @@ class Field:
             # an approximation of the arc boundary itself). other's own
             # vertices are never touched -- they got their arcs once, when
             # `other` was added, and are never revisited.
-            new_arcs = {}  # Node -> list of (loAngle, hiAngle, pivotAngle, blockerObstacle, near, far)
+            new_arcs = (
+                {}
+            )  # Node -> list of (loAngle, hiAngle, pivotAngle, blockerObstacle, near, far)
             for other in group:
                 pairs = candidate_pairs[other]
                 if not pairs:
@@ -426,18 +436,37 @@ class Field:
                         loIdx = _find_point_tangent((node.x, node.y), other.vertices, 1, seedLoIdx)
                         hiIdx = _find_point_tangent((node.x, node.y), other.vertices, -1, seedHiIdx)
                         if loIdx is None or hiIdx is None:
-                            loAngle, hiAngle = _brute_force_arc((node.x, node.y), other.vertices, centroid)
+                            loAngle, hiAngle = _brute_force_arc(
+                                (node.x, node.y), other.vertices, centroid
+                            )
                         else:
-                            a1 = _wrap_angle(math.atan2(other.vertices[loIdx][1] - node.y, other.vertices[loIdx][0] - node.x), pivotAngle)
-                            a2 = _wrap_angle(math.atan2(other.vertices[hiIdx][1] - node.y, other.vertices[hiIdx][0] - node.x), pivotAngle)
+                            a1 = _wrap_angle(
+                                math.atan2(
+                                    other.vertices[loIdx][1] - node.y,
+                                    other.vertices[loIdx][0] - node.x,
+                                ),
+                                pivotAngle,
+                            )
+                            a2 = _wrap_angle(
+                                math.atan2(
+                                    other.vertices[hiIdx][1] - node.y,
+                                    other.vertices[hiIdx][0] - node.x,
+                                ),
+                                pivotAngle,
+                            )
                             loAngle, hiAngle = min(a1, a2), max(a1, a2)
-                    new_arcs.setdefault(node, []).append((loAngle, hiAngle, pivotAngle, other, near, far))
+                    new_arcs.setdefault(node, []).append(
+                        (loAngle, hiAngle, pivotAngle, other, near, far)
+                    )
 
             for other in group:
                 for selfNode, otherNode in candidate_pairs[other]:
                     theta = math.atan2(otherNode.y - selfNode.y, otherNode.x - selfNode.x)
-                    overlapping = [e for e in new_arcs.get(selfNode, [])
-                                   if e[3] is not other and arcContains(theta, e[0], e[1], e[2])]
+                    overlapping = [
+                        e
+                        for e in new_arcs.get(selfNode, [])
+                        if e[3] is not other and arcContains(theta, e[0], e[1], e[2])
+                    ]
 
                     blocked = False
                     if overlapping:
@@ -446,10 +475,14 @@ class Field:
 
                     if not blocked:
                         near, far = ranges[other]
-                        blocked = selfNode.crossGroupOccluded(otherNode.x, otherNode.y, near, far, exclude_obstacles={other})
+                        blocked = selfNode.crossGroupOccluded(
+                            otherNode.x, otherNode.y, near, far, exclude_obstacles={other}
+                        )
 
                     if not blocked:
-                        self.fieldConnection.addGraph(selfNode, otherNode)   # bypasses validPath deliberately
+                        self.fieldConnection.addGraph(
+                            selfNode, otherNode
+                        )  # bypasses validPath deliberately
 
             for node, arc_list in new_arcs.items():
                 for entry in arc_list:
@@ -458,23 +491,22 @@ class Field:
     # Preserves the exact original combined behavior (cleanup, then add own
     # connections) for every caller that doesn't need to control the two
     # phases independently.
-    def connectPolygon(self,polygonObstacle):
+    def connectPolygon(self, polygonObstacle):
         self._cleanupInvalidatedConnections(polygonObstacle)
         self._addOwnConnections(polygonObstacle)
 
-    #UNION OBSTACLES MUST BOTH CONNECT THEIR CONVEX HULL AND ACTUAL SHAPE
-    def createPolygonObstacle(self,vertices):
-        start=time.time()
+    # UNION OBSTACLES MUST BOTH CONNECT THEIR CONVEX HULL AND ACTUAL SHAPE
+    def createPolygonObstacle(self, vertices):
+        start = time.time()
 
-
-        if(len(vertices)==2):
+        if len(vertices) == 2:
             return
-        nodeList=[]
+        nodeList = []
         for i in vertices[:-1]:
-            nodeList.append(Node(i[0],i[1],False))
+            nodeList.append(Node(i[0], i[1], False))
 
-        newObstacle=PolygonObstacle(vertices,nodeList,True)
-        self.addObstacle(newObstacle,isWrapping=True)
+        newObstacle = PolygonObstacle(vertices, nodeList, True)
+        self.addObstacle(newObstacle, isWrapping=True)
 
     # Pure geometry/list-bookkeeping merge resolution for ONE obstacle against
     # whatever is CURRENTLY in the field's lists -- no node wiring at all, and
@@ -484,19 +516,19 @@ class Field:
     # too early would make it collide with itself). A non-merged obstacle is
     # also left unplaced -- the caller decides which list it belongs in.
     # Returns (resolvedObstacle, isWrapping, wasMerged).
-    def _resolveOverlaps(self,newObstacle:PolygonObstacle):
-        overlaps=self.checkForObstacleCollisions(newObstacle)
-        if(overlaps):
+    def _resolveOverlaps(self, newObstacle: PolygonObstacle):
+        overlaps = self.checkForObstacleCollisions(newObstacle)
+        if overlaps:
             self.removeObstaclesFromList(overlaps)
-            newObstacle,isWrapping=self.mergePolygons(overlaps+[newObstacle])
-            return newObstacle,isWrapping,True
-        return newObstacle,False,False
+            newObstacle, isWrapping = self.mergePolygons(overlaps + [newObstacle])
+            return newObstacle, isWrapping, True
+        return newObstacle, False, False
 
     # Builds obstacle's own internal (perimeter + convex-hull) node
     # connections only -- never connects it to any OTHER existing obstacle.
     # `wasMerged` controls whether the extra convex-hull chain is also wired
     # (only meaningful for a freshly-merged union).
-    def _selfConnect(self,obstacle:PolygonObstacle,isWrapping:bool,wasMerged:bool):
+    def _selfConnect(self, obstacle: PolygonObstacle, isWrapping: bool, wasMerged: bool):
         # Assign ids to whichever of this obstacle's nodes don't have one
         # yet -- runs here because every obstacle (fresh mine/plain
         # obstacle, or a freshly-merged union with brand new Node instances
@@ -505,48 +537,53 @@ class Field:
         # constituent obstacles keep the ids their own nodes already got
         # when THEY were originally added -- only the union's own new
         # exterior nodes are unassigned at this point.
-        if isinstance(obstacle,BlockMine) and obstacle.id is None:
-            obstacle.id=self._generateId()
+        if isinstance(obstacle, BlockMine) and obstacle.id is None:
+            obstacle.id = self._generateId()
         for node in obstacle.nodes:
             if node.id is None:
-                node.id=self._generateId()
+                node.id = self._generateId()
 
-        convexHullPoints=obstacle.polygon.convex_hull.exterior.coords
+        convexHullPoints = obstacle.polygon.convex_hull.exterior.coords
 
-        #Connect both the convex hull and polygon shape, but don't double connect any two nodes
-        for i in range(len(obstacle.nodes)-1):
+        # Connect both the convex hull and polygon shape, but don't double connect any two nodes
+        for i in range(len(obstacle.nodes) - 1):
 
-            currentNode=obstacle.nodes[i]
-            self.fieldConnection.connectNode(currentNode,obstacle.nodes[i+1])
-        if(isWrapping):
-            self.fieldConnection.connectNode(obstacle.nodes[-1],obstacle.nodes[0])
+            currentNode = obstacle.nodes[i]
+            self.fieldConnection.connectNode(currentNode, obstacle.nodes[i + 1])
+        if isWrapping:
+            self.fieldConnection.connectNode(obstacle.nodes[-1], obstacle.nodes[0])
 
-        if(wasMerged and (len(obstacle.nodes)>2)):
-            currentNodeIndex=0
-            laggingConvexNode=None
-            firstConvexNode=None
+        if wasMerged and (len(obstacle.nodes) > 2):
+            currentNodeIndex = 0
+            laggingConvexNode = None
+            firstConvexNode = None
             for i in convexHullPoints:
-                if(not self.withinField(i[0],i[1])):
+                if not self.withinField(i[0], i[1]):
                     continue
                 while True:
-                    currentNode=obstacle.nodes[currentNodeIndex]
-                    if(currentNode.x==i[0] and currentNode.y==i[1]):
-                        if(laggingConvexNode==None):
-                            firstConvexNode=currentNode
-                        elif(laggingConvexNode in list(self.fieldConnection.nodeGraph.get(currentNode, {}).keys())):
+                    currentNode = obstacle.nodes[currentNodeIndex]
+                    if currentNode.x == i[0] and currentNode.y == i[1]:
+                        if laggingConvexNode == None:
+                            firstConvexNode = currentNode
+                        elif laggingConvexNode in list(
+                            self.fieldConnection.nodeGraph.get(currentNode, {}).keys()
+                        ):
                             pass
-                        elif(not(currentNodeIndex==len(obstacle.nodes)-1 and not isWrapping)):
-                            self.fieldConnection.connectNode(laggingConvexNode,currentNode)
+                        elif not (currentNodeIndex == len(obstacle.nodes) - 1 and not isWrapping):
+                            self.fieldConnection.connectNode(laggingConvexNode, currentNode)
 
-
-                        laggingConvexNode=currentNode
+                        laggingConvexNode = currentNode
                         break
 
-                    currentNodeIndex+=1
-                    currentNodeIndex%=len(obstacle.nodes)
+                    currentNodeIndex += 1
+                    currentNodeIndex %= len(obstacle.nodes)
 
-            if(laggingConvexNode!= None and firstConvexNode!=None and laggingConvexNode!=firstConvexNode):
-                self.fieldConnection.connectNode(laggingConvexNode,firstConvexNode)
+            if (
+                laggingConvexNode != None
+                and firstConvexNode != None
+                and laggingConvexNode != firstConvexNode
+            ):
+                self.fieldConnection.connectNode(laggingConvexNode, firstConvexNode)
 
     # Resolves overlaps/merges for newObstacle and builds the resulting
     # obstacle's own internal (perimeter + convex-hull) connections only --
@@ -557,24 +594,28 @@ class Field:
     # connections (connections *within* one obstacle/union's own nodes are
     # fine and expected here; connections *between* separate obstacles are
     # deliberately deferred to connectPolygon/_addOwnConnections).
-    def _mergeAndSelfConnect(self,newObstacle:PolygonObstacle,isWrapping:bool=False,isMine:bool=False):
-        newObstacle,mergedWrapping,wasMerged=self._resolveOverlaps(newObstacle)
-        if(wasMerged):
+    def _mergeAndSelfConnect(
+        self, newObstacle: PolygonObstacle, isWrapping: bool = False, isMine: bool = False
+    ):
+        newObstacle, mergedWrapping, wasMerged = self._resolveOverlaps(newObstacle)
+        if wasMerged:
             self.unionObstacles.append(newObstacle)
-            isWrapping=mergedWrapping
-        elif(isMine):
+            isWrapping = mergedWrapping
+        elif isMine:
             self.mines.append(newObstacle)
         else:
             self.polygonObstacles.append(newObstacle)
 
-        self._selfConnect(newObstacle,isWrapping,wasMerged)
+        self._selfConnect(newObstacle, isWrapping, wasMerged)
         return newObstacle
 
     # Preserves the exact original combined behavior (merge + self-connect,
     # then connect to every other obstacle) for every caller that doesn't
     # need to control the two phases independently.
-    def addObstacle(self,newObstacle:PolygonObstacle,isWrapping:bool=False,isMine:bool=False):
-        newObstacle=self._mergeAndSelfConnect(newObstacle,isWrapping,isMine)
+    def addObstacle(
+        self, newObstacle: PolygonObstacle, isWrapping: bool = False, isMine: bool = False
+    ):
+        newObstacle = self._mergeAndSelfConnect(newObstacle, isWrapping, isMine)
         self.connectPolygon(newObstacle)
         # Mirror image of the connect-to-existing-obstacles loop in
         # addFloatingNode: a floating node (e.g. a start/end node) placed
@@ -585,21 +626,21 @@ class Field:
         for fNode in self.floatingNodes:
             self._connectFloatingNodeToObstacle(newObstacle, fNode)
 
-    def addFromProtoMine(self,protoMine:protoMine):
-        if(len(protoMine.nodeVertices)==0):
+    def addFromProtoMine(self, protoMine: protoMine):
+        if len(protoMine.nodeVertices) == 0:
             return
-        newMine=BlockMine(protoMine.nodeVertices,origin=tuple(protoMine.mineLocation))
-        self.addObstacle(newMine,isWrapping=True,isMine=True)
+        newMine = BlockMine(protoMine.nodeVertices, origin=tuple(protoMine.mineLocation))
+        self.addObstacle(newMine, isWrapping=True, isMine=True)
 
     # Recursively finds every live BlockMine within a list of obstacles,
     # descending into any nested unionObstacle's own obstacleList (a union
     # can itself be a constituent of a later union).
-    def _collect_mines(self,obstacle_list):
-        found=[]
+    def _collect_mines(self, obstacle_list):
+        found = []
         for o in obstacle_list:
-            if isinstance(o,BlockMine):
+            if isinstance(o, BlockMine):
                 found.append(o)
-            elif isinstance(o,unionObstacle):
+            elif isinstance(o, unionObstacle):
                 found.extend(self._collect_mines(o.obstacleList))
         return found
 
@@ -639,21 +680,21 @@ class Field:
     #      cleanup pass runs while the graph is smaller (before this round's
     #      new tangent connections exist), whereas add-then-cleanup's
     #      cleanup pass runs against the larger, already-grown graph.
-    def expandField(self,distance):
-        standalone_mines=list(self.mines)
-        affected_unions=[u for u in self.unionObstacles if self._collect_mines(u.obstacleList)]
+    def expandField(self, distance):
+        standalone_mines = list(self.mines)
+        affected_unions = [u for u in self.unionObstacles if self._collect_mines(u.obstacleList)]
 
         if not standalone_mines and not affected_unions:
             return
 
-        all_expanded_mines=list(standalone_mines)
+        all_expanded_mines = list(standalone_mines)
 
         for mine in standalone_mines:
             for node in mine.nodes:
                 self.fieldConnection.purgeConnections(node)
             self.mines.remove(mine)
 
-        union_constituents=[]
+        union_constituents = []
         for u in affected_unions:
             for node in u.nodes:
                 self.fieldConnection.purgeConnections(node)
@@ -667,23 +708,23 @@ class Field:
         # MERGE PASS -- fixed-point resolution (geometry/list bookkeeping
         # only; see the phase-2 note above the method for why a one-shot
         # scan isn't enough).
-        isMineFlag={id(m):True for m in standalone_mines}
+        isMineFlag = {id(m): True for m in standalone_mines}
         for o in union_constituents:
-            isMineFlag.setdefault(id(o),isinstance(o,BlockMine))
+            isMineFlag.setdefault(id(o), isinstance(o, BlockMine))
 
-        pending=list(standalone_mines)+list(union_constituents)
+        pending = list(standalone_mines) + list(union_constituents)
         while pending:
-            obj=pending.pop()
-            obj,_,wasMerged=self._resolveOverlaps(obj)
+            obj = pending.pop()
+            obj, _, wasMerged = self._resolveOverlaps(obj)
             if wasMerged:
                 # Re-check the merged shape itself -- it may in turn overlap
                 # something else (possibly another already-settled batch
                 # item, which checkForObstacleCollisions will now find since
                 # it's sitting in the field's lists).
                 pending.append(obj)
-            elif isinstance(obj,unionObstacle):
+            elif isinstance(obj, unionObstacle):
                 self.unionObstacles.append(obj)
-            elif isMineFlag.get(id(obj),False):
+            elif isMineFlag.get(id(obj), False):
                 self.mines.append(obj)
             else:
                 self.polygonObstacles.append(obj)
@@ -692,8 +733,8 @@ class Field:
         # lists rather than trusting individual merge results, since a mine
         # resolved early in the fixed-point loop above may have since been
         # dissolved into a union formed by a later item in the same pass.
-        expanded_ids={id(m) for m in all_expanded_mines}
-        final_affected=[m for m in self.mines if id(m) in expanded_ids]
+        expanded_ids = {id(m) for m in all_expanded_mines}
+        final_affected = [m for m in self.mines if id(m) in expanded_ids]
         for u in self.unionObstacles:
             if any(id(m) in expanded_ids for m in self._collect_mines(u.obstacleList)):
                 final_affected.append(u)
@@ -703,7 +744,7 @@ class Field:
         # the fixed-point merge pass above guarantees no node can end up
         # sitting inside a foreign, still-unmerged obstacle.
         for o in final_affected:
-            self._selfConnect(o,True,isinstance(o,unionObstacle))
+            self._selfConnect(o, True, isinstance(o, unionObstacle))
 
         for o in final_affected:
             self._cleanupInvalidatedConnections(o)
@@ -828,7 +869,9 @@ class Field:
 
             # Mark every node with a small circle, colored by its obstacle if it belongs to one,
             # and overlay its index within that obstacle's node list when it has one
-            plt.plot(node.x, node.y, "o", color=nodeObstacleColor.get(node, (0, 0, 0)), markersize=4)
+            plt.plot(
+                node.x, node.y, "o", color=nodeObstacleColor.get(node, (0, 0, 0)), markersize=4
+            )
             if node in nodeObstacleIndex:
                 plt.text(
                     node.x,
@@ -872,7 +915,9 @@ class Field:
         xlabel += "\nDark Gray = Field Boundary"
         xlabel += "\nX = Obstacles' centers"
         xlabel += "\nO = Node, colored by obstacle; number = index within its obstacle's node list"
-        xlabel += "\nColored outline = obstacle's own vertices/edges (separate from node connections)"
+        xlabel += (
+            "\nColored outline = obstacle's own vertices/edges (separate from node connections)"
+        )
         # If a path is passed in, display the path as a black line
         if len(path) > 0:
             for i, node in enumerate(path):
@@ -917,9 +962,6 @@ class Field:
         plt.xlabel(xlabel)
         plt.show()
         print("Done displaying field.")
-        
-
-
 
     def graphAtRadius(self, radius: int):
         shallowCopy = self.nodeGraph.copy()
@@ -936,6 +978,7 @@ class Field:
 
     def increaseRadius(self, step: int):
         pass
+
     @staticmethod  # Given two points, get the line equation and slope (to determine negative or positive slope)
     def getLine(point1: tuple, point2: tuple) -> tuple[Callable[[float], float], float]:
         """
@@ -1094,9 +1137,6 @@ class Field:
         return False
 
 
-
-
-
 class seg(Enum):
     ARC = 1
     LINE = 2
@@ -1104,23 +1144,22 @@ class seg(Enum):
 
 class FieldConnections:
 
-    def __init__(self, field:"Field",mineRadius: float = -1):
+    def __init__(self, field: "Field", mineRadius: float = -1):
         self.nodeGraph = {}
-        self.field=field
+        self.field = field
         """
         self.mineRadius = (
             mineRadius if mineRadius != -1 else Mine.radius
         )  # Default to the first mine's radius if not specified, but should be updated to a more dynamic value
-       
+
 
         self.distance = self.updateDistance()
 
         # checking for a valid path and updating the graph must be done manually
         """
 
-    
-    def getConnectionType(self,node1,node2):
-        connectionType=None
+    def getConnectionType(self, node1, node2):
+        connectionType = None
         if node1.parentMine != node2.parentMine or node1.floating or node2.floating:
             connectionType = seg.LINE
         else:
@@ -1135,11 +1174,11 @@ class FieldConnections:
         else:
             connectionType = seg.LINE
         return connectionType
-    
+
     # DISTANCE
-    def getDistance(self,node1,node2):
+    def getDistance(self, node1, node2):
         distance = 0.0
-        connectionType=self.getConnectionType(node1,node2)
+        connectionType = self.getConnectionType(node1, node2)
         if connectionType == seg.ARC:  # Nodes are on the same mine
 
             # Get two different angle differences, one for major arc, the other for minor arc
@@ -1154,9 +1193,7 @@ class FieldConnections:
             distance = angleTheta * mineRadius
 
         else:  # Nodes are on seperate mines
-            distance = np.sqrt(
-                (node1.x - node2.x) ** 2 + (node1.y - node2.y) ** 2
-            )
+            distance = np.sqrt((node1.x - node2.x) ** 2 + (node1.y - node2.y) ** 2)
             distance = float(distance)
         return distance
 
@@ -1169,24 +1206,28 @@ class FieldConnections:
     Node3: {Node1:ConnectionObj 1<->3}
     }
     """
-        # Establishes a connection between nodes
+
+    # Establishes a connection between nodes
     # Does not add it to the nodegraph yet however
-    def connectNode(self, node1,node2) -> bool:
+    def connectNode(self, node1, node2) -> bool:
         if node1 == node2:
             raise TypeError("Same nodes")
-        validPath=self.validPath(node1,node2)
+        validPath = self.validPath(node1, node2)
         if validPath:
-            self.addGraph(node1,node2)
+            self.addGraph(node1, node2)
         return validPath
-    
-    def addGraph(self,node1,node2):
+
+    def addGraph(self, node1, node2):
         # Floating nodes (start/end points) are allowed to sit outside the
         # field boundary and to connect from there -- the bounds gate below
         # only applies to connections where neither endpoint is floating.
         if not (node1.floating or node2.floating):
-            if not (self.field.withinField(node1.x, node1.y) and self.field.withinField(node2.x, node2.y)):
+            if not (
+                self.field.withinField(node1.x, node1.y)
+                and self.field.withinField(node2.x, node2.y)
+            ):
                 return
-        distance=self.getDistance(node1,node2)
+        distance = self.getDistance(node1, node2)
         if node1 not in self.nodeGraph:
             self.nodeGraph.update({node1: {node2: distance}})
 
@@ -1208,17 +1249,17 @@ class FieldConnections:
         #     print("node2 is in field.nodeGraph AND node1 in node2's nodeGraph")
         #     print("Something Broke")
 
-    def purgeConnections(self,node1):
-        if(node1 not in self.nodeGraph.keys()):
+    def purgeConnections(self, node1):
+        if node1 not in self.nodeGraph.keys():
             return
-        connections=list(self.nodeGraph[node1].keys())
-        
+        connections = list(self.nodeGraph[node1].keys())
+
         for i in connections:
-            self.deleteConnection(node1,i)
-    def deleteConnection(self,node1,node2):
+            self.deleteConnection(node1, i)
+
+    def deleteConnection(self, node1, node2):
         purgeNodes = False
 
-        
         field = self.field
         purgeNodes = False
 
@@ -1227,23 +1268,23 @@ class FieldConnections:
                 del self.nodeGraph[node1][node2]
             if len(self.nodeGraph[node1]) == 0 and purgeNodes:
                 del self.nodeGraph[node1]
-                #node1.deleteNode()
+                # node1.deleteNode()
         else:
             pass
-            #node1.deleteNode()
+            # node1.deleteNode()
 
         if node2 in self.nodeGraph:
             if node1 in self.nodeGraph[node2]:
                 del self.nodeGraph[node2][node1]
             if len(self.nodeGraph[node2]) == 0 and purgeNodes:
                 del self.nodeGraph[node2]
-                #node2.deleteNode()
+                # node2.deleteNode()
         else:
             pass
-            #node2.deleteNode()
-
+            # node2.deleteNode()
 
         # Run this to remove nodes that have no associated connection, ie, {node: None}
+
     def cleanNodeGraph(self):
         """
         Removes nodes that have no associated connection from the node graph
@@ -1258,13 +1299,12 @@ class FieldConnections:
         else:
             print("Node graph is empty")
 
-
     # Checks if a newly created path is valid, checks all mines for collisions
-    def validPath(self,node1,node2):
-        
+    def validPath(self, node1, node2):
+
         if node1 == node2:
             return False
-        
+
         x1 = float(node1.x)
         y1 = float(node1.y)
         x2 = float(node2.x)
@@ -1297,8 +1337,8 @@ class FieldConnections:
 
         """
         # Connection intersecting mine test
-        
-        if self.getConnectionType(node1,node2) == seg.LINE:
+
+        if self.getConnectionType(node1, node2) == seg.LINE:
             pass
             """
             boundingBox = quads.BoundingBox(
@@ -1349,10 +1389,12 @@ class FieldConnections:
                     if n2distance <= mine.radius:
                         return False
             """
-        for polygonObstacle in self.field.polygonObstacles+self.field.mines+self.field.unionObstacles:
+        for polygonObstacle in (
+            self.field.polygonObstacles + self.field.mines + self.field.unionObstacles
+        ):
 
             if polygonObstacle.intersects(((x1, y1), (x2, y2))):
-                #print("Polygon Obstacle Intersected")
+                # print("Polygon Obstacle Intersected")
                 return False
         """
         if self.connectionType == seg.ARC:
@@ -1378,7 +1420,7 @@ class FieldConnections:
         return True
 
     # checks if a path collides with a specific mine
-    def mineNodeCollision(self, mine,node1,node2) -> bool:
+    def mineNodeCollision(self, mine, node1, node2) -> bool:
         if node1 == node2:
             return True
 
@@ -1386,7 +1428,7 @@ class FieldConnections:
         y1 = float(node1.y)
         x2 = float(node2.x)
         y2 = float(node2.y)
-        if self.getConnectionType(node1,node2) == seg.LINE:
+        if self.getConnectionType(node1, node2) == seg.LINE:
 
             x3 = mine.x
             y3 = mine.y
@@ -1439,12 +1481,12 @@ class FieldConnections:
 
         return False
 
-
     def __str__(self):
         return f"{self.node1} <-> {self.node2}"
 
     def __repr__(self):
         return self.__str__()
+
 
 def _link():
     # Dead code path -- never called (its only caller, nodeField/__init__.py,
@@ -1456,23 +1498,25 @@ def _link():
     from flight.pathfinding.nodeField import node as n
     from flight.pathfinding.nodeField import node_connection as nc
     from flight.newPathfinding import diamondMine as dM
+
     global Mine, FieldConnections, Node, MineNode, seg, Field, BlockyObstacle
     Mine = m.Mine
     FieldConnections = nc.Connection
     Node = n.Node
     MineNode = n.MineNode
     seg = nc.seg
-    BlockyObstacle=dM.BlockyObstacle
+    BlockyObstacle = dM.BlockyObstacle
+
 
 def _in_circle(c, p, eps=1e-9):
     return math.hypot(p[0] - c[0], p[1] - c[1]) <= c[2] + eps + 1e-12 * c[2]
- 
- 
+
+
 def _circle_from_two(a, b):
     cx, cy = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
     return (cx, cy, math.hypot(a[0] - b[0], a[1] - b[1]) / 2.0)
- 
- 
+
+
 def _circle_from_three(a, b, c):
     ax, ay = a
     bx, by = b
@@ -1494,8 +1538,8 @@ def _circle_from_three(a, b, c):
     ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d
     uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d
     return (ux, uy, math.hypot(ux - ax, uy - ay))
- 
- 
+
+
 def minimum_enclosing_circle(points):
     """Return (cx, cy, r) of the smallest circle enclosing all `points`."""
     pts = [(float(p[0]), float(p[1])) for p in points]
@@ -1513,8 +1557,8 @@ def minimum_enclosing_circle(points):
                         if not _in_circle(c, s):
                             c = _circle_from_three(p, q, s)
     return c
- 
- 
+
+
 # --------------------------------------------------------------------------- #
 # Angular interval query on a sorted list of angles in [0, 2*pi)
 # --------------------------------------------------------------------------- #
@@ -1527,8 +1571,8 @@ def _angular_query(vals, idx, lo, hi):
     left = bisect.bisect_left(vals, lo)
     right = bisect.bisect_right(vals, hi)
     return idx[left:] + idx[:right]
- 
- 
+
+
 # --------------------------------------------------------------------------- #
 # Main routine
 # --------------------------------------------------------------------------- #
@@ -1538,7 +1582,7 @@ def find_colliding_pairs(nodes, obstacle):
     ----------
     nodes : list of objects each exposing ``.x`` and ``.y``
     obstacle : list of (x, y) vertices describing a polygon
- 
+
     Returns
     -------
     list of (node_a, node_b) tuples whose connecting segment intersects the obstacle.
@@ -1546,15 +1590,15 @@ def find_colliding_pairs(nodes, obstacle):
     n = len(nodes)
     if n < 2:
         return []
- 
+
     cx, cy, R = minimum_enclosing_circle(obstacle)
- 
+
     poly = Polygon(obstacle)
     prepared = prep(poly)  # speeds up repeated .intersects() calls
- 
+
     TWO_PI = 2.0 * math.pi
     PAD = 1e-9  # inclusive-boundary safety margin; only ever adds candidates
- 
+
     # polar coordinates of every node about the circle centre
     radius = [0.0] * n
     angle = [0.0] * n
@@ -1563,22 +1607,22 @@ def find_colliding_pairs(nodes, obstacle):
         dy = nd.y - cy
         radius[i] = math.hypot(dx, dy)
         angle[i] = math.atan2(dy, dx) % TWO_PI
- 
+
     # angle-sorted arrays for interval queries
     by_angle = sorted(range(n), key=lambda i: angle[i])
     ang_vals = [angle[i] for i in by_angle]
     ang_idx = by_angle
- 
+
     # closest-first processing order; tie-break by index so each pair has one owner
     order = sorted(range(n), key=lambda i: (radius[i], i))
     rank = [0] * n
     for pos, i in enumerate(order):
         rank[i] = pos
- 
+
     results = []
     for i in order:
         r_i = radius[i]
- 
+
         # window half-width beta = 2 * arcsin(R / d); inside the circle -> full sweep
         if r_i <= R:
             candidates = ang_idx
@@ -1591,7 +1635,7 @@ def find_colliding_pairs(nodes, obstacle):
                 lo = (centre - beta) % TWO_PI
                 hi = (centre + beta) % TWO_PI
                 candidates = _angular_query(ang_vals, ang_idx, lo, hi)
- 
+
         node_i = nodes[i]
         rank_i = rank[i]
         for j in candidates:

@@ -6,6 +6,7 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
+
 # Mine/Connection no longer exist under this name -- replaced by BlockMine
 # and FieldConnections respectively (see nodeField/field.py). Only Node/seg
 # are still referenced at module-load time (as type hints below); Mine/

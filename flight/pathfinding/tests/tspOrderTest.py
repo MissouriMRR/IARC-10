@@ -13,6 +13,7 @@ session -- unrelated to these functions, which only use `math`). Stubbing
 those two modules in sys.modules lets us import and test in isolation
 without either fixing or being blocked by that unrelated breakage.
 """
+
 import sys
 import math
 import random
@@ -26,7 +27,13 @@ for _name in ("flight.pathfinding.path_subdivision", "flight.pathfinding.utils.s
     stub.remove_extra_coords = lambda *a, **k: None
     sys.modules[_name] = stub
 
-from flight.pathfinder import order_waypoints, path_length, node_path_length, _tour_length, _nearest_neighbor_tour
+from flight.pathfinder import (
+    order_waypoints,
+    path_length,
+    node_path_length,
+    _tour_length,
+    _nearest_neighbor_tour,
+)
 
 
 class _FakeNode:
@@ -91,9 +98,11 @@ def test_beats_input_order_and_single_start_nearest_neighbor():
     beats_single_start_nn = result_length <= single_start_length + 1e-6
 
     ok = beats_input_order and beats_single_start_nn
-    print(f"test_beats_input_order_and_single_start_nearest_neighbor: "
-          f"input_order={input_order_length:.1f} single_start_nn={single_start_length:.1f} "
-          f"result={result_length:.1f} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_beats_input_order_and_single_start_nearest_neighbor: "
+        f"input_order={input_order_length:.1f} single_start_nn={single_start_length:.1f} "
+        f"result={result_length:.1f} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -115,8 +124,10 @@ def test_close_to_brute_force_optimal_for_small_n():
         within_slack = result_length <= optimal * 1.15 + 1e-6
         if not within_slack:
             all_ok = False
-            print(f"  seed={seed} n={n} optimal={optimal:.2f} result={result_length:.2f} "
-                  f"ratio={result_length/optimal:.3f}")
+            print(
+                f"  seed={seed} n={n} optimal={optimal:.2f} result={result_length:.2f} "
+                f"ratio={result_length/optimal:.3f}"
+            )
 
     print(f"test_close_to_brute_force_optimal_for_small_n: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
@@ -188,8 +199,10 @@ def test_path_length_order_dependent():
     forward = path_length(coords)
     shuffled = path_length([coords[0], coords[2], coords[1], coords[3]])
     ok = abs(forward - shuffled) > 1e-6
-    print(f"test_path_length_order_dependent: forward={forward:.2f} shuffled={shuffled:.2f} "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_path_length_order_dependent: forward={forward:.2f} shuffled={shuffled:.2f} "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -201,8 +214,10 @@ def test_ordered_path_is_never_longer_than_input_order():
         n = rng.randint(3, 25)
         coords = [(rng.uniform(0, 100), rng.uniform(0, 100)) for _ in range(n)]
         if path_length(order_waypoints(coords)) > path_length(coords) + 1e-6:
-            print(f"  n={n} ordered={path_length(order_waypoints(coords)):.2f} "
-                  f"input={path_length(coords):.2f}")
+            print(
+                f"  n={n} ordered={path_length(order_waypoints(coords)):.2f} "
+                f"input={path_length(coords):.2f}"
+            )
             print("test_ordered_path_is_never_longer_than_input_order: -> FAIL")
             return False
     print("test_ordered_path_is_never_longer_than_input_order: -> PASS")

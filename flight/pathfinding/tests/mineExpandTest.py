@@ -2,6 +2,7 @@
 Verification for completed mine support: BlockMine construction via
 addFromProtoMine, and Field.expandField's teardown/expand/rebuild cycle.
 """
+
 import math
 from shapely.geometry import LineString
 
@@ -61,8 +62,10 @@ def check_safety(field, label):
     unsafe = actual - truth
     missing = truth - actual
     ok = len(unsafe) == 0
-    print(f"  [{label}] unsafe={len(unsafe)} missing={len(missing)} true_edges={len(truth)} -> "
-          f"{'PASS' if ok else 'FAIL'}")
+    print(
+        f"  [{label}] unsafe={len(unsafe)} missing={len(missing)} true_edges={len(truth)} -> "
+        f"{'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -73,10 +76,14 @@ def test_basic_construction():
     field.addFromProtoMine(pm)
 
     has_mine = len(field.mines) == 1 and isinstance(field.mines[0], BlockMine)
-    connected = all(len(field.fieldConnection.nodeGraph.get(n, {})) > 0 for n in field.mines[0].nodes)
+    connected = all(
+        len(field.fieldConnection.nodeGraph.get(n, {})) > 0 for n in field.mines[0].nodes
+    )
     safe = check_safety(field, "basic_construction")
     passed = has_mine and connected and safe
-    print(f"test_basic_construction: has_mine={has_mine} connected={connected} -> {'PASS' if passed else 'FAIL'}")
+    print(
+        f"test_basic_construction: has_mine={has_mine} connected={connected} -> {'PASS' if passed else 'FAIL'}"
+    )
     return passed
 
 
@@ -99,8 +106,10 @@ def test_expand_standalone_repeated():
     grew_each_time = all(areas[i] < areas[i + 1] for i in range(len(areas) - 1))
     safe = check_safety(field, "expand_standalone_repeated")
     passed = grew_each_time and safe
-    print(f"test_expand_standalone_repeated: areas={[round(a,1) for a in areas]} grew_each_time={grew_each_time} "
-          f"-> {'PASS' if passed else 'FAIL'}")
+    print(
+        f"test_expand_standalone_repeated: areas={[round(a,1) for a in areas]} grew_each_time={grew_each_time} "
+        f"-> {'PASS' if passed else 'FAIL'}"
+    )
     return passed
 
 
@@ -117,8 +126,10 @@ def test_expand_triggers_new_merge():
     merged = after_unions > before_unions
     safe = check_safety(field, "expand_triggers_new_merge")
     passed = merged and safe
-    print(f"test_expand_triggers_new_merge: before_unions={before_unions} after_unions={after_unions} "
-          f"-> {'PASS' if passed else 'FAIL'}")
+    print(
+        f"test_expand_triggers_new_merge: before_unions={before_unions} after_unions={after_unions} "
+        f"-> {'PASS' if passed else 'FAIL'}"
+    )
     return passed
 
 
@@ -134,8 +145,10 @@ def test_expand_on_already_merged_mine():
     still_valid = (len(field.unionObstacles) >= 1) or (len(field.mines) == 1)
     safe = check_safety(field, "expand_on_already_merged_mine")
     passed = started_merged and still_valid and safe
-    print(f"test_expand_on_already_merged_mine: started_merged={started_merged} "
-          f"still_valid_after={still_valid} -> {'PASS' if passed else 'FAIL'}")
+    print(
+        f"test_expand_on_already_merged_mine: started_merged={started_merged} "
+        f"still_valid_after={still_valid} -> {'PASS' if passed else 'FAIL'}"
+    )
     return passed
 
 

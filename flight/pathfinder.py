@@ -24,6 +24,7 @@ from flight.pathfinding.cellField.cellField import CellField
 from flight.pathfinding.protoMine import protoMine
 from flight.pathfinding.path_cover import path_cover_unseen, _normalize_shape_size
 from flight.pathfinding.mineCellField import build_mine_cell_field
+
 simWidth = 100
 
 
@@ -49,7 +50,9 @@ def _tour_length(coords: list[tuple[float, float]], tour: list[int]) -> float:
     return sum(_dist(coords[tour[i]], coords[tour[i + 1]]) for i in range(len(tour) - 1))
 
 
-def _two_opt(coords: list[tuple[float, float]], tour: list[int], max_passes: int = 200) -> list[int]:
+def _two_opt(
+    coords: list[tuple[float, float]], tour: list[int], max_passes: int = 200
+) -> list[int]:
     # Classic 2-opt for an OPEN path (no closing edge back to the start):
     # for each pair of edges (tour[i],tour[i+1]) and (tour[j],tour[j+1]),
     # check whether reversing the segment between them shortens the path
@@ -74,7 +77,7 @@ def _two_opt(coords: list[tuple[float, float]], tour: list[int], max_passes: int
                     old_cost += _dist(coords[c], coords[d])
                     new_cost += _dist(coords[b], coords[d])
                 if new_cost < old_cost - 1e-9:
-                    tour[i + 1:j + 1] = reversed(tour[i + 1:j + 1])
+                    tour[i + 1 : j + 1] = reversed(tour[i + 1 : j + 1])
                     improved = True
                     break
             if improved:
@@ -84,7 +87,9 @@ def _two_opt(coords: list[tuple[float, float]], tour: list[int], max_passes: int
     return tour
 
 
-def _find_matching_index(coords: list[tuple[float, float]], point: tuple[float, float], tol: float = 1e-6) -> int | None:
+def _find_matching_index(
+    coords: list[tuple[float, float]], point: tuple[float, float], tol: float = 1e-6
+) -> int | None:
     for i, c in enumerate(coords):
         if abs(c[0] - point[0]) <= tol and abs(c[1] - point[1]) <= tol:
             return i
@@ -167,7 +172,9 @@ def path_length(coords: list[tuple[float, float]]) -> float:
     return sum(_dist(coords[i], coords[i + 1]) for i in range(len(coords) - 1))
 
 
-def _footprint_box(cx: float, cy: float, along_ft: float, across_ft: float) -> tuple[float, float, float, float]:
+def _footprint_box(
+    cx: float, cy: float, along_ft: float, across_ft: float
+) -> tuple[float, float, float, float]:
     """The axis-aligned (x0, y0, x1, y1) rectangle a photo taken at (cx, cy)
     would actually cover -- `along` (parallel to the direction of travel)
     maps to y, `across` (perpendicular to it) maps to x, matching the same
@@ -180,7 +187,9 @@ def _footprint_box(cx: float, cy: float, along_ft: float, across_ft: float) -> t
     return cx - half_across, cy - half_along, cx + half_across, cy + half_along
 
 
-def _footprint_corners(cx: float, cy: float, along_ft: float, across_ft: float) -> list[tuple[float, float]]:
+def _footprint_corners(
+    cx: float, cy: float, along_ft: float, across_ft: float
+) -> list[tuple[float, float]]:
     """Same rectangle as _footprint_box, as an explicit corner-point
     polygon -- for callers (e.g. accept_image_corner_coord-style code) that
     need actual corner coordinates rather than a box."""
@@ -199,9 +208,9 @@ def node_path_length(nodePath) -> float:
     return path_length([(n.x, n.y) for n in nodePath])
 
 
-WIDTHOFSQUARE=2
-WIDTHOFFIELD=80
-HEIGHTOFFIELD=300
+WIDTHOFSQUARE = 2
+WIDTHOFFIELD = 80
+HEIGHTOFFIELD = 300
 
 # Default hysteresis margin for get_shortest_path's ending-node choice (a
 # fraction of the true-best route length) -- see its docstring. 0.03 (3%)
@@ -209,12 +218,19 @@ HEIGHTOFFIELD=300
 # ending nodes on a ~300ft-long field while still switching for a genuine
 # multi-foot detour around a real obstruction.
 PATH_HYSTERESIS_TOLERANCE = 0.03
+
+
 class Pathfinder:
     def __init__(
-        self, real_corner_coords: tuple[tuple[float, float]], altitude: float, fov_deg: float, droneID:int, numOfDrones:int
+        self,
+        real_corner_coords: tuple[tuple[float, float]],
+        altitude: float,
+        fov_deg: float,
+        droneID: int,
+        numOfDrones: int,
     ):
-        self.droneID=droneID
-        self.numOfDrones=numOfDrones
+        self.droneID = droneID
+        self.numOfDrones = numOfDrones
         self.SIM_WIDTH: float = (
             2  # Confirm with nat what this is exactly, this should be an internal constant
         )
@@ -286,35 +302,38 @@ class Pathfinder:
         ]
         self.nodeField = Field(self.arb_field_size, field_corners, droneNumber=self.droneID)
         self.mineFieldTracker = CellField(
-            WIDTHOFFIELD // WIDTHOFSQUARE, HEIGHTOFFIELD // WIDTHOFSQUARE,
+            WIDTHOFFIELD // WIDTHOFSQUARE,
+            HEIGHTOFFIELD // WIDTHOFSQUARE,
             max_corner=(WIDTHOFFIELD, HEIGHTOFFIELD),
         )
 
         self.seen_tracker = CellField(
-            WIDTHOFFIELD // WIDTHOFSQUARE, HEIGHTOFFIELD // WIDTHOFSQUARE,
+            WIDTHOFFIELD // WIDTHOFSQUARE,
+            HEIGHTOFFIELD // WIDTHOFSQUARE,
             max_corner=(WIDTHOFFIELD, HEIGHTOFFIELD),
         )  # This is a placeholder, replace with the actual SightTracker object
 
         self.path_tracker = CellField(
-            WIDTHOFFIELD // WIDTHOFSQUARE, HEIGHTOFFIELD // WIDTHOFSQUARE,
+            WIDTHOFFIELD // WIDTHOFSQUARE,
+            HEIGHTOFFIELD // WIDTHOFSQUARE,
             max_corner=(WIDTHOFFIELD, HEIGHTOFFIELD),
         )  # This is a placeholder, replace with the actual SightTracker object
-        #self.seen_tracker = seen_by_drone.SightTracker(self.arb_field_size)
+        # self.seen_tracker = seen_by_drone.SightTracker(self.arb_field_size)
 
-        #self.seen_tracker.note_field_borders(self.arb_corner_coords)
+        # self.seen_tracker.note_field_borders(self.arb_corner_coords)
 
         self.best_node_List = []
 
-        self.startingNodes=[]
-        self.endingNodes=[]
-        self.protoMines=[]
-        
+        self.startingNodes = []
+        self.endingNodes = []
+        self.protoMines = []
+
         self.best_path = Path()
         self.altitude = altitude
         self.fov_deg = fov_deg
 
-        self.matSize=math.tan(math.radians(self.fov_deg/2))*self.altitude*WIDTHOFSQUARE
-        #self.viewMat=CellField(matSize,matSize)
+        self.matSize = math.tan(math.radians(self.fov_deg / 2)) * self.altitude * WIDTHOFSQUARE
+        # self.viewMat=CellField(matSize,matSize)
 
         # The local (x, y) of whichever place-to-check is CURRENTLY next in
         # line -- kept fixed across replans (see getPlacesToCheck) so a new
@@ -357,14 +376,17 @@ class Pathfinder:
         return node_path_length(nodePath)
 
     def buildNodeField(self):
-        #STARTING EDGE NODES
-        #for i in range( WIDTHOFFIELD // (WIDTHOFSQUARE*2)):
-            
-        self.startingNodes.append(self.nodeField.addFloatingNode(WIDTHOFFIELD//2, -1))
+        # STARTING EDGE NODES
+        # for i in range( WIDTHOFFIELD // (WIDTHOFSQUARE*2)):
 
-        for i in range( WIDTHOFFIELD // (WIDTHOFSQUARE*2)):
-            self.endingNodes.append(self.nodeField.addFloatingNode(i * WIDTHOFSQUARE*2 +WIDTHOFSQUARE//2, HEIGHTOFFIELD+1))
+        self.startingNodes.append(self.nodeField.addFloatingNode(WIDTHOFFIELD // 2, -1))
 
+        for i in range(WIDTHOFFIELD // (WIDTHOFSQUARE * 2)):
+            self.endingNodes.append(
+                self.nodeField.addFloatingNode(
+                    i * WIDTHOFSQUARE * 2 + WIDTHOFSQUARE // 2, HEIGHTOFFIELD + 1
+                )
+            )
 
     def add_discovered_mine(self, mine_lat: float, mine_lon: float):
         x, y = self.coord_converter.latlon_to_local(mine_lat, mine_lon)
@@ -380,7 +402,7 @@ class Pathfinder:
         mid = int(self.mine_saftey_radius * 2 + 1) // 2
         Xoffset = WIDTHOFSQUARE * (Xsquare - mid)
         Yoffset = WIDTHOFSQUARE * (Ysquare - mid)
-        newProtoMine=protoMine(self.mine_saftey_radius, (mine_lat, mine_lon), (Xoffset, Yoffset))
+        newProtoMine = protoMine(self.mine_saftey_radius, (mine_lat, mine_lon), (Xoffset, Yoffset))
         self.protoMines.append(newProtoMine)
 
         self.nodeField.addFromProtoMine(newProtoMine)
@@ -394,7 +416,6 @@ class Pathfinder:
         # instead of an unused stub.
         mineBlockField = build_mine_cell_field(newProtoMine)
         self.mineFieldTracker.apply_mask(mineBlockField, Xsquare - mid, Ysquare - mid, op="or")
-
 
     def add_discovered_mines(self, discovered_mines_latlon: list[tuple[float, float]]):
         for lat, lon in discovered_mines_latlon:
@@ -414,7 +435,7 @@ class Pathfinder:
 
     def increase_radius(self, mine_radius_increment):
         self.nodeField.expandField(mine_radius_increment)
-        #self.nodeField.increaseRadius(mine_radius_increment)
+        # self.nodeField.increaseRadius(mine_radius_increment)
 
     def _compute_shortest_path(self, start_nodes: list, hysteresis_tolerance: float):
         """
@@ -471,7 +492,7 @@ class Pathfinder:
         """
         end = self.endingNodes
 
-        best = None    # (length, end_node, predecessors)
+        best = None  # (length, end_node, predecessors)
         stable = None  # same, but restricted to self.previousEndNode
 
         for i in start_nodes:
@@ -627,14 +648,13 @@ class Pathfinder:
 
         if not self.flownPrefixNodes:
             self.flownPrefixNodes.append(active_path[0])
-        self.flownPrefixNodes.extend(active_path[1:best_idx + 1])
+        self.flownPrefixNodes.extend(active_path[1 : best_idx + 1])
         self.checkpointNode = active_path[best_idx]
 
-
-    def get_cell_path(self,nodePath):
+    def get_cell_path(self, nodePath):
         self.path_tracker.clear_all()
-        #xy path gen
-        path=[]
+        # xy path gen
+        path = []
         for i in nodePath:
             path.append((i.x, i.y))
 
@@ -708,8 +728,10 @@ class Pathfinder:
             return
 
         to_be_checked = CellField(
-            need_field.width, need_field.height,
-            min_corner=need_field.min_corner, max_corner=need_field.max_corner,
+            need_field.width,
+            need_field.height,
+            min_corner=need_field.min_corner,
+            max_corner=need_field.max_corner,
         )
         for x, y in placements_local:
             to_be_checked.fill_aligned_rect_touched(*_footprint_box(x, y, along_ft, across_ft))
@@ -743,9 +765,12 @@ class Pathfinder:
         combined = path_field | self.seen_tracker
         return combined.count() > 0
 
-    #THE ACTUAL FUNCTION
+    # THE ACTUAL FUNCTION
     def getPlacesToCheck(
-        self, method: str = "path", overlap: float = 0.0, path_width: float = 0.0,
+        self,
+        method: str = "path",
+        overlap: float = 0.0,
+        path_width: float = 0.0,
         shape_size_ft: float | tuple[float, float] | None = None,
     ):
         """
@@ -800,8 +825,8 @@ class Pathfinder:
         not the whole mission from the true field entry. Behaves exactly
         like get_shortest_path until the first advance_checkpoint call.
         """
-        shortest_path=self.get_active_shortest_path()
-        self.best_node_List=shortest_path
+        shortest_path = self.get_active_shortest_path()
+        self.best_node_List = shortest_path
 
         # matSize is the camera footprint in feet; both methods below need
         # it as an integer cell count (cover_with_shape's tuple form) or a
@@ -811,16 +836,27 @@ class Pathfinder:
         # droneID is a 1-indexed drone number (matches the id prefix Field
         # hands out, e.g. "1-0"), but vertical_slice_index needs a 0-indexed
         # slice -- droneID=1, numOfDrones=1 is "drone 1 of 1", i.e. slice 0 of 1.
-        ourSlice = self.get_cell_path(shortest_path).vertical_slice_index(self.droneID - 1, self.numOfDrones)
+        ourSlice = self.get_cell_path(shortest_path).vertical_slice_index(
+            self.droneID - 1, self.numOfDrones
+        )
 
         if method == "path":
             path_points = [(n.x, n.y) for n in shortest_path]
-            shape_size = shape_size_ft if shape_size_ft is not None else matSizeCells * WIDTHOFSQUARE
+            shape_size = (
+                shape_size_ft if shape_size_ft is not None else matSizeCells * WIDTHOFSQUARE
+            )
             min_corner = (0.0, 0.0)
             max_corner = (WIDTHOFFIELD, HEIGHTOFFIELD)
             ShapesToVisit = path_cover_unseen(
-                path_points, self.seen_tracker, shape_size, min_corner, max_corner,
-                self.droneID, self.numOfDrones, overlap=overlap, path_width=path_width,
+                path_points,
+                self.seen_tracker,
+                shape_size,
+                min_corner,
+                max_corner,
+                self.droneID,
+                self.numOfDrones,
+                overlap=overlap,
+                path_width=path_width,
             )
             along_ft, across_ft = _normalize_shape_size(shape_size)
             # method="path" only ever needs to cover what's still unseen --
@@ -839,12 +875,14 @@ class Pathfinder:
             along_ft = across_ft = matSizeCells * WIDTHOFSQUARE
             need_field = ourPortion
         else:
-            raise ValueError(f"getPlacesToCheck: unknown method {method!r}, expected 'path' or 'cellgrid'")
+            raise ValueError(
+                f"getPlacesToCheck: unknown method {method!r}, expected 'path' or 'cellgrid'"
+            )
 
-        orderWaypoints=self.order_waypoints(ShapesToVisit, fixed_first=self.nextPlaceToCheckLocal)
+        orderWaypoints = self.order_waypoints(ShapesToVisit, fixed_first=self.nextPlaceToCheckLocal)
         self.nextPlaceToCheckLocal = orderWaypoints[0] if orderWaypoints else None
         self._verify_places_to_check_cover_need(need_field, orderWaypoints, along_ft, across_ft)
-        latLonPoints=[]
+        latLonPoints = []
         for i in orderWaypoints:
             # cover_with_shape/path_cover both already return real-world
             # (feet) coordinates -- multiplying by WIDTHOFSQUARE again here
@@ -855,10 +893,8 @@ class Pathfinder:
             latLonPoints.append((lat, lon))
         return latLonPoints
 
-
     # returns final goto list
-    def get_way_points_latlon(self,cellField:CellField):
-
+    def get_way_points_latlon(self, cellField: CellField):
 
         # what coords do I give here
         start = self.nodeField.placeStartNode()
@@ -886,4 +922,3 @@ class Pathfinder:
             self.best_way_points_latlon.append((lat, lon))
 
         return self.best_way_points_latlon
-        

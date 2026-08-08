@@ -59,8 +59,12 @@ class Node:
         # share a wrapping convention with each other.
         self.occlusionArcs = []
 
-    def recordOcclusionArc(self, loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar):
-        self.occlusionArcs.append((loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar))
+    def recordOcclusionArc(
+        self, loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar
+    ):
+        self.occlusionArcs.append(
+            (loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar)
+        )
 
     @staticmethod
     def _wrapAngle(angle, pivot):
@@ -72,7 +76,14 @@ class Node:
         candidates for an exact geometric check, not a final verdict."""
         theta = math.atan2(targetY - self.y, targetX - self.x)
         blockers = []
-        for loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar in self.occlusionArcs:
+        for (
+            loAngle,
+            hiAngle,
+            pivotAngle,
+            blockerObstacle,
+            blockerNear,
+            blockerFar,
+        ) in self.occlusionArcs:
             if blockerObstacle is exclude_obstacle:
                 continue
             t = self._wrapAngle(theta, pivotAngle)
@@ -86,7 +97,14 @@ class Node:
         each entry's recorded near/far range as a distance short-circuit
         before falling back to an exact geometric check."""
         theta = math.atan2(targetY - self.y, targetX - self.x)
-        for loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar in self.occlusionArcs:
+        for (
+            loAngle,
+            hiAngle,
+            pivotAngle,
+            blockerObstacle,
+            blockerNear,
+            blockerFar,
+        ) in self.occlusionArcs:
             if blockerObstacle in exclude_obstacles:
                 continue
             t = self._wrapAngle(theta, pivotAngle)
@@ -329,9 +347,6 @@ class MineNode(Node):
         return self.__str__()
 
 
-    
-
-
 def _link():
     # Dead code path -- never called (its only caller, nodeField/__init__.py,
     # has it entirely inside a docstring). Imports kept local rather than at
@@ -340,8 +355,9 @@ def _link():
     # nodeField depends on) if it goes stale, as it since has.
     from flight.pathfinding.nodeField.archive import mine as m
     from flight.pathfinding.nodeField import field as f
+
     global Mine, Connection, Node, MineNode, seg, Field
     Mine = m.Mine
 
     Field = f.Field
-    seg=f.seg
+    seg = f.seg

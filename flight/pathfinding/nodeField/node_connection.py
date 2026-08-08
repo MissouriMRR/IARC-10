@@ -9,7 +9,6 @@ from flight.pathfinding.nodeField.archive import field as f
 from flight.pathfinding.nodeField import node as n
 
 
-
 def _link():
     global Mine, Connection, Node, MineNode, seg, Field
     Mine = m.Mine
