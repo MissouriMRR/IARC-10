@@ -5,20 +5,25 @@ from matplotlib import pyplot
 import random
 
 
-from . import mine as m
-from . import node_connection as nc
-from . import node as n
+from flight.pathfinding.nodeField.archive import mine as m
+from flight.pathfinding.nodeField import node_connection as nc
+from flight.pathfinding.nodeField import node as n
+from flight.newPathfinding import diamondMine as dM
 
+
+
+
+SQUARE_SIZE=2
 
 # Field generates nodes off of mines, generates mines too
 class Field:
     mines = []
-
+    polyMines = []
     debugPoints = []  # purely for debuging and testing, field will plot these points
 
-    # simFieldSize = simulated size of field, a rectangle.
+    # simFieldSize = simulated size of field, in feet, the bottom left corner is (0,0) and the top right corner is (simFieldSize[0], simFieldSize[1])
     # fieldCorners = arbitrary corners that might not form a rectangle
-    def __init__(self, simFieldSize: list, fieldCorners: list):
+    def __init__(self, simFieldSizeFT: list, fieldCorners: list):
         """
         simFieldSize = simulated size of field, a rectangle's [width,height].
         \nfieldCorners = arbitrary corners of field, a quadrilateral of four corners
@@ -26,10 +31,10 @@ class Field:
         self.nodeGraph = {}
 
         simCorners = [
-            (0, simFieldSize[1]),
-            (simFieldSize[0], simFieldSize[1]),
+            (0, simFieldSizeFT[1]),
+            (simFieldSizeFT[0], simFieldSizeFT[1]),
             (0, 0),
-            (simFieldSize[0], 0),
+            (simFieldSizeFT[0], 0),
         ]
         self.rawCorners = fieldCorners
 
@@ -70,9 +75,12 @@ class Field:
         self.mineQuadTree = quads.QuadTree(
             (self.xMin + self.xMax / 2, self.yMin + self.yMax / 2), self.xMax, self.yMax
         )  # Used for collision detection, holds mines
+
+        self.polygonObstacles=[]
         Connection.field = self
 
-    # This type of node will not have a parent mine, primarily used for start/end points
+
+
 
     def addFloatingNode(self, x: float, y: float, ndType: str = None) -> "Node":
         """
@@ -133,11 +141,100 @@ class Field:
             returnList.append(self.addFloatingNode(pos[0], pos[1], "end"))
         return returnList
 
+    #Returns which competition square a set of coordinates is in.
+    def getSquareCoordinates(self, x: float, y: float) -> tuple[int, int]:
+        """
+        Given a set of coordinates, return which competition square it is in
+        """
+        if x < 0 or y < 0:
+            raise ValueError("Coordinates must be positive")
+        if x > self.xMax or y > self.yMax:
+            raise ValueError("Coordinates must be within the field bounds")
+        squareX = int(x // 2)
+        squareY = int(y // 2)
+        return (squareX, squareY)
+
+    def circle_rect_intersects(
+        cx: float,
+        cy: float,
+        r: float,
+        rx: float,
+        ry: float,
+        rw: float,
+        rh: float,
+    ):
+        """
+        Determine whether a circle intersects a rectangle.
+
+        Parameters:
+            cx: x-coordinate of the circle center
+            cy: y-coordinate of the circle center
+            r: radius of the circle
+            rx: x-coordinate of the rectangle's top-left corner
+            ry: y-coordinate of the rectangle's top-left corner
+            rw: width of the rectangle
+            rh: height of the rectangle
+        """
+
+
+        # Closest x on square
+        closestX = rx
+        if cx >= rx + rw:
+            closestX = rx + rw
+        elif cx < rx:
+            closestX = rx
+
+        # Closest y on square
+        closestY = ry
+        if cy >= ry + rh:
+            closestY = ry + rh
+        elif cy < ry:
+            closestY = ry
+
+        # Distance from circle center to closest point
+        distX = cx - closestX
+        distY = cy - closestY
+        distance = (distX**2 + distY**2) ** 0.5
+
+        return distance <= r
+    def addPolyMine(self, centerX: float, centerY: float, radius:int, safteyRadius:float):
+        #Get the square the mine is in
+        squareX, squareY = self.getSquareCoordinates(centerX, centerY)
+        #Get the if any adjacent sqaures are within the saftey radius of the mine
+        implicatedSquares = [] #An implicated square is a square we treat has having a mine in it, because it is within the margin of error
+        
+
+        squaresOutward=(centerX+safteyRadius)//SQUARE_SIZE +1 
+        
+        for x in range(int(squareX-squaresOutward), int(squareX+squaresOutward)):
+            for y in range(int(squareY-squaresOutward), int(squareY+squaresOutward)):
+                if x < 0 or y < 0:
+                    continue
+                #TODO: Fix this
+                if x > self.xMax//SQUARE_SIZE or y > self.yMax//SQUARE_SIZE:
+                    continue
+
+                #Check if the square is within the saftey radius of the mine
+                if Field.circle_rect_intersects(centerX, centerY, safteyRadius, x*SQUARE_SIZE, y*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE):
+                    implicatedSquares.append((x,y))
+        
+        #Remove fully enclosed squares
+
+
+           
+
+
+
+        #Create a polygon which surrounds the mine and saftey radius.
+
     def addMine(self, centerX: float, centerY: float, radius: int, color: str = ""):
+
+        self.circle_rect_intersects(centerX,centerY)
+        newMine=BlockyObstacle()
         """
         Given the simulated local coordinates, radius, and optional color;
         add a new Mine object centered at the coordinates to the field and generate/regenerate nodes and connections
-        """
+        
         newMine = Mine(centerX, centerY, radius, color=color)
         self.mines.append(newMine)
         self.mineQuadTree.insert((centerX, centerY), data=newMine)
@@ -205,163 +302,8 @@ class Field:
                 connection = Connection(node1, node2)
                 if connection.mineCollision(newMine):
                     connection.deleteConnection()
+        """
 
-    @staticmethod  # Given two points, get the line equation and slope (to determine negative or positive slope)
-    def getLine(point1: tuple, point2: tuple) -> tuple[Callable[[float], float], float]:
-        """
-        Given two points as a tuple of floats each, get a line function and its slope
-        """
-        x1 = point1[0]
-        y1 = point1[1]
-        x2 = point2[0]
-        y2 = point2[1]
-        try:
-            slope = (y2 - y1) / (x2 - x1)
-        except ZeroDivisionError:  # Infinite/Vertical slope
-            # x means nothing in this case, for all values of Y, its x is x1 and x2
-            return (lambda x: x1 + 0 * x, "undef")
-
-        offset = y2 - slope * x2
-
-        f = lambda x: (slope * x) + offset
-        return (f, slope)
-
-    # Given a line function and a point, detect if the point
-    @staticmethod  # lies to the left of the line
-    def isPointLeftofLine(
-        line: Callable[
-            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
-        ],
-        slope: float,
-        point: tuple[float, float],
-    ) -> bool:
-        """
-        Given a line function, point, and slope;
-        Check if the point lies to the left of the line
-        """
-        """
-        If the slope between p1 and p2 is negative, p3's y-value must be
-        below the line for it to be to the left of line
-        p1
-         `
-          `
-           `
-            `
-          p3 `
-              `
-              p2
-        The logic will be adjusted for positive and undefined(vertical line) slope.
-
-        """
-        x = point[0]
-        y = point[1]
-        if isinstance(slope, str):
-            if slope == "undef":  # Verticle line
-                if x < line(x):
-                    return True
-        if isinstance(slope, float):
-            if slope < 0:  # Negative slope
-                if y < line(x):
-                    return True
-            elif slope > 0:  # Positive slope
-                if y > line(x):
-                    return True
-            else:
-                # If the points are horizontal, and since this is checking a *line*
-                # A point will always be within the line <-----*--->
-                # So technically cant be left of the line
-                return False
-        return False
-
-    # Given a line function and a point, detects if the point
-    @staticmethod  # lies to the right of the line
-    def isPointRightofLine(
-        line: Callable[
-            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
-        ],
-        slope: float,
-        point: tuple[float, float],
-    ) -> bool:
-        """
-        Given a line function, point, and slope;
-        Check if the point lies to the right of the line
-        """
-        """
-        If the slope between p1 and p2 is negative, p3's y-value must be
-        above the line for it to be to the right of line
-        p1
-         `
-          ` p3
-           `
-            `
-             `
-              `
-              p2
-        The logic will be adjusted for positive and undefined(vertical line) slope
-        """
-        # point[0],point[1] = x,y
-        x = point[0]
-        y = point[1]
-        if isinstance(slope, str):
-            if slope == "undef":  # Verticle line
-                if x > line(x):
-                    return True
-        if isinstance(slope, float):
-            if slope < 0:  # Negative Slope
-                if y > line(x):
-                    return True
-            elif slope > 0:  # Positive Slope
-                if y < line(x):
-                    return True
-            else:  # Horizontal
-                return False
-        return False
-
-    # Given a line function and a point, detects if the point
-    @staticmethod  # lies above the line
-    def isPointAboveLine(
-        line: Callable[
-            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
-        ],
-        slope: float,
-        point: tuple[float, float],
-    ):
-        """
-        Given a line function, point, and slope;
-        Check if the point lies above the line
-        """
-        x = point[0]
-        y = point[1]
-        if isinstance(slope, str):
-            if slope == "undef":  # Vertical line
-                return True
-        if isinstance(slope, float):
-            if y > line(x):
-                return True
-        return False
-
-    # Given a line function and a point, detects if the point
-    @staticmethod  # lies below the line
-    def isPointBelowLine(
-        line: Callable[
-            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
-        ],
-        slope: float,
-        point: tuple[float, float],
-    ):
-        """
-        Given a line function, point, and slope;
-        Check if the point lies below the line
-        """
-        x = point[0]
-        y = point[1]
-        if isinstance(slope, str):
-            if slope == "undef":  # Vertical line
-                return None
-        if isinstance(slope, float):
-            if y < line(x):
-                return True
-        return False
 
     # Purely for debugging will have a growing list of parameters
     def plotField(
@@ -559,12 +501,169 @@ class Field:
 
         for mine in self.mines:
             mine.connectMineNodes()
+    @staticmethod  # Given two points, get the line equation and slope (to determine negative or positive slope)
+    def getLine(point1: tuple, point2: tuple) -> tuple[Callable[[float], float], float]:
+        """
+        Given two points as a tuple of floats each, get a line function and its slope
+        """
+        x1 = point1[0]
+        y1 = point1[1]
+        x2 = point2[0]
+        y2 = point2[1]
+        try:
+            slope = (y2 - y1) / (x2 - x1)
+        except ZeroDivisionError:  # Infinite/Vertical slope
+            # x means nothing in this case, for all values of Y, its x is x1 and x2
+            return (lambda x: x1 + 0 * x, "undef")
+
+        offset = y2 - slope * x2
+
+        f = lambda x: (slope * x) + offset
+        return (f, slope)
+
+    # Given a line function and a point, detect if the point
+    @staticmethod  # lies to the left of the line
+    def isPointLeftofLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ) -> bool:
+        """
+        Given a line function, point, and slope;
+        Check if the point lies to the left of the line
+        """
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be
+        below the line for it to be to the left of line
+        p1
+         `
+          `
+           `
+            `
+          p3 `
+              `
+              p2
+        The logic will be adjusted for positive and undefined(vertical line) slope.
+
+        """
+        x = point[0]
+        y = point[1]
+        if isinstance(slope, str):
+            if slope == "undef":  # Verticle line
+                if x < line(x):
+                    return True
+        if isinstance(slope, float):
+            if slope < 0:  # Negative slope
+                if y < line(x):
+                    return True
+            elif slope > 0:  # Positive slope
+                if y > line(x):
+                    return True
+            else:
+                # If the points are horizontal, and since this is checking a *line*
+                # A point will always be within the line <-----*--->
+                # So technically cant be left of the line
+                return False
+        return False
+
+    # Given a line function and a point, detects if the point
+    @staticmethod  # lies to the right of the line
+    def isPointRightofLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ) -> bool:
+        """
+        Given a line function, point, and slope;
+        Check if the point lies to the right of the line
+        """
+        """
+        If the slope between p1 and p2 is negative, p3's y-value must be
+        above the line for it to be to the right of line
+        p1
+         `
+          ` p3
+           `
+            `
+             `
+              `
+              p2
+        The logic will be adjusted for positive and undefined(vertical line) slope
+        """
+        # point[0],point[1] = x,y
+        x = point[0]
+        y = point[1]
+        if isinstance(slope, str):
+            if slope == "undef":  # Verticle line
+                if x > line(x):
+                    return True
+        if isinstance(slope, float):
+            if slope < 0:  # Negative Slope
+                if y > line(x):
+                    return True
+            elif slope > 0:  # Positive Slope
+                if y < line(x):
+                    return True
+            else:  # Horizontal
+                return False
+        return False
+
+    # Given a line function and a point, detects if the point
+    @staticmethod  # lies above the line
+    def isPointAboveLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ):
+        """
+        Given a line function, point, and slope;
+        Check if the point lies above the line
+        """
+        x = point[0]
+        y = point[1]
+        if isinstance(slope, str):
+            if slope == "undef":  # Vertical line
+                return True
+        if isinstance(slope, float):
+            if y > line(x):
+                return True
+        return False
+
+    # Given a line function and a point, detects if the point
+    @staticmethod  # lies below the line
+    def isPointBelowLine(
+        line: Callable[
+            [tuple[float, float], tuple[float, float]], tuple[Callable[[float], float], float]
+        ],
+        slope: float,
+        point: tuple[float, float],
+    ):
+        """
+        Given a line function, point, and slope;
+        Check if the point lies below the line
+        """
+        x = point[0]
+        y = point[1]
+        if isinstance(slope, str):
+            if slope == "undef":  # Vertical line
+                return None
+        if isinstance(slope, float):
+            if y < line(x):
+                return True
+        return False
 
 
 def _link():
-    global Mine, Connection, Node, MineNode, seg, Field
+    global Mine, Connection, Node, MineNode, seg, Field, BlockyObstacle
     Mine = m.Mine
     Connection = nc.Connection
     Node = n.Node
     MineNode = n.MineNode
     seg = nc.seg
+    BlockyObstacle=dM.BlockyObstacle

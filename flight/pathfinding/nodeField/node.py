@@ -1,8 +1,5 @@
-from . import mine as m
-from . import node_connection as nc
-
-from . import field as f
 import numpy as np
+import math
 
 
 # Node class keeps track of node positions
@@ -19,6 +16,7 @@ class Node:
         name: str = "",
         labeled: bool = False,
         nType: str = "default",
+        id: str = None,
     ):
         """
         Create node based off of (x,y) coordinate, whether or not it is floating,
@@ -35,6 +33,11 @@ class Node:
         self.labeled = labeled  # Purely for debugging and visually isolating nodes
         self.x = xPosition
         self.y = yPosition
+        # Globally-unique-per-drone identifier, e.g. "3-17" for drone 3's
+        # 18th assigned id. None until a Field assigns one (see
+        # Field._generateId/_selfConnect) -- constructing a bare Node
+        # outside a Field (as many tests do) leaves it unassigned.
+        self.id = id
         self.plotted = False  # To prevent hopefully duplicate plotting
         # self.nodeGraph.update({self:None})
         self.parentMine = None
@@ -48,31 +51,61 @@ class Node:
         # - "end"
         self.nType = nType
 
-    # Establishes a connection between nodes
-    # Does not add it to the nodegraph yet however
-    def connectNode(self, node: "Node") -> "Connection":
-        if self == node:
-            raise TypeError("Same nodes")
-        nodeConnection = Connection(self, node)  # connection initialization
-        if nodeConnection.validPath():
-            nodeConnection.addGraph()
-        else:
-            nodeConnection.deleteConnection()
-        # self.connected = True
-        # node.connected = True
-        """
-        if node.parentMine not in self.parentMine.connectedMines and self.parentMine not in node.parentMine.connectedMines:
-            self.parentMine.connectedMines.append(node.parentMine)
-            node.parentMine.connectedMines.append(self.parentMine)
+        # Per-vertex occlusion arcs against other obstacles' groups, built only
+        # when THIS node's own obstacle is the one currently being added to the
+        # field. Each entry is (loAngle, hiAngle, pivotAngle, blockerObstacle,
+        # blockerNear, blockerFar). Entries store their own pivot so angles are
+        # always wrapped relative to it at query time -- entries never need to
+        # share a wrapping convention with each other.
+        self.occlusionArcs = []
 
-        """
-        return nodeConnection
+    def recordOcclusionArc(self, loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar):
+        self.occlusionArcs.append((loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar))
+
+    @staticmethod
+    def _wrapAngle(angle, pivot):
+        return ((angle - pivot + math.pi) % (2 * math.pi)) - math.pi
+
+    def occludingBlockersWithinGroup(self, targetX, targetY, exclude_obstacle):
+        """Blockers (other than exclude_obstacle) whose recorded arc for this
+        node's direction toward (targetX, targetY) contains that direction --
+        candidates for an exact geometric check, not a final verdict."""
+        theta = math.atan2(targetY - self.y, targetX - self.x)
+        blockers = []
+        for loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar in self.occlusionArcs:
+            if blockerObstacle is exclude_obstacle:
+                continue
+            t = self._wrapAngle(theta, pivotAngle)
+            if loAngle - 1e-9 <= t <= hiAngle + 1e-9:
+                blockers.append(blockerObstacle)
+        return blockers
+
+    def crossGroupOccluded(self, targetX, targetY, targetNear, targetFar, exclude_obstacles):
+        """Cheap check against this node's OWN already-persisted arcs from
+        nearer groups processed earlier in the same obstacle addition. Uses
+        each entry's recorded near/far range as a distance short-circuit
+        before falling back to an exact geometric check."""
+        theta = math.atan2(targetY - self.y, targetX - self.x)
+        for loAngle, hiAngle, pivotAngle, blockerObstacle, blockerNear, blockerFar in self.occlusionArcs:
+            if blockerObstacle in exclude_obstacles:
+                continue
+            t = self._wrapAngle(theta, pivotAngle)
+            if not (loAngle - 1e-9 <= t <= hiAngle + 1e-9):
+                continue
+            if blockerFar < targetNear:
+                return True
+            seg = ((self.x, self.y), (targetX, targetY))
+            if blockerObstacle.intersects(seg):
+                return True
+        return False
 
     def deleteNode(self):
         if self.parentMine != None:
             self.parentMine.removeNode(self)
+        """
         if self in Connection.field.nodeGraph:
             del Connection.field.nodeGraph[self]
+            """
 
     def getPos(self) -> float:
         return (round(float(self.x), 3), round(float(self.y), 3))
@@ -296,10 +329,19 @@ class MineNode(Node):
         return self.__str__()
 
 
+    
+
+
 def _link():
+    # Dead code path -- never called (its only caller, nodeField/__init__.py,
+    # has it entirely inside a docstring). Imports kept local rather than at
+    # module load time so this legacy archive/newPathfinding dependency
+    # chain can't break every other import of node.py (which everything in
+    # nodeField depends on) if it goes stale, as it since has.
+    from flight.pathfinding.nodeField.archive import mine as m
+    from flight.pathfinding.nodeField import field as f
     global Mine, Connection, Node, MineNode, seg, Field
     Mine = m.Mine
-    Connection = nc.Connection
 
-    seg = nc.seg
     Field = f.Field
+    seg=f.seg

@@ -1,4 +1,4 @@
-from flight.pathfinding.node_generation import Field, Mine, Node
+from flight.pathfinding.nodeField import Field, Mine, Node
 from flight.pathfinding.path_calculation import Graph
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from random import randint, seed, uniform
@@ -17,7 +17,9 @@ mineHistory = "["
 
 # Paste a past list of mine coords as a string, paste the printed mineHistory outputted previously
 # If wanting to go back to randomized, leave it as empty list7
-recordedMineCoords = [
+
+recordedMineCoords=[] 
+"""= [
     (126, 70),
     (78, 128),
     (335, 96),
@@ -168,7 +170,7 @@ recordedMineCoords = [
     (175, 74),
     (191, 83),
     (254, 24),
-]
+]"""
 """
 Rather interesting path found (Not neccesarily wrong):
 Mine Positions:

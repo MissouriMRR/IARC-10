@@ -5,7 +5,7 @@ Edit the CONFIG section below to change mines, path, and flight parameters,
 then run:   uv run test_field_grid.py
 """
 
-from field_grid import BlockField
+from flight.pathfinding.blockField.field_grid import BlockField
 
 """
 Config

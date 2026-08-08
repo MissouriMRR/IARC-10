@@ -1,9 +1,9 @@
 import random
 import numpy as np
 
-from . import node_connection as nc
-from . import node as n
-from . import field as f
+from flight.pathfinding.nodeField import node_connection as nc
+from flight.pathfinding.nodeField import node as n
+from flight.pathfinding.nodeField.archive import field as f
 
 """MATH STUFF"""
 

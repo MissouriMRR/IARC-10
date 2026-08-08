@@ -6,7 +6,15 @@ import math as m
 import numpy as np
 import random as rand
 import matplotlib.pyplot as plt
-from flight.pathfinding.node_generation import Node, Mine, Field, Connection, seg
+# Mine/Connection no longer exist under this name -- replaced by BlockMine
+# and FieldConnections respectively (see nodeField/field.py). Only Node/seg
+# are still referenced at module-load time (as type hints below); Mine/
+# Connection were only ever used inside generate_goto_points and the
+# __main__ demo, both already broken against the current Field/BlockMine
+# API well beyond just this import (field.addMine, mine.getPos(),
+# mine.connectedMines, etc. don't exist either) -- left as-is, not rewritten.
+from flight.pathfinding.nodeField.node import Node
+from flight.pathfinding.nodeField.field import Field, seg
 from flight.pathfinding.path_calculation import Graph
 
 """

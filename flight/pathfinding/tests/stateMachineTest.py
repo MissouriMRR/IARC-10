@@ -17,4 +17,3 @@ mineRadius = 3 #Calculated based on size of image that can consistently detect m
 
 field =
 
-while True:
