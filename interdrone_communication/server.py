@@ -60,7 +60,7 @@ class Server:
                     continue
                 # If the received message requires a response inside of server, it's overwritten and sent via client_in_data at the end of handle_client()
                 response_message: Message | None = None
-                print(f"Message received: {message.id}")
+                # print(f"Message received: {message.id}")
                 # Message Handling for all messages sent to the server. Some messages are processed here if they are simple while others are sent back to interdrone to be processed.
                 match message.id:
                     case MessageType.APP_CONFIG:

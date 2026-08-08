@@ -6,6 +6,8 @@ import collections.abc
 import json
 import logging
 import os
+import time
+from typing import Any, Awaitable, Callable, Iterable, NamedTuple
 
 # dronekit uses removed collections aliases (Python 3.10+)
 collections.MutableMapping = collections.abc.MutableMapping  # type: ignore[attr-defined]
@@ -21,9 +23,82 @@ from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 import flight.pathfinding.node_generation as nodeGen
 from state_machine.flight_settings import SimMode
-from flight.waypoint import Waypoint
+from flight.waypoint import (
+    COLLISION_RADIUS,
+    FORMATION_TOLERANCE_M,
+    SEPARATION_ABORT_M,
+    Waypoint,
+    segment_distance,
+)
 import flight.collisionAvoidance
-from flight.pathfinding.utils.goto import move_to
+import flight.flight_log as flight_log
+from flight.pathfinding.utils.goto import FlightInterrupted, move_to
+
+# Separate logger so collision avoidance can be tuned on its own:
+#   logging.getLogger("collision").setLevel(logging.DEBUG)
+collision_log = logging.getLogger("collision")
+
+HOLD_POLL_INTERVAL_S: float = 0.1  # how often a held drone re-checks the leg
+HOLD_HEARTBEAT_S: float = 5.0  # how often a continuing hold is logged
+
+# A peer silent this long stops being avoided or waited for: longer than a
+# message hiccup or a hold heartbeat, short enough that a dead drone can't
+# freeze the swarm on its last-known position.
+PEER_STALE_S: float = 12.0
+
+# How long a drone may hold for a peer before it gives up and lands.
+HOLD_ABORT_S: float = 15.0
+
+# POIF requirement: 20 ft.
+LEG_ALTITUDE_M: float = 6.0
+
+# Airspeed bounds how far two drones can drift apart in waypoint index during a
+# leg, so flying the 1.31 m legs faster only widens that window.
+LEG_AIRSPEED_M_S: float = 2.0
+
+# The vehicle flies to LEG_TOLERANCE_M whenever it can
+LEG_TOLERANCE_M: float = 0.35
+LEG_MAX_TOLERANCE_M: float = 0.6
+
+
+class FormationLost(RuntimeError):
+    """The swarm is no longer in the formation the avoidance strategy assumes.
+
+    Raised when a peer stops flying its assigned path, a hold outlasts
+    HOLD_ABORT_S, or measured separation drops below SEPARATION_ABORT_M. Unlike
+    FlightInterrupted and LegStalled, this vehicle is fine — the swarm isn't.
+    Callers should land.
+    """
+
+
+class LegConflict(NamedTuple):
+    """A reason this drone is not currently willing to fly its next leg."""
+
+    peer_id: int
+    clearance_m: float
+    peer_from: tuple[float, float]
+    peer_to: tuple[float, float]
+    # "swept_path": peer outside our lockstep window, its whole advertised path
+    # counts as occupied and our leg comes too close.
+    # "off_formation": peer inside the window but too far from the leg it claims
+    # to be flying for the barrier's guarantee to hold.
+    reason: str = "swept_path"
+
+
+def _describe_conflict(conflict: LegConflict) -> str:
+    if conflict.reason == "off_formation":
+        return (
+            f"drone {conflict.peer_id} is {conflict.clearance_m:.2f}m off the leg it"
+            f" reports flying (limit {FORMATION_TOLERANCE_M:.2f}m)"
+        )
+    if conflict.peer_from == conflict.peer_to:
+        where = f"at ({conflict.peer_from[0]:.7f}, {conflict.peer_from[1]:.7f})"
+    else:
+        where = (
+            f"between ({conflict.peer_from[0]:.7f}, {conflict.peer_from[1]:.7f})"
+            f" and ({conflict.peer_to[0]:.7f}, {conflict.peer_to[1]:.7f})"
+        )
+    return f"drone {conflict.peer_id} {where}, clearance {conflict.clearance_m:.2f}m"
 
 
 class Drone:
@@ -103,6 +178,7 @@ class Drone:
         self.start_node = None
         self.end_nodes = []
         self.waypoints = []
+        self.formation_abort: str | None = None
         # TODO: add reference to mine and path data classes
 
     @property
@@ -306,36 +382,426 @@ class Drone:
     def getWaypointChecksum(self):
         return Waypoint.getChecksum(self.waypoints)
 
-    def checkForCollision(self, other_waypoints: list[Waypoint]):
+    def checkForCollision(self, other_waypoints: list[Waypoint]) -> int:
+        """Report where this drone's *planned* route crosses another drone's.
+
+        Advisory only — overlapping circles cross almost everywhere. The real
+        go/no-go is made per leg against live positions in `gotoWaypoint`.
+        """
         collisions = Waypoint.check_for_collision(self.waypoints, other_waypoints)
-        for collision in collisions:
-            logging.info(
-                f"Collision detected between waypoints {collision[0].waypoint_id} and {collision[1].waypoint_id}"
+        other_id = other_waypoints[0].drone_id if other_waypoints else -1
+        flight_log.event(
+            "route_check",
+            peer=other_id,
+            own_queue=flight_log.waypoints_brief(self.waypoints),
+            peer_queue=flight_log.waypoints_brief(other_waypoints),
+            crossings=[
+                {
+                    "own": [
+                        c.drone1_waypoints[0].waypoint_id,
+                        c.drone1_waypoints[1].waypoint_id,
+                    ],
+                    "peer": [
+                        c.drone2_waypoints[0].waypoint_id,
+                        c.drone2_waypoints[1].waypoint_id,
+                    ],
+                }
+                for c in collisions
+            ],
+        )
+        if not collisions:
+            return 0
+
+        collision_log.debug(
+            "drone %d: planned route crosses drone %d's route at %d segment pair(s): %s",
+            self.id,
+            other_id,
+            len(collisions),
+            ", ".join(
+                f"{c.drone1_waypoints[0].waypoint_id}->{c.drone1_waypoints[1].waypoint_id}"
+                f" x {c.drone2_waypoints[0].waypoint_id}->{c.drone2_waypoints[1].waypoint_id}"
+                for c in collisions
+            ),
+        )
+        return len(collisions)
+
+    def currentPosition(self) -> tuple[float, float]:
+        """This drone's live position as a (latitude, longitude) pair."""
+        position = self.vehicle.location.global_relative_frame
+        return (position.lat, position.lon)
+
+    def conflictsForLeg(
+        self,
+        leg_start: tuple[float, float],
+        leg_end: tuple[float, float],
+        peer_states: Iterable[Any],
+        log_reason: str | None = None,
+        points_per_lap: int | None = None,
+        my_progress: int | None = None,
+    ) -> list[LegConflict]:
+        """Reasons not to fly the leg about to be flown, one per offending peer.
+
+        The question asked depends on whether the peer is inside the lockstep
+        barrier's window (it has reached `my_progress` or `my_progress + 1`).
+
+        **Inside** — the barrier already pins the peer to the same leg we're
+        flying, on its own circle, so geometry bounds the separation and a
+        swept-path test is unsatisfiable here (congruent circles 3 m apart must
+        intersect; the test parked the whole swarm at index 3). What's worth
+        checking is the premise: `formation_drift` against the peer's *measured*
+        position catches a drone blown off its circle while its waypoint
+        messages still look healthy.
+
+        **Outside** — nothing constrains where the peer is going, so its whole
+        advertised path counts as occupied at COLLISION_RADIUS. A peer ahead of
+        the window is provably parked by its own barrier, so it is treated as a
+        point instead.
+
+        Every live peer is avoided regardless of ID. Peers silent longer than
+        PEER_STALE_S are measured and logged but not acted on — holding on a
+        frozen belief is its own deadlock.
+        """
+        conflicts: list[LegConflict] = []
+        # Stale peers are measured too, so the logs show which near misses were
+        # deliberately not acted on.
+        considered: list[dict[str, Any]] = []
+        for state in peer_states:
+            occupied = state.believed_occupancy(PEER_STALE_S)
+            stale = state.is_stale(PEER_STALE_S)
+            peer_progress = (
+                state.last_reached_global_index(points_per_lap)
+                if points_per_lap is not None
+                else None
             )
-            collision.drone1_waypoints[0].has_to_wait = True
+            in_formation = (
+                my_progress is not None
+                and peer_progress is not None
+                and my_progress <= peer_progress <= my_progress + 1
+            )
+            entry: dict[str, Any] = {
+                "peer": state.drone_id,
+                "stale": stale,
+                "progress": peer_progress,
+                "in_formation": in_formation,
+            }
+
+            if occupied is None:
+                entry["clearance"] = None
+                considered.append(entry)
+                continue
+
+            if in_formation:
+                # The barrier is holding this peer to the same leg we are on, so
+                # geometry covers the separation. Verify the premise instead.
+                drift = state.formation_drift()
+                entry["clearance"] = None
+                entry["drift"] = drift
+                considered.append(entry)
+                if drift is None:
+                    # Nothing to check against. Not a veto — holding on a
+                    # missing measurement would deadlock the swarm — but the
+                    # formation is unverified until a report arrives.
+                    collision_log.debug(
+                        "drone %d: no position report from drone %d, formation"
+                        " integrity unverified",
+                        self.id,
+                        state.drone_id,
+                    )
+                elif drift > FORMATION_TOLERANCE_M and not stale:
+                    conflicts.append(
+                        LegConflict(
+                            peer_id=state.drone_id,
+                            clearance_m=drift,
+                            peer_from=occupied[0],
+                            peer_to=occupied[1],
+                            reason="off_formation",
+                        )
+                    )
+                continue
+
             if (
-                collision.drone2_waypoints[1]
-                not in collision.drone1_waypoints[0].waypoints_to_reach
+                peer_progress is not None
+                and my_progress is not None
+                and peer_progress > my_progress
+                and state.position_is_stale(PEER_STALE_S)
             ):
-                if self.id < collision.drone2_waypoints[1].drone_id:
-                    collision.drone1_waypoints[0].waypoints_to_reach.append(
-                        collision.drone2_waypoints[1]
+                # Ahead of the window and silent: its own barrier holds it at
+                # the waypoint it last reached until we catch up, so treat it as
+                # parked there. Skipped when a live position exists.
+                parked = state.last_reached_waypoint
+                occupied = ((parked.lat, parked.long), (parked.lat, parked.long))
+
+            clearance = segment_distance(leg_start, leg_end, occupied[0], occupied[1])
+            entry["clearance"] = clearance
+            entry["occupied"] = occupied
+            considered.append(entry)
+
+            if stale:
+                if clearance < COLLISION_RADIUS:
+                    collision_log.warning(
+                        "drone %d: ignoring conflict with silent drone %d "
+                        "(last belief %.2fm from leg) — no message in over %.0fs",
+                        self.id,
+                        state.drone_id,
+                        clearance,
+                        PEER_STALE_S,
+                    )
+                continue
+
+            if clearance < COLLISION_RADIUS:
+                conflicts.append(
+                    LegConflict(
+                        peer_id=state.drone_id,
+                        clearance_m=clearance,
+                        peer_from=occupied[0],
+                        peer_to=occupied[1],
+                        reason="swept_path",
+                    )
+                )
+
+        # Worst first. The reasons run opposite ways (low clearance is bad, high
+        # drift is bad), so rank both by margin left, negative once exceeded.
+        conflicts.sort(
+            key=lambda c: (
+                FORMATION_TOLERANCE_M - c.clearance_m
+                if c.reason == "off_formation"
+                else c.clearance_m
+            )
+        )
+        # The hold loop re-checks at 10 Hz, so callers pass a reason only for
+        # the checks worth keeping in the log.
+        if log_reason is not None:
+            flight_log.event(
+                "leg_check",
+                reason=log_reason,
+                leg=[leg_start, leg_end],
+                radius=COLLISION_RADIUS,
+                peers=considered,
+                blocking=[c.peer_id for c in conflicts],
+            )
+        return conflicts
+
+    def _check_still_ours(self) -> None:
+        """Raise if we should stop flying: autopilot took over, or formation lost.
+
+        Without the first check, a drone bumped out of GUIDED keeps "flying" its
+        waypoint list and broadcasting progress it isn't making. The second
+        surfaces a latched separation breach on the mission loop's own thread,
+        so the abort happens wherever the loop is rather than between legs.
+        """
+        vehicle = self.vehicle
+        if vehicle.mode.name != "GUIDED" or not vehicle.armed:
+            raise FlightInterrupted(
+                f"autopilot left our control (mode={vehicle.mode.name}," f" armed={vehicle.armed})"
+            )
+        if self.formation_abort is not None:
+            raise FormationLost(self.formation_abort)
+
+    def checkSeparation(self, peer_states: Iterable[Any]) -> float | None:
+        """Measure separation against every peer, latching an abort if too close.
+
+        Last line of defence, and the only check measured on both ends rather
+        than reasoning about where drones are *supposed* to be. Peers whose
+        position reports have dried up are skipped — an absent measurement is
+        not a small distance; PEER_STALE_S covers total silence.
+
+        Returns the closest measured separation, or None if nothing was
+        measurable.
+        """
+        me = self.currentPosition()
+        closest: float | None = None
+        breaches: list[dict[str, Any]] = []
+        for state in peer_states:
+            peer = state.live_position
+            if peer is None or state.position_is_stale(PEER_STALE_S):
+                continue
+            distance = segment_distance(me, me, peer, peer)
+            if closest is None or distance < closest:
+                closest = distance
+            if distance < SEPARATION_ABORT_M:
+                breaches.append({"peer": state.drone_id, "separation": distance, "at": peer})
+
+        if breaches and self.formation_abort is None:
+            nearest = min(breaches, key=lambda b: b["separation"])
+            self.formation_abort = (
+                f"measured separation from drone {nearest['peer']} fell to"
+                f" {nearest['separation']:.2f}m (floor {SEPARATION_ABORT_M:.2f}m)"
+            )
+            flight_log.event(
+                "separation_breach",
+                floor=SEPARATION_ABORT_M,
+                breaches=breaches,
+                at=me,
+            )
+            collision_log.critical("drone %d ABORTING: %s", self.id, self.formation_abort)
+
+        return closest
+
+    async def gotoWaypoint(
+        self,
+        peer_states: Iterable[Any] = (),
+        heartbeat: Callable[[], Awaitable[None]] | None = None,
+        points_per_lap: int | None = None,
+    ):
+        """Fly to the next waypoint, holding position first if the leg is not clear.
+
+        The hold is re-evaluated against where the other drones actually are and
+        releases the moment the leg is clear. (Waiting for a peer to *reach* a
+        named waypoint released the hold while it sat on the conflict point.)
+
+        While holding, `heartbeat` is awaited every few seconds so peers don't
+        drop us as stale after PEER_STALE_S.
+
+        A hold outlasting HOLD_ABORT_S raises FormationLost: two in-formation
+        drones can't block each other, so a hold that long means a peer has
+        stopped flying its circle, which waiting won't fix.
+        """
+        peer_states = list(peer_states)
+        curWaypoint = self.waypoints[0]
+        target = (curWaypoint.lat, curWaypoint.long)
+        leg_from = self.currentPosition()
+
+        # The index we're departing from, for the parked-peer inference in
+        # conflictsForLeg.
+        my_progress: int | None = None
+        if (
+            points_per_lap is not None
+            and curWaypoint.lap is not None
+            and curWaypoint.index is not None
+        ):
+            my_progress = curWaypoint.lap * points_per_lap + curWaypoint.index - 1
+
+        flight_log.event(
+            "leg_start",
+            target=flight_log.waypoint_brief(curWaypoint),
+            frm=leg_from,
+            queued=len(self.waypoints),
+        )
+
+        conflicts = self.conflictsForLeg(
+            leg_from,
+            target,
+            peer_states,
+            log_reason="pre_leg",
+            points_per_lap=points_per_lap,
+            my_progress=my_progress,
+        )
+        if conflicts:
+            hold_started = time.monotonic()
+            flight_log.event(
+                "hold_start",
+                target=flight_log.waypoint_brief(curWaypoint),
+                conflicts=[c._asdict() for c in conflicts],
+            )
+            collision_log.info(
+                "drone %d HOLDING short of waypoint %d: %s (need %.2fm)",
+                self.id,
+                curWaypoint.waypoint_id,
+                "; ".join(_describe_conflict(c) for c in conflicts),
+                COLLISION_RADIUS,
+            )
+
+            last_heartbeat = hold_started
+            blocking = {c.peer_id for c in conflicts}
+            while conflicts:
+                await asyncio.sleep(HOLD_POLL_INTERVAL_S)
+                self._check_still_ours()
+                self.checkSeparation(peer_states)
+                now = time.monotonic()
+                heartbeat_due = now - last_heartbeat >= HOLD_HEARTBEAT_S
+                conflicts = self.conflictsForLeg(
+                    self.currentPosition(),
+                    target,
+                    peer_states,
+                    log_reason="hold_heartbeat" if heartbeat_due else None,
+                    points_per_lap=points_per_lap,
+                    my_progress=my_progress,
+                )
+
+                if conflicts and now - hold_started >= HOLD_ABORT_S:
+                    flight_log.event(
+                        "hold_abort",
+                        held_for=now - hold_started,
+                        target=flight_log.waypoint_brief(curWaypoint),
+                        conflicts=[c._asdict() for c in conflicts],
+                    )
+                    raise FormationLost(
+                        f"held {now - hold_started:.0f}s short of waypoint"
+                        f" {curWaypoint.waypoint_id}: "
+                        + "; ".join(_describe_conflict(c) for c in conflicts)
                     )
 
-    async def gotoWaypoint(self):
+                # Log blocker changes: a hold passing between peers and one peer
+                # never moving look identical in the duration alone.
+                still_blocking = {c.peer_id for c in conflicts}
+                if still_blocking != blocking:
+                    flight_log.event(
+                        "hold_blockers_changed",
+                        was=sorted(blocking),
+                        now=sorted(still_blocking),
+                        held_for=now - hold_started,
+                    )
+                    blocking = still_blocking
 
-        curWaypoint = self.waypoints[0]
-        if curWaypoint.has_to_wait:
-            logging.info(
-                f"Waiting for waypoints {curWaypoint.waypoints_to_reach} to be reached before proceeding to next waypoint..."
+                if conflicts and heartbeat_due:
+                    last_heartbeat = now
+                    # Stay visibly alive while parked, or peers drop us as stale
+                    # and fly through our position.
+                    if heartbeat is not None:
+                        await heartbeat()
+                    flight_log.event(
+                        "hold_tick",
+                        held_for=now - hold_started,
+                        conflicts=[c._asdict() for c in conflicts],
+                    )
+                    collision_log.info(
+                        "drone %d still holding after %.1fs: %s",
+                        self.id,
+                        now - hold_started,
+                        _describe_conflict(conflicts[0]),
+                    )
+
+            flight_log.event(
+                "hold_end",
+                held_for=time.monotonic() - hold_started,
+                target=flight_log.waypoint_brief(curWaypoint),
             )
-            while True:
-                await asyncio.sleep(0.1)
+            collision_log.info(
+                "drone %d CLEAR after %.1fs, proceeding to waypoint %d",
+                self.id,
+                time.monotonic() - hold_started,
+                curWaypoint.waypoint_id,
+            )
 
-                curWaypoint.check_wait()
-        await move_to(self.vehicle, curWaypoint.lat, curWaypoint.long, 5)
+        def leg_guard() -> None:
+            """Keep watching the swarm while the leg is in the air."""
+            self.checkSeparation(peer_states)
+            if self.formation_abort is not None:
+                raise FormationLost(self.formation_abort)
+
+        move_started = time.monotonic()
+        await move_to(
+            self.vehicle,
+            curWaypoint.lat,
+            curWaypoint.long,
+            LEG_ALTITUDE_M,
+            airspeed=LEG_AIRSPEED_M_S,
+            tolerance=LEG_TOLERANCE_M,
+            max_tolerance=LEG_MAX_TOLERANCE_M,
+            abort_check=leg_guard,
+        )
 
         curWaypoint.has_visited = True
+        arrived_at = self.currentPosition()
+        flight_log.event(
+            "wp_reached",
+            target=flight_log.waypoint_brief(curWaypoint),
+            at=arrived_at,
+            # How far from the waypoint move_to() called it arrived — a lumpy
+            # circle is often just this tolerance stacking up, not avoidance.
+            error_m=segment_distance(arrived_at, arrived_at, target, target),
+            leg_seconds=time.monotonic() - move_started,
+        )
         logging.info(f"Reached waypoint {curWaypoint.waypoint_id}")
 
         return self.waypoints.pop(0)

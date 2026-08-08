@@ -59,6 +59,7 @@ class MessageType(Enum):
     NEW_WAYPOINTS_ACK = 546
     REACHED_WAYPOINT = 550
     REACHED_WAYPOINT_ACK = 551
+    POSITION_REPORT = 552
     EMERGENCY_LAND = 555
     LAND = 556
     RECONFIRM_WAYPOINTS = 560
@@ -366,6 +367,19 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.REACHED_WAYPOINT_ACK,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
+    },
+    # Where the sender actually is, as opposed to where its waypoint list implies
+    # it should be. Broadcast continuously during the POIF demo so every drone can
+    # check the formation against a measurement rather than against its own plan,
+    # and land the swarm if two airframes really do get close. Deliberately
+    # unacknowledged: it is a stream, and the next one is along shortly.
+    MessageType.POSITION_REPORT: {
+        "id": MessageType.POSITION_REPORT,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat": float,
+        "lon": float,
+        "alt": float,
     },
     MessageType.EMERGENCY_LAND: {
         "id": MessageType.EMERGENCY_LAND,

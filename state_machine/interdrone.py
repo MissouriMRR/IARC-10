@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 from flight.waypoint import Waypoint
+import flight.flight_log as flight_log
 import queue
 import threading
 import time
@@ -426,7 +427,9 @@ class Interdrone:
         a checksum of waypoints for the other drone
         When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
         """
-        checksum = Waypoint.getChecksum(waypoints)
+        # The receiver compares against its full accumulated copy of our list, so the
+        # checksum has to cover everything we hold, not just the waypoints being added.
+        checksum = Waypoint.getChecksum(self.drone.getWaypoints())
         for target_drone in drones_to_send_data:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
@@ -467,6 +470,34 @@ class Interdrone:
             if state is not None:
                 state.waypoint_up_to_date = False
 
+        return
+
+    async def report_position(
+        self, drones_to_send_data: tuple[int, ...], lat: float, lon: float, alt: float
+    ) -> None:
+        """
+        Message ID = 552
+        Broadcast where this drone actually is to every other drone.
+
+        Every other position the swarm holds about a peer is inferred from that
+        peer's waypoint messages, which means avoidance can only ever confirm the
+        plan it already believes. This is the one input that can contradict it —
+        the drone that has drifted off its circle or been taken over by a
+        failsafe is precisely the drone whose waypoint list has stopped
+        describing reality.
+
+        Not acked, and not resent on failure: it is a continuous stream, a
+        dropped report is superseded within a few hundred milliseconds, and
+        receivers already treat a peer whose reports have dried up as unknown
+        rather than as safely predicted.
+        """
+        position_message: Message = Message.create(
+            id=MessageType.POSITION_REPORT,
+            drones_to_send_data=drones_to_send_data,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={"lat": lat, "lon": lon, "alt": alt},
+        )
+        self.send(position_message)
         return
 
     async def send_survey_start(self) -> None:
@@ -1029,19 +1060,38 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
                             # TODO CHECK THE CHECKSUM TO DETERMINE WHETHER TO SEND RECONFIRM WAYPOINTS
                             if state is not None:
+                                state.touch()
                                 # Add received waypoints to list_of_waypoints
                                 state.list_of_waypoints += message.data["newWaypoints"]
-                                print(state.list_of_waypoints)
+
+                                flight_log.event(
+                                    "waypoints_recv",
+                                    peer=message.sender_id,
+                                    added=flight_log.waypoints_brief(
+                                        message.data["newWaypoints"]
+                                    ),
+                                    queued_after=len(state.list_of_waypoints),
+                                    checksum=Waypoint.getChecksum(state.list_of_waypoints),
+                                    sender_checksum=message.data[
+                                        "sender_drone_waypoints_checksum"
+                                    ],
+                                )
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
                                 checksum = Waypoint.getChecksum(state.list_of_waypoints)
-                                print(
-                                    f"Comparing checksum. message.checksum = {message.data['sender_drone_waypoints_checksum']} and checksum(state.list_of_waypoints) = {checksum}"
+                                sender_checksum = message.data["sender_drone_waypoints_checksum"]
+                                # Only worth reading when they disagree; logged below if so.
+                                logging.debug(
+                                    "drone %d waypoints: %d held, checksum %d (sender says %d)",
+                                    message.sender_id,
+                                    len(state.list_of_waypoints),
+                                    checksum,
+                                    sender_checksum,
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if checksum == message.data["sender_drone_waypoints_checksum"]:
+                                if checksum == sender_checksum:
                                     waypoints_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         drones_to_send_data=(message.sender_id,),
@@ -1051,6 +1101,13 @@ class Interdrone:
                                     self.send(waypoints_ack_message)
                                 # If checksums don't match, send reconfirm waypoints message
                                 else:
+                                    logging.warning(
+                                        "waypoint list out of sync with drone %d "
+                                        "(ours %d vs theirs %d), resyncing",
+                                        message.sender_id,
+                                        checksum,
+                                        sender_checksum,
+                                    )
                                     state.waypoint_up_to_date = False
                                     waypoints = self.drone.getWaypoints()
                                     reconfirm_waypoints_message: Message = Message.create(
@@ -1074,12 +1131,7 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
 
                             if state is not None:
-                                """
-                                print(
-                                    f"Got reached waypoint. State of waypoint list before: {state.list_of_waypoints} "
-                                )
-                                """
-                                print("_______________________________________________")
+                                state.touch()
                                 reached_id = message.data["reached_waypoint_id"]
                                 reached_waypoint: Waypoint | None = None
                                 for waypoint in state.list_of_waypoints:
@@ -1088,6 +1140,23 @@ class Interdrone:
                                 if reached_waypoint is not None:
                                     state.list_of_waypoints.remove(reached_waypoint)
                                     reached_waypoint.has_visited = True
+                                    # This is the freshest position fix we have for
+                                    # that drone; collision avoidance holds on it.
+                                    state.last_reached_waypoint = reached_waypoint
+
+                                # A report for a waypoint we were never told about
+                                # leaves last_reached_waypoint stale, so avoidance
+                                # keeps reasoning about where that drone used to be.
+                                flight_log.event(
+                                    "reached_recv",
+                                    peer=message.sender_id,
+                                    reached_id=reached_id,
+                                    matched=reached_waypoint is not None,
+                                    queued_after=len(state.list_of_waypoints),
+                                    last_reached=flight_log.waypoint_brief(
+                                        state.last_reached_waypoint
+                                    ),
+                                )
 
                                 # print(f"State of waypoint list after: {state.list_of_waypoints} ")
                                 reached_waypoint_ack_message: Message = Message.create(
@@ -1098,6 +1167,15 @@ class Interdrone:
                                 )
                                 self.send(reached_waypoint_ack_message)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
+                        case MessageType.POSITION_REPORT:
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
+                                state.set_live_position(
+                                    message.data["lat"],
+                                    message.data["lon"],
+                                    message.data["alt"],
+                                )
                         case MessageType.REACHED_WAYPOINT_ACK:
 
                             state = self.get_drone_state_from_id(message.sender_id)
@@ -1107,6 +1185,7 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
 
                             if state is not None:
+                                state.touch()
                                 # Update list of waypoints with the correct ones
                                 state.list_of_waypoints = message.data["all_waypoints"]
                                 state.waypoint_up_to_date = True
