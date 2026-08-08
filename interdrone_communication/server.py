@@ -60,7 +60,7 @@ class Server:
                     continue
                 # If the received message requires a response inside of server, it's overwritten and sent via client_in_data at the end of handle_client()
                 response_message: Message | None = None
-                print(f"Message received: {message.id}")
+                # print(f"Message received: {message.id}")
                 # Message Handling for all messages sent to the server. Some messages are processed here if they are simple while others are sent back to interdrone to be processed.
                 match message.id:
                     case MessageType.APP_CONFIG:
@@ -163,13 +163,22 @@ class Server:
             print("Client timeout - no data received")
         except asyncio.IncompleteReadError:
             print("Client disconnected before sending complete message")
+        except ConnectionResetError, BrokenPipeError:
+            # TODO verify this works on the drones
+            # Normal when a drone is powered off/killed while holding a connection open.
+            # On Windows this surfaces as ConnectionResetError with [WinError 64].
+            print("Client disconnected")
+        except OSError as e:
+            # Any other socket-level failure is still just a dead peer, not a bug in handling.
+            print(f"Client connection lost: {e}")
         except Exception as e:
             print(f"Error handling client: {e}")
         finally:
-            writer.close()
             try:
+                writer.close()
                 await writer.wait_closed()
-            except ConnectionResetError:
+            except OSError, asyncio.TimeoutError:
+                # Closing a socket whose peer already vanished raises here; nothing left to do.
                 pass
 
     # Run server

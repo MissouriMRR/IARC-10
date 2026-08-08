@@ -1,7 +1,6 @@
 # Outside Imports
 import queue
 import threading
-import argparse
 import time
 
 # Interdrone Imports
@@ -14,13 +13,9 @@ from state_machine.flight_settings import FlightSettings
 # When running inner files from top level do
 # uv run -m interdrone_communication.main -i 1 (runs as a module so it has top level access)
 def main() -> None:
-    # Parse arguments in main thread
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    args = parser.parse_args()
-
-    # Load config with full drone_info populated from mission_config.json
-    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
+    # Load config with full drone_info populated from mission_config.json.
+    # Self ID comes from -i/--id, falling back to self_id in the mission config
+    flight_settings = FlightSettings.from_mission_config()
     drone_id = flight_settings.current_drone_ID
     # parallel
     # Create instance of NetworkingThread class and setup resources_ready variable to pass in

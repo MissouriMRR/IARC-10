@@ -1,4 +1,4 @@
-from flight.pathfinding.nodeField.node_generation import Field, Mine, Node
+from flight.pathfinding.node_generation import Field, Mine, Node
 from flight.pathfinding.path_calculation import Graph
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer as coordCon
 from random import randint, seed, uniform

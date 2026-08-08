@@ -69,38 +69,53 @@ class Client:
         # Keep track of background client_message_tasks
         client_message_tasks: set[asyncio.Task[None]] = set()
         while True:
-            handled_message = False
-            # Check for new message from client_in_data
-            while not self.client_in_data.empty():
-                handled_message = True
-                # Get new message from client_in_data
-                message: Message = await self.client_in_data.get()
-
-                # If too many messages tasks are currently running, wait for one to finish before adding next one
-                while len(client_message_tasks) >= self.max_in_flight_message_tasks:
-                    done, _ = await asyncio.wait(
-                        client_message_tasks,
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    # Consume task exceptions so they do not get logged as un-retrieved.
-                    for finished_task in done:
-                        try:
-                            finished_task.result()
-                        except Exception:
-                            pass
-                # Create a background task to handle this message (allows for asynchronous messaging)
-                client_message_task = asyncio.create_task(self.handle_message(message))
-                client_message_tasks.add(client_message_task)
-                client_message_task.add_done_callback(
-                    client_message_tasks.discard
-                )  # Clean up completed tasks
-
-            # Remove any idle TCP connections
-            await self._cleanup_idle_connections()
+            try:
+                handled_message = await self._client_loop_iteration(client_message_tasks)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # The client loop is the only thing sending data off this drone. If it ever
+                # raises, every outbound message stops forever and the drone silently looks
+                # dead to the rest of the swarm, so no failure here may end the loop.
+                print(f"Client loop error (continuing): {type(e).__name__}: {e}")
+                handled_message = False
 
             # If no message was handled, pause briefly to avoid busy-waiting.
             if not handled_message:
                 await asyncio.sleep(0.001)
+
+    # A single pass of the client loop. Returns whether any message was dispatched.
+    async def _client_loop_iteration(self, client_message_tasks: set[asyncio.Task[None]]) -> bool:
+        handled_message = False
+        # Check for new message from client_in_data
+        while not self.client_in_data.empty():
+            handled_message = True
+            # Get new message from client_in_data
+            message: Message = await self.client_in_data.get()
+
+            # If too many messages tasks are currently running, wait for one to finish before adding next one
+            while len(client_message_tasks) >= self.max_in_flight_message_tasks:
+                done, _ = await asyncio.wait(
+                    client_message_tasks,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                # Consume task exceptions so they do not get logged as un-retrieved.
+                for finished_task in done:
+                    try:
+                        finished_task.result()
+                    except Exception:
+                        pass
+            # Create a background task to handle this message (allows for asynchronous messaging)
+            client_message_task = asyncio.create_task(self.handle_message(message))
+            client_message_tasks.add(client_message_task)
+            client_message_task.add_done_callback(
+                client_message_tasks.discard
+            )  # Clean up completed tasks
+
+        # Remove any idle TCP connections
+        await self._cleanup_idle_connections()
+
+        return handled_message
 
     # Create message_tasks to send data to all other drones
     async def handle_message(self, message: Message):
@@ -182,9 +197,12 @@ class Client:
         except (
             asyncio.TimeoutError,
             asyncio.IncompleteReadError,
-            ConnectionResetError,
-            BrokenPipeError,
-            ConnectionRefusedError,
+            # OSError covers ConnectionResetError / BrokenPipeError / ConnectionRefusedError
+            # plus the platform-specific socket errors that don't map onto them (on Windows a
+            # peer that vanishes can surface as a bare OSError with an unmapped winerror).
+            # Every one of these means "peer unreachable", so they all need the recovery path
+            # below rather than falling through to the generic handler.
+            OSError,
         ):
             await self._drop_connection(server_ip, server_port)
             # Messages that need to be resent if they fail to send
@@ -262,8 +280,15 @@ class Client:
         conn = self.connection_pool.pop(key, None)
         if conn is None:
             return
-        conn.writer.close()
-        await conn.writer.wait_closed()
+        # Tearing down a socket whose peer already died raises the same error that got us
+        # here (on Windows, ConnectionResetError [WinError 64]). This must never propagate:
+        # callers rely on _drop_connection to run to completion before they retry/NACK, and
+        # _cleanup_idle_connections calls it straight from the client loop.
+        try:
+            conn.writer.close()
+            await asyncio.wait_for(conn.writer.wait_closed(), timeout=1.0)
+        except OSError, asyncio.TimeoutError:
+            pass
 
     # Drops connections that are closing or have been idle > 30s
     async def _cleanup_idle_connections(self) -> None:

@@ -7,9 +7,11 @@ and allows for the cancellation and starting of states based on message data.
 import asyncio
 from asyncio import Task
 from collections.abc import Awaitable, Callable
+import logging
 from typing import TYPE_CHECKING
 from typing import Any
 from flight.waypoint import Waypoint
+import flight.flight_log as flight_log
 import queue
 import threading
 import time
@@ -91,6 +93,8 @@ class Interdrone:
         self.interdrone_messages = {
             MessageType.PING_ACK: queue.Queue(),
             MessageType.PING_NACK: queue.Queue(),
+            MessageType.SEND_GPS_OFFSET_ACK: queue.Queue(),
+            MessageType.SEND_DRONE_STATUS: queue.Queue(),
             # NOTE ADD OTHER MESSAGES HERE AS NEEDED
         }
 
@@ -150,15 +154,26 @@ class Interdrone:
     def get_drone_state_from_id(self, drone_id: int) -> DroneState | None:
         return next((s for s in self.drone_states if s.drone_id == drone_id), None)
 
-    async def ping_drones(self) -> bool:
+    async def ping_drones(self, timeout_sec: float = 2.0) -> bool:
         """
         All drones run this function.
-        Sends PING and waits until every other drone has ACK/NACK.
-        Returns True only if all responded with ACK.
+        Sends PING and waits (with a timeout) until every other drone has ACK/NACK.
+        Returns True only if all responded with ACK; drones that don't answer within
+        timeout_sec are treated as failures rather than blocking forever.
         """
         # If only drone in test, return true for ping_drones
         if self.flight_settings.other_drones_in_mission == []:
             return True
+
+        # Drop any responses left over from a previous ping so they aren't
+        # mistaken for answers to this one.
+        for stale_msg_type in (MessageType.PING_ACK, MessageType.PING_NACK):
+            stale_queue: queue.Queue[Message] = self.interdrone_messages[stale_msg_type]
+            while True:
+                try:
+                    stale_queue.get_nowait()
+                except queue.Empty:
+                    break
 
         # Track responses by drone id: None=not received yet, True=ACK, False=NACK
         ping_by_id: dict[int, bool | None] = {state.drone_id: None for state in self.drone_states}
@@ -173,9 +188,10 @@ class Interdrone:
         )
         self.send(ping_message)
 
-        print(f"Pings have been sent. Current ping response state is {ping_by_id}")
+        logging.debug("Pings have been sent. Current ping response state is %s", ping_by_id)
         # TODO may move this functionality down to the interdrone loop and just wait up here. TBD. Keep this ok solution for now
-        while None in ping_by_id.values():
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline and None in ping_by_id.values():
             updated = False
 
             try:
@@ -197,15 +213,22 @@ class Interdrone:
             if not updated:
                 await asyncio.sleep(0.05)
 
+        # Anything still unanswered at the deadline is a failure, not a wait
+        unanswered: list[int] = [
+            drone_id for drone_id, result in ping_by_id.items() if result is None
+        ]
+        if unanswered:
+            logging.warning("No ping response from drones %s after %.1fs", unanswered, timeout_sec)
+        for drone_id in unanswered:
+            ping_by_id[drone_id] = False
+
         # Copy results back into DroneState objects
         for state in self.drone_states:
-            result = ping_by_id.get(state.drone_id)
-            if result is not None:
-                state.ping_response = result
+            state.ping_response = ping_by_id[state.drone_id]
 
         all_ack: bool = all(result is True for result in ping_by_id.values())
 
-        print(f"Return {all_ack} from ping_drones. Ping status is: {ping_by_id}")
+        logging.debug("Return %s from ping_drones. Ping status is: %s", all_ack, ping_by_id)
         return all_ack
 
     async def send_ARM(self, drones_to_send_data: tuple[int, ...]) -> None:
@@ -404,7 +427,9 @@ class Interdrone:
         a checksum of waypoints for the other drone
         When received, if checksum of other drone doesn't match, a reconfirm_waypoints message is sent to make sure waypoints are synced
         """
-        checksum = Waypoint.getChecksum(waypoints)
+        # The receiver compares against its full accumulated copy of our list, so the
+        # checksum has to cover everything we hold, not just the waypoints being added.
+        checksum = Waypoint.getChecksum(self.drone.getWaypoints())
         for target_drone in drones_to_send_data:
             state = self.get_drone_state_from_id(target_drone)
             if state is not None:
@@ -445,6 +470,34 @@ class Interdrone:
             if state is not None:
                 state.waypoint_up_to_date = False
 
+        return
+
+    async def report_position(
+        self, drones_to_send_data: tuple[int, ...], lat: float, lon: float, alt: float
+    ) -> None:
+        """
+        Message ID = 552
+        Broadcast where this drone actually is to every other drone.
+
+        Every other position the swarm holds about a peer is inferred from that
+        peer's waypoint messages, which means avoidance can only ever confirm the
+        plan it already believes. This is the one input that can contradict it —
+        the drone that has drifted off its circle or been taken over by a
+        failsafe is precisely the drone whose waypoint list has stopped
+        describing reality.
+
+        Not acked, and not resent on failure: it is a continuous stream, a
+        dropped report is superseded within a few hundred milliseconds, and
+        receivers already treat a peer whose reports have dried up as unknown
+        rather than as safely predicted.
+        """
+        position_message: Message = Message.create(
+            id=MessageType.POSITION_REPORT,
+            drones_to_send_data=drones_to_send_data,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={"lat": lat, "lon": lon, "alt": alt},
+        )
+        self.send(position_message)
         return
 
     async def send_survey_start(self) -> None:
@@ -595,6 +648,188 @@ class Interdrone:
 
         return
 
+    async def send_ground_truth_ack(self) -> None:
+        """
+        Message ID = 441
+        Sends SEND_GROUND_TRUTH_COORDS_ACK back to the app.
+        If this drone is drone 1, it can address the app directly.
+        Otherwise the ack must be routed through drone 1 first, since the app
+        only holds a connection to drone 1.
+        calculating_drone_id is carried explicitly in the payload because drone 1's
+        relay (see SEND_GROUND_TRUTH_COORDS_ACK case below) rewrites sender_id to its own id.
+        """
+        ground_truth_ack_message: Message = Message.create(
+            id=MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+            drones_to_send_data=(0,) if self.flight_settings.current_drone_ID == 1 else (1,),
+            sender_id=self.flight_settings.current_drone_ID,
+            data={"calculating_drone_id": self.flight_settings.current_drone_ID},
+        )
+
+        self.send(ground_truth_ack_message)
+
+        return
+
+    async def distribute_gps_offset(self) -> None:
+        """
+        Message IDs = 444, 445, 443
+        Used only by the drone commanded (via COMMAND_OFFSET_DISTRIBUTION) to distribute
+        its calculated GPS offset.
+        Sends SEND_GPS_OFFSET to every other drone in the mission, waits (with a timeout)
+        for SEND_GPS_OFFSET_ACK from each, then reports the results back to the app via
+        COMMAND_OFFSET_DISTRIBUTION_ACK (routed through drone 1 if this isn't drone 1).
+        Run as a background task (see COMMAND_OFFSET_DISTRIBUTION case) since it can block
+        for up to gps_offset_ack_timeout_sec waiting on acks.
+        """
+        gps_offset_ack_timeout_sec = 5.0
+
+        other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
+        ack_by_id: dict[int, bool] = {drone_id: False for drone_id in other_drone_ids}
+
+        # Send GPS offset to all other drones
+        offset_message: Message = Message.create(
+            id=MessageType.SEND_GPS_OFFSET,
+            drones_to_send_data=other_drone_ids,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "lat_offset": self.flight_settings.gps_lat_offset,
+                "lon_offset": self.flight_settings.gps_lon_offset,
+            },
+        )
+        self.send(offset_message)
+
+        # Wait up to 5s to get acks back from all other drones that they've updated their GPS offset values
+        ack_queue: queue.Queue[Message] = self.interdrone_messages.setdefault(
+            MessageType.SEND_GPS_OFFSET_ACK, queue.Queue()
+        )
+        deadline = time.time() + gps_offset_ack_timeout_sec
+        while time.time() < deadline and not all(ack_by_id.values()):
+            try:
+                ack: Message = ack_queue.get_nowait()
+                if ack.sender_id in ack_by_id:
+                    ack_by_id[ack.sender_id] = True
+            except queue.Empty:
+                await asyncio.sleep(0.05)
+
+        drone_ack_list: list[dict[str, Any]] = [
+            {"drone_id": drone_id, "acked": acked} for drone_id, acked in ack_by_id.items()
+        ]
+
+        # Send COMMAND_OFFSET_DISTRIBUTION_ACK back to app with list of drones who set their offset
+        distribution_ack_message: Message = Message.create(
+            id=MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+            drones_to_send_data=(0,) if self.flight_settings.current_drone_ID == 1 else (1,),
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "num_drones": len(other_drone_ids),
+                "drone_ack_list": drone_ack_list,
+            },
+        )
+        self.send(distribution_ack_message)
+
+        return
+
+    async def send_drone_status(self, drones_to_send_data: tuple[int, ...]) -> None:
+        """
+        Message ID = 517
+        Sends this drone's current cmd message back to the drone that asked for it
+        (drone 1). drone_id isn't included since it's carried in sender_id, and
+        availability is inferred by drone 1 from whether this response arrives at all.
+        drones_to_send_data should just be one drone.
+        """
+        drone_status_message: Message = Message.create(
+            id=MessageType.SEND_DRONE_STATUS,
+            drones_to_send_data=drones_to_send_data,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "drone_cmd_msg": self.cmd_msg.value,
+            },
+        )
+
+        self.send(drone_status_message)
+
+        return
+
+    async def gather_swarm_status(self) -> None:
+        """
+        Message IDs = 516, 517, 426
+        Used only by drone 1 in response to REQUEST_SWARM_STATUS from the app.
+        Sends REQUEST_DRONE_STATUS to every other drone in the mission, waits (with a
+        timeout) for SEND_DRONE_STATUS from each, then reports the whole swarm's status
+        back to the app via SEND_SWARM_STATUS. Drones that don't answer in time are
+        reported with drone_available = False.
+        Run as a background task (see REQUEST_SWARM_STATUS case) since it can block for
+        up to drone_status_timeout_sec waiting on responses.
+        """
+        drone_status_timeout_sec = 2.0
+
+        other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
+        # None = no response yet, otherwise the drone's reported CMD_MSG value
+        cmd_msg_by_id: dict[int, int | None] = {drone_id: None for drone_id in other_drone_ids}
+
+        status_queue: queue.Queue[Message] = self.interdrone_messages.setdefault(
+            MessageType.SEND_DRONE_STATUS, queue.Queue()
+        )
+
+        # Drop any responses left over from a previous request so they aren't
+        # mistaken for answers to this one.
+        while True:
+            try:
+                status_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        if other_drone_ids:
+            request_message: Message = Message.create(
+                id=MessageType.REQUEST_DRONE_STATUS,
+                drones_to_send_data=other_drone_ids,
+                sender_id=self.flight_settings.current_drone_ID,
+                data={},
+            )
+            self.send(request_message)
+
+            deadline = time.time() + drone_status_timeout_sec
+            while time.time() < deadline and None in cmd_msg_by_id.values():
+                try:
+                    response: Message = status_queue.get_nowait()
+                    if response.sender_id in cmd_msg_by_id:
+                        cmd_msg_by_id[response.sender_id] = response.data["drone_cmd_msg"]
+                except queue.Empty:
+                    await asyncio.sleep(0.05)
+
+        # Drone 1 reports itself first, then every other drone in the mission.
+        drone_status: list[dict[str, Any]] = [
+            {
+                "drone_id": self.flight_settings.current_drone_ID,
+                "drone_available": True,
+                "drone_cmd_msg": self.cmd_msg.value,
+            }
+        ]
+        for drone_id, cmd_msg_value in cmd_msg_by_id.items():
+            drone_status.append(
+                {
+                    "drone_id": drone_id,
+                    "drone_available": cmd_msg_value is not None,
+                    # Unreachable drones have no known cmd message, so report NONE
+                    "drone_cmd_msg": (
+                        cmd_msg_value if cmd_msg_value is not None else CMD_MSG.NONE.value
+                    ),
+                }
+            )
+
+        print(drone_status)
+        swarm_status_message: Message = Message.create(
+            id=MessageType.SEND_SWARM_STATUS,
+            drones_to_send_data=(0,),  # 0 addresses the app
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "num_drones": len(drone_status),
+                "drone_status": drone_status,
+            },
+        )
+        self.send(swarm_status_message)
+
+        return
+
     async def cancel_state(self) -> None:
         """
         Cancels the current state being executed.
@@ -675,13 +910,14 @@ class Interdrone:
 
     # Check for new messages to send and create tasks to send them
     async def interdrone_loop(self) -> None:
-
         startTime = time.time()
         try:
             while True:
-                # Check for server messages
-                message = self.networking.try_get_server_message(timeout=0.02)
-                if message is not None:
+                # Check for server messages, draining everything already queued this
+                # tick. Handling only one per iteration caps throughput at ~10 msg/sec
+                # (one per sleep below), which lets bursts of traffic build a backlog
+                # and add latency to every other message type.
+                while (message := self.networking.try_get_server_message(timeout=0.02)) is not None:
                     # Adds the new message to its respective message queue
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
@@ -824,19 +1060,34 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
                             # TODO CHECK THE CHECKSUM TO DETERMINE WHETHER TO SEND RECONFIRM WAYPOINTS
                             if state is not None:
+                                state.touch()
                                 # Add received waypoints to list_of_waypoints
                                 state.list_of_waypoints += message.data["newWaypoints"]
-                                print(state.list_of_waypoints)
+
+                                flight_log.event(
+                                    "waypoints_recv",
+                                    peer=message.sender_id,
+                                    added=flight_log.waypoints_brief(message.data["newWaypoints"]),
+                                    queued_after=len(state.list_of_waypoints),
+                                    checksum=Waypoint.getChecksum(state.list_of_waypoints),
+                                    sender_checksum=message.data["sender_drone_waypoints_checksum"],
+                                )
 
                                 # TODO IMPLEMENT CHECKSUM HERE
                                 # Get checksum of self.drone.waypoint_checksum and compare to message.data[""]
                                 checksum = Waypoint.getChecksum(state.list_of_waypoints)
-                                print(
-                                    f"Comparing checksum. message.checksum = {message.data['sender_drone_waypoints_checksum']} and checksum(state.list_of_waypoints) = {checksum}"
+                                sender_checksum = message.data["sender_drone_waypoints_checksum"]
+                                # Only worth reading when they disagree; logged below if so.
+                                logging.debug(
+                                    "drone %d waypoints: %d held, checksum %d (sender says %d)",
+                                    message.sender_id,
+                                    len(state.list_of_waypoints),
+                                    checksum,
+                                    sender_checksum,
                                 )
                                 # Check if stored list of waypoints matches what the other drone has
                                 # If so, send NEW_WAYPOINTS_ACK
-                                if checksum == message.data["sender_drone_waypoints_checksum"]:
+                                if checksum == sender_checksum:
                                     waypoints_ack_message: Message = Message.create(
                                         id=MessageType.NEW_WAYPOINTS_ACK,
                                         drones_to_send_data=(message.sender_id,),
@@ -846,6 +1097,13 @@ class Interdrone:
                                     self.send(waypoints_ack_message)
                                 # If checksums don't match, send reconfirm waypoints message
                                 else:
+                                    logging.warning(
+                                        "waypoint list out of sync with drone %d "
+                                        "(ours %d vs theirs %d), resyncing",
+                                        message.sender_id,
+                                        checksum,
+                                        sender_checksum,
+                                    )
                                     state.waypoint_up_to_date = False
                                     waypoints = self.drone.getWaypoints()
                                     reconfirm_waypoints_message: Message = Message.create(
@@ -869,12 +1127,7 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
 
                             if state is not None:
-                                """
-                                print(
-                                    f"Got reached waypoint. State of waypoint list before: {state.list_of_waypoints} "
-                                )
-                                """
-                                print("_______________________________________________")
+                                state.touch()
                                 reached_id = message.data["reached_waypoint_id"]
                                 reached_waypoint: Waypoint | None = None
                                 for waypoint in state.list_of_waypoints:
@@ -883,6 +1136,23 @@ class Interdrone:
                                 if reached_waypoint is not None:
                                     state.list_of_waypoints.remove(reached_waypoint)
                                     reached_waypoint.has_visited = True
+                                    # This is the freshest position fix we have for
+                                    # that drone; collision avoidance holds on it.
+                                    state.last_reached_waypoint = reached_waypoint
+
+                                # A report for a waypoint we were never told about
+                                # leaves last_reached_waypoint stale, so avoidance
+                                # keeps reasoning about where that drone used to be.
+                                flight_log.event(
+                                    "reached_recv",
+                                    peer=message.sender_id,
+                                    reached_id=reached_id,
+                                    matched=reached_waypoint is not None,
+                                    queued_after=len(state.list_of_waypoints),
+                                    last_reached=flight_log.waypoint_brief(
+                                        state.last_reached_waypoint
+                                    ),
+                                )
 
                                 # print(f"State of waypoint list after: {state.list_of_waypoints} ")
                                 reached_waypoint_ack_message: Message = Message.create(
@@ -893,6 +1163,15 @@ class Interdrone:
                                 )
                                 self.send(reached_waypoint_ack_message)
                             # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
+                        case MessageType.POSITION_REPORT:
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
+                                state.set_live_position(
+                                    message.data["lat"],
+                                    message.data["lon"],
+                                    message.data["alt"],
+                                )
                         case MessageType.REACHED_WAYPOINT_ACK:
 
                             state = self.get_drone_state_from_id(message.sender_id)
@@ -902,6 +1181,7 @@ class Interdrone:
                             state = self.get_drone_state_from_id(message.sender_id)
 
                             if state is not None:
+                                state.touch()
                                 # Update list of waypoints with the correct ones
                                 state.list_of_waypoints = message.data["all_waypoints"]
                                 state.waypoint_up_to_date = True
@@ -960,8 +1240,98 @@ class Interdrone:
                         case MessageType.SEND_APP_COORDS_ACK:
                             # TODO Harper implement this or something
                             pass
+                        case MessageType.SEND_GROUND_TRUTH_COORDS:
+                            # If this message isn't addressed to us, only drone 1 (the app's
+                            # only connection) should be relaying it on to the real target.
+                            if message.drones_to_send_data != (
+                                self.flight_settings.current_drone_ID,
+                            ):
+                                if self.flight_settings.current_drone_ID == 1:
+                                    self.send(message)
+                            # Else: message is at the target
+                            # Calculate offset
+                            else:
+                                # TODO: calculate this drone's actual GPS offset from
+                                # message.data["lat"]/["lon"] (ground truth) vs its onboard GPS
+                                # TODO Set ardupilot param as well
+                                self.flight_settings.gps_lat_offset = 0.0
+                                self.flight_settings.gps_lon_offset = 0.0
+                                await self.send_ground_truth_ack()
+                        case MessageType.SEND_GROUND_TRUTH_COORDS_ACK:
+                            # Relay to the app if we're drone 1 and this ack arrived over the
+                            # network from another drone (rather than being generated locally).
+                            if (
+                                self.flight_settings.current_drone_ID == 1
+                                and message.sender_id != 1
+                            ):
+                                relay_message: Message = Message.create(
+                                    id=MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+                                    drones_to_send_data=(0,),
+                                    sender_id=self.flight_settings.current_drone_ID,
+                                    data={
+                                        "calculating_drone_id": message.data["calculating_drone_id"]
+                                    },
+                                )
+                                self.send(relay_message)
+                        case MessageType.COMMAND_OFFSET_DISTRIBUTION:
+                            # Same drone-1-relay pattern as SEND_GROUND_TRUTH_COORDS above.
+                            # (sends message to target drone since app always sends to 1)
+                            if message.drones_to_send_data != (
+                                self.flight_settings.current_drone_ID,
+                            ):
+                                if self.flight_settings.current_drone_ID == 1:
+                                    self.send(message)
+                            else:
+                                # Runs as a background task since it waits on SEND_GPS_OFFSET_ACK
+                                # responses and shouldn't block the interdrone loop.
+                                asyncio.ensure_future(self.distribute_gps_offset())
+                        case MessageType.SEND_GPS_OFFSET:
+                            # Update GPS offset values based on message values
+                            self.flight_settings.gps_lat_offset = message.data["lat_offset"]
+                            self.flight_settings.gps_lon_offset = message.data["lon_offset"]
+                            gps_offset_ack_message: Message = Message.create(
+                                id=MessageType.SEND_GPS_OFFSET_ACK,
+                                drones_to_send_data=(message.sender_id,),
+                                sender_id=self.flight_settings.current_drone_ID,
+                                data={},
+                            )
+                            self.send(gps_offset_ack_message)
+                        case MessageType.SEND_GPS_OFFSET_ACK:
+                            # Consumed directly out of self.interdrone_messages by
+                            # distribute_gps_offset(); nothing to do here.
+                            pass
+                        case MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK:
+                            # Relay to the app if we're drone 1 and this ack arrived over the
+                            # network from the drone that ran the distribution.
+                            if (
+                                self.flight_settings.current_drone_ID == 1
+                                and message.sender_id != 1
+                            ):
+                                relay_distribution_ack: Message = Message.create(
+                                    id=MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+                                    drones_to_send_data=(0,),
+                                    sender_id=self.flight_settings.current_drone_ID,
+                                    data={
+                                        "num_drones": message.data["num_drones"],
+                                        "drone_ack_list": message.data["drone_ack_list"],
+                                    },
+                                )
+                                self.send(relay_distribution_ack)
 
                             # Check if drone 1 received and then distribute
+                        case MessageType.REQUEST_SWARM_STATUS:
+                            # Only drone 1 holds the app connection and polls the swarm.
+                            if self.flight_settings.current_drone_ID == 1:
+                                # Runs as a background task since it waits on
+                                # SEND_DRONE_STATUS responses and shouldn't block this loop.
+                                asyncio.ensure_future(self.gather_swarm_status())
+                        case MessageType.REQUEST_DRONE_STATUS:
+                            # Respond to whichever drone asked (drone 1) with our cmd message
+                            await self.send_drone_status(drones_to_send_data=(message.sender_id,))
+                        case MessageType.SEND_DRONE_STATUS:
+                            # Consumed directly out of self.interdrone_messages by
+                            # gather_swarm_status(); nothing to do here.
+                            pass
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")

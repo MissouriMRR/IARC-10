@@ -72,8 +72,7 @@ def parse_batman_location(value: str) -> int:
 # Sample Run Command:
 # uv run range_test.py -i 1 -perf true -t 2 3 4 -b 2
 async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
+    parser = FlightSettings.add_flight_arguments(argparse.ArgumentParser())
     parser.add_argument(
         "-nd",
         "--numDrones",
@@ -117,7 +116,7 @@ async def main():
 
     args = parser.parse_args()
     # Load config
-    flight_settings = FlightSettings.from_mission_config(self_id=args.id)
+    flight_settings = FlightSettings.from_mission_config(args=args)
 
     # Declare flag variables
     drone_id: int

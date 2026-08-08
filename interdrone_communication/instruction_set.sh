@@ -1,3 +1,6 @@
+# NOTE This file is currently unused.
+
+
 # This file is automatically executed by the startup script if specified for
 # the pi (i.e. it can be disabled). Instructions are executed in order and on
 # startup if enabled.

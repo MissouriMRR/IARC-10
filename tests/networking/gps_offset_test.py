@@ -5,22 +5,23 @@ from state_machine.drone_state import DroneState
 import asyncio
 
 
+# uv run -m tests.networking.gps_offset_test --id 1
 async def main():
     print("Hello from iarc-10!")
     drone: Drone = Drone()
     # Self ID comes from -i/--id, falling back to self_id in the mission config
     flight_settings: FlightSettings = FlightSettings.from_mission_config()
-    # Create drone_state to access state of other drones in the test
-    drone_states: list[DroneState] = (
-        []
-    )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
-    for id in flight_settings.other_drones_in_mission:
-        drone_states.append(
-            DroneState(
-                drone_id=id,
-                drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
-            )
-        )
+    # # Create drone_state to access state of other drones in the test
+    # drone_states: list[DroneState] = (
+    #     []
+    # )  # TODO TALK TO HARPER. MAY NOT NEED DRONE STATE AT STATE MACHINE LEVEL. IF SO MOVE TO INTERDRONE
+    # for id in flight_settings.other_drones_in_mission:
+    #     drone_states.append(
+    #         DroneState(
+    #             drone_id=id,
+    #             drone_ip=next(d["IP"] for d in flight_settings.drone_info if d["id"] == id),
+    #         )
+    # )
     interdrone: Interdrone = Interdrone(flight_settings=flight_settings, drone=drone)
     interdroneTask = asyncio.create_task(interdrone.start_interdrone())
 
@@ -36,11 +37,23 @@ async def main():
             await asyncio.sleep(0.1)
         # Try to arm once ping works
         current_cmd_msg = CMD_MSG.NONE
+        current_lat_offset = flight_settings.gps_lat_offset
+        current_lon_offset = flight_settings.gps_lon_offset
         while True:
             # Check for change in cmd msg and print it
             if interdrone.get_cmd_msg() != current_cmd_msg:
                 current_cmd_msg = interdrone.get_cmd_msg()
                 print(current_cmd_msg)
+            # Check for change in GPS offset and print it
+            if (
+                flight_settings.gps_lat_offset != current_lat_offset
+                or flight_settings.gps_lon_offset != current_lon_offset
+            ):
+                current_lat_offset = flight_settings.gps_lat_offset
+                current_lon_offset = flight_settings.gps_lon_offset
+                print(
+                    f"GPS offset updated: lat_offset={current_lat_offset}, lon_offset={current_lon_offset}"
+                )
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         print("Networking shutting down...")

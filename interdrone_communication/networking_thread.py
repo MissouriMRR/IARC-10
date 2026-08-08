@@ -78,6 +78,11 @@ class NetworkingThread:
             # Keep the networking loop alive
             while True:
                 await asyncio.sleep(1)
+                # Neither task is ever awaited, so if one dies its exception is swallowed and
+                # the drone goes quiet with no indication why. Surface it instead.
+                for name, task in (("Server", server_task), ("Client", client_task)):
+                    if task.done() and not task.cancelled():
+                        print(f"{name} task exited unexpectedly: {task.exception()!r}")
         except asyncio.CancelledError:
             print("Networking shutting down...")
             server_task.cancel()

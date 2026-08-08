@@ -4,17 +4,12 @@ from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
 from state_machine.drone_state import DroneState
 import asyncio
-import argparse
 
 
 async def main():
-    # Get drone ID arg
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--id", help="Self ID", type=int)
-    args = parser.parse_args()
-
     drone: Drone = Drone()
-    flight_settings: FlightSettings = FlightSettings.from_mission_config(self_id=args.id)
+    # Self ID comes from -i/--id, falling back to self_id in the mission config
+    flight_settings: FlightSettings = FlightSettings.from_mission_config()
     # Create drone_state to access state of other drones in the test
     print(flight_settings.drones_in_mission)
     print(flight_settings.other_drones_in_mission)

@@ -20,17 +20,27 @@ class MessageType(Enum):
     SET_HOVER_STATUS = 412
     REQUEST_MAP_DATA = 414
     REQUEST_DRONE_LOCATIONS = 415
+    REQUEST_SWARM_STATUS = 416
     SEND_PATHS_TO_APP = 420
     SEND_APP_SCANNING_ERROR = 421
     SEND_DRONE_LOCATIONS = 425
+    SEND_SWARM_STATUS = 426
     SEND_APP_COORDS = 435
     SEND_APP_COORDS_ACK = 436
+    SEND_GROUND_TRUTH_COORDS = 440
+    SEND_GROUND_TRUTH_COORDS_ACK = 441
+    COMMAND_OFFSET_DISTRIBUTION = 442
+    COMMAND_OFFSET_DISTRIBUTION_ACK = 443
+    SEND_GPS_OFFSET = 444
+    SEND_GPS_OFFSET_ACK = 445
 
     # Interdrone Communication
     HEARTBEAT = 504
     SERVER_DEFAULT_RESPONSE = 505
     SPEED_TEST_REQUEST = 513
     SPEED_TEST_RESPONSE = 514
+    REQUEST_DRONE_STATUS = 516
+    SEND_DRONE_STATUS = 517
     ARM = 520
     ARM_ACK = 521
     ARM_NACK = 522
@@ -49,6 +59,7 @@ class MessageType(Enum):
     NEW_WAYPOINTS_ACK = 546
     REACHED_WAYPOINT = 550
     REACHED_WAYPOINT_ACK = 551
+    POSITION_REPORT = 552
     EMERGENCY_LAND = 555
     LAND = 556
     RECONFIRM_WAYPOINTS = 560
@@ -118,6 +129,23 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "drones_to_send_data": tuple[int, ...],  # VERIFY WE DON'T NEED DATA
         "sender_id": int,
     },
+    # Sent from the app to drone 1 asking for the status of every drone in the swarm.
+    MessageType.REQUEST_SWARM_STATUS: {
+        "id": MessageType.REQUEST_SWARM_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Sent from drone 1 back to the app with one entry per drone in the mission
+    # (drone 1 included). drone_cmd_msg is the int value of the CMD_MSG enum in
+    # state_machine/interdrone.py.
+    MessageType.SEND_SWARM_STATUS: {
+        "id": MessageType.SEND_SWARM_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "num_drones": int,
+        # [{"drone_id": int, "drone_available": bool, "drone_cmd_msg": int}, ...]
+        "drone_status": list[dict[str, Any]],
+    },
     MessageType.SEND_PATHS_TO_APP: {
         "id": MessageType.SEND_PATHS_TO_APP,
         "drones_to_send_data": tuple[int, ...],
@@ -162,6 +190,52 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
     },
+    # Sent from the app to a target drone (routed through drone 1) with a ground truth
+    # coordinate the target drone uses to calculate its GPS offset.
+    MessageType.SEND_GROUND_TRUTH_COORDS: {
+        "id": MessageType.SEND_GROUND_TRUTH_COORDS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat": float,
+        "lon": float,
+    },
+    # Sent from the drone that calculated its offset back to the app (through drone 1).
+    # calculating_drone_id is included explicitly since drone 1's relay overwrites sender_id.
+    MessageType.SEND_GROUND_TRUTH_COORDS_ACK: {
+        "id": MessageType.SEND_GROUND_TRUTH_COORDS_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "calculating_drone_id": int,
+    },
+    # Sent from the app to the drone that calculated the offset (routed through drone 1),
+    # commanding it to distribute that offset to the rest of the swarm.
+    MessageType.COMMAND_OFFSET_DISTRIBUTION: {
+        "id": MessageType.COMMAND_OFFSET_DISTRIBUTION,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Sent from the distributing drone back to the app (through drone 1) confirming which
+    # drones acked the offset distribution.
+    MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK: {
+        "id": MessageType.COMMAND_OFFSET_DISTRIBUTION_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "num_drones": int,
+        "drone_ack_list": list[dict[str, Any]],  # [{"drone_id": int, "acked": bool}, ...]
+    },
+    # Sent from the distributing drone to every other drone in the mission.
+    MessageType.SEND_GPS_OFFSET: {
+        "id": MessageType.SEND_GPS_OFFSET,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat_offset": float,
+        "lon_offset": float,
+    },
+    MessageType.SEND_GPS_OFFSET_ACK: {
+        "id": MessageType.SEND_GPS_OFFSET_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
     # Message: SPEED_TEST_REQUEST
     # Usage: Used in network_test. Sent to other drones, their server updates the data, and it's then sent back to the client for processing. Client outputs SPEED_TEST_RESPONSE
     # Description of Data: TODO Talk to team and see if we want to include this for message documentation
@@ -186,6 +260,20 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "download_rtt_ms": float,
         "download_throughput_kbps": float,
         "payload": str,
+    },
+    # Sent from drone 1 to the rest of the swarm when the app asks for swarm status.
+    MessageType.REQUEST_DRONE_STATUS: {
+        "id": MessageType.REQUEST_DRONE_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    # Response from each drone back to drone 1. drone_id isn't needed since it's sender_id,
+    # and availability is determined by whether this message comes back at all.
+    MessageType.SEND_DRONE_STATUS: {
+        "id": MessageType.SEND_DRONE_STATUS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "drone_cmd_msg": int,  # int value of the CMD_MSG enum
     },
     MessageType.ARM: {
         "id": MessageType.ARM,
@@ -279,6 +367,19 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.REACHED_WAYPOINT_ACK,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
+    },
+    # Where the sender actually is, as opposed to where its waypoint list implies
+    # it should be. Broadcast continuously during the POIF demo so every drone can
+    # check the formation against a measurement rather than against its own plan,
+    # and land the swarm if two airframes really do get close. Deliberately
+    # unacknowledged: it is a stream, and the next one is along shortly.
+    MessageType.POSITION_REPORT: {
+        "id": MessageType.POSITION_REPORT,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "lat": float,
+        "lon": float,
+        "alt": float,
     },
     MessageType.EMERGENCY_LAND: {
         "id": MessageType.EMERGENCY_LAND,
