@@ -143,7 +143,7 @@ class Drone:
         For use with airsim.
     return_to_launch(self) -> Awaitable[none]
         Method to move vehicle above home location, then descend vertically.
-    takeoff(self, takeoff_alt: float) -> Awaitable[None]
+    takeoff(self, takeoff_alt: float, margin: float = 1.5) -> Awaitable[None]
         Takeoff vertically to the passed altitude.
     use_settings(self, sim_mode: SimMode) -> None
         Modify the connection settings based on the given simulation mode.
@@ -275,7 +275,7 @@ class Drone:
         while not self.vehicle.armed or self.vehicle.mode.name != "GUIDED":
             await asyncio.sleep(0.5)
 
-    async def takeoff(self, takeoff_alt: float) -> None:
+    async def takeoff(self, takeoff_alt: float, margin: float = 1.5) -> None:
         """
         Takeoff vertically to the passed altitude.
 
@@ -283,11 +283,14 @@ class Drone:
         ----------
         takeoff_alt: float
             Altitude to reach in meters
+        margin: float, default 1.5
+            Extra altitude, in meters, to command above `takeoff_alt` so the
+            climb overshoots rather than undershoots. Pass 0 when the drone must
+            end up at a specific altitude — a mission whose legs command
+            `takeoff_alt` spends the first leg descending back out of the margin.
         """
-        logging.info("Using takeoff altitude of %f m", takeoff_alt)
-        self.vehicle.simple_takeoff(
-            takeoff_alt + 1.5
-        )  # Add 5ft for margin of error (Alt is measured in meters by drone kit tho?)
+        logging.info("Using takeoff altitude of %f m (+%f m margin)", takeoff_alt, margin)
+        self.vehicle.simple_takeoff(takeoff_alt + margin)
 
         # Verify vehicle reaches target altitude
         while self.vehicle.location.global_relative_frame.alt < takeoff_alt:

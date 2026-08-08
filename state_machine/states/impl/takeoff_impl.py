@@ -11,6 +11,7 @@ from state_machine.state_tracker import (
 )
 from state_machine.states.land import Land
 from state_machine.states.state import State
+from state_machine.drone import LEG_ALTITUDE_M
 from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input
@@ -65,7 +66,10 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
                 else:
                     await self.interdrone.send_start_demo(tuple([1]))
-                await self.drone.takeoff(5)  # Fix altitude later lol
+                # Take off to exactly the altitude the POIF legs command, with no
+                # overshoot margin: every leg holds LEG_ALTITUDE_M, so climbing
+                # past it just means descending back down on the first leg.
+                await self.drone.takeoff(LEG_ALTITUDE_M, margin=0.0)
                 await asyncio.sleep(5)
 
                 return POIF(self.drone, self.flight_settings, self.interdrone)
