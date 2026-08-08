@@ -12,6 +12,7 @@ export (the same pre-existing, out-of-scope break used in tspOrderTest.py).
 Stubbing those two modules in sys.modules lets us import order_waypoints
 without either fixing or being blocked by that unrelated breakage.
 """
+
 import sys
 import types
 import random
@@ -45,7 +46,7 @@ def build_target_field(seed=42):
         attempts += 1
         cx = rng.randint(margin, WIDTH - margin)
         cy = rng.randint(margin, HEIGHT - margin)
-        if all((cx - ox) ** 2 + (cy - oy) ** 2 >= MIN_BLOB_SPACING ** 2 for ox, oy in centers):
+        if all((cx - ox) ** 2 + (cy - oy) ** 2 >= MIN_BLOB_SPACING**2 for ox, oy in centers):
             centers.append((cx, cy))
     for cx, cy in centers:
         r = rng.randint(1, 3)
@@ -78,8 +79,10 @@ def test_cover_then_order_covers_everything():
 
     fully_covered = target_cells.issubset(covered)
     ok = fully_covered and len(centers) > 0
-    print(f"test_cover_then_order_covers_everything: placements={len(centers)} "
-          f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_then_order_covers_everything: placements={len(centers)} "
+        f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -99,8 +102,10 @@ def test_ordering_does_not_worsen_route_length():
     ordered = order_waypoints(centers)
 
     ok = path_length(ordered) <= path_length(centers) + 1e-6
-    print(f"test_ordering_does_not_worsen_route_length: input_order={path_length(centers):.2f} "
-          f"ordered={path_length(ordered):.2f} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_ordering_does_not_worsen_route_length: input_order={path_length(centers):.2f} "
+        f"ordered={path_length(ordered):.2f} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -118,17 +123,37 @@ def render_diagram(save_path):
         arr[y, x] = 1
 
     fig, ax = plt.subplots(figsize=(16, 12), dpi=100)
-    ax.imshow(arr, cmap="Greys", vmin=0, vmax=1, interpolation="nearest",
-              origin="lower", alpha=0.9, extent=(0, WIDTH, 0, HEIGHT))
+    ax.imshow(
+        arr,
+        cmap="Greys",
+        vmin=0,
+        vmax=1,
+        interpolation="nearest",
+        origin="lower",
+        alpha=0.9,
+        extent=(0, WIDTH, 0, HEIGHT),
+    )
 
     w, h = SHAPE_SIZE
     for cx, cy in ordered:
         # placement's lower-left corner, in real-world units (cell_size=1 here)
         llx, lly = cx - SHAPE_CENTER[0], cy - SHAPE_CENTER[1]
-        ax.add_patch(Rectangle((llx, lly), w, h, facecolor="tab:blue",
-                                edgecolor="tab:blue", alpha=0.25, linewidth=0.8))
-        ax.add_patch(Rectangle((llx, lly), w, h, facecolor="none",
-                                edgecolor="tab:blue", alpha=0.7, linewidth=0.8))
+        ax.add_patch(
+            Rectangle(
+                (llx, lly),
+                w,
+                h,
+                facecolor="tab:blue",
+                edgecolor="tab:blue",
+                alpha=0.25,
+                linewidth=0.8,
+            )
+        )
+        ax.add_patch(
+            Rectangle(
+                (llx, lly), w, h, facecolor="none", edgecolor="tab:blue", alpha=0.7, linewidth=0.8
+            )
+        )
 
     xs = [c[0] for c in ordered]
     ys = [c[1] for c in ordered]
@@ -142,8 +167,11 @@ def render_diagram(save_path):
         f"{len(ordered)} placements, route length {path_length(ordered):.1f} units",
         fontsize=13,
     )
-    ax.set_xlabel("Black = target cells needing coverage   |   Blue rectangles = 2x2 shape placements   "
-                  "|   Orange = visiting order", fontsize=9)
+    ax.set_xlabel(
+        "Black = target cells needing coverage   |   Blue rectangles = 2x2 shape placements   "
+        "|   Orange = visiting order",
+        fontsize=9,
+    )
     ax.set_xticks([])
     ax.set_yticks([])
 

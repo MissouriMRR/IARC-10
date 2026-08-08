@@ -18,6 +18,7 @@ so there's no import cycle between this file and the mixins, and no
 mixin needs to know about any other -- they're combined here into one
 class with the exact same public API a single-file version would have.
 """
+
 from flight.pathfinding.cellField._core import _CoreMixin
 from flight.pathfinding.cellField._bitwise_ops import _BitwiseOpsMixin
 from flight.pathfinding.cellField._fill import _FillMixin

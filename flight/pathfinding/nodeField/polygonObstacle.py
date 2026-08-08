@@ -13,7 +13,7 @@ def is_clockwise(points):
     for i in range(n):
         x1, y1 = points[i]
         x2, y2 = points[(i + 1) % n]
-        signed_area += (x1 * y2 - x2 * y1)
+        signed_area += x1 * y2 - x2 * y1
     return signed_area > 0
 
 
@@ -191,12 +191,16 @@ def _brute_force_arc(viewpoint, verts, pivot_point):
     for either side of a vertex's arc (the stuck-blocked-flag edge case) --
     not a general-purpose replacement for the seeded fast path."""
     pivot = math.atan2(pivot_point[1] - viewpoint[1], pivot_point[0] - viewpoint[0])
-    angles = [_wrap_angle(math.atan2(v[1] - viewpoint[1], v[0] - viewpoint[0]), pivot) for v in verts]
+    angles = [
+        _wrap_angle(math.atan2(v[1] - viewpoint[1], v[0] - viewpoint[0]), pivot) for v in verts
+    ]
     return min(angles), max(angles)
 
 
 class PolygonObstacle:
-    def __init__(self, vertices,nodes:List[Node], wrapping:bool): #Assumes nodes are already connected
+    def __init__(
+        self, vertices, nodes: List[Node], wrapping: bool
+    ):  # Assumes nodes are already connected
         self.isWrapping = True
         self.vertices = vertices
 
@@ -209,7 +213,6 @@ class PolygonObstacle:
         self.yMax = max(v[1] for v in self.vertices)
 
         self.nodes = nodes
-
 
         self.polygon = Polygon(self.vertices)
 
@@ -228,7 +231,7 @@ class PolygonObstacle:
     # obstacle and other_obstacle via the linear-time constant-workspace algorithm
     # of Abrahamsen & Walczak (arXiv:1601.01816, Algorithm 2), returning the
     # (self, other) Node pairs each tangent connects.
-    def commonTangents(self, other_obstacle: 'PolygonObstacle') -> List[Tuple[Node, Node]]:
+    def commonTangents(self, other_obstacle: "PolygonObstacle") -> List[Tuple[Node, Node]]:
         connections = []
         for alpha0, alpha1 in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
             result = _find_common_tangent(self.vertices, other_obstacle.vertices, alpha0, alpha1)
@@ -243,9 +246,9 @@ class PolygonObstacle:
     # Returns the (self, other) Node pairs that should be connected.
     # commonTangents already returns [] when no tangent exists, so no
     # separate existence-check gate is needed here.
-    def connectPolygonObstacle(self, other_obstacle: 'PolygonObstacle'):
+    def connectPolygonObstacle(self, other_obstacle: "PolygonObstacle"):
         return self.commonTangents(other_obstacle)
-    
+
     # Finds the (up to two) tangent nodes of this obstacle as seen from an
     # external point, using the same common-tangent algorithm (arXiv:1601.01816)
     # specialized to a single-point "polygon" on one side -- see the note in
@@ -261,14 +264,13 @@ class PolygonObstacle:
                     tangents.append(node)
         return tangents
 
-    #Returns the connections the floating node should make
-    def connectFloatingNode(self,floating_node:Node):
+    # Returns the connections the floating node should make
+    def connectFloatingNode(self, floating_node: Node):
         return self.pointTangents((floating_node.x, floating_node.y))
 
+    def obstacleOverlap(self, otherObstacle):
+        return self.polygon.intersects(otherObstacle.polygon)
 
-
-    def obstacleOverlap(self,otherObstacle):
-        return  self.polygon.intersects(otherObstacle.polygon)
     @staticmethod
     def midPoint(vertex1, vertex2):
         return ((vertex1[0] + vertex2[0]) / 2, (vertex1[1] + vertex2[1]) / 2)

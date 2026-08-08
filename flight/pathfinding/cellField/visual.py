@@ -2,6 +2,7 @@
 Visualization for CellField -- kept separate from cellField.py so using the
 core bit-manipulation class never requires importing matplotlib/numpy.
 """
+
 import numpy as np
 from matplotlib import pyplot as plt
 

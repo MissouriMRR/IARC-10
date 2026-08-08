@@ -4,7 +4,9 @@ deliberately clustered field (some obstacles placed so one sits between two
 others), then uses the real Field.plotField() debug renderer to visually
 confirm no accepted connection cuts through a third obstacle.
 """
+
 import matplotlib
+
 matplotlib.use("Agg")
 from matplotlib import pyplot
 
@@ -16,16 +18,21 @@ field = Field(sim_field_size, arbCorners)
 
 
 def square(cx, cy, half):
-    return [(cx - half, cy - half), (cx + half, cy - half), (cx + half, cy + half), (cx - half, cy + half)]
+    return [
+        (cx - half, cy - half),
+        (cx + half, cy - half),
+        (cx + half, cy + half),
+        (cx - half, cy + half),
+    ]
 
 
 # Deliberately clustered layout: B sits directly between A and C, D sits
 # between B and E, F is off to the side to give a non-trivial group shape.
 obstacles = [
     ("A", square(20, 50, 3)),
-    ("B", square(35, 50, 2.5)),   # between A and C
+    ("B", square(35, 50, 2.5)),  # between A and C
     ("C", square(50, 50, 3)),
-    ("D", square(50, 62, 2)),     # between B/C and E, roughly
+    ("D", square(50, 62, 2)),  # between B/C and E, roughly
     ("E", square(50, 75, 3)),
     ("F", square(65, 40, 3)),
 ]
@@ -35,7 +42,10 @@ for idx in add_order:
     name, verts = obstacles[idx]
     field.createPolygonObstacle(verts)
 
-field.plotField(labeled=False, title="Clustered layout: visual check for connections cutting through a third obstacle")
+field.plotField(
+    labeled=False,
+    title="Clustered layout: visual check for connections cutting through a third obstacle",
+)
 fig = pyplot.gcf()
 fig.set_size_inches(12, 12)
 pyplot.xlim(5, 80)

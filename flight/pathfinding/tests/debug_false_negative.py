@@ -4,7 +4,9 @@ from shapely.geometry import LineString
 
 from flight.pathfinding.nodeField.field import Field
 from flight.pathfinding.tests.connectPolygonStressTest import (
-    make_layout, ground_truth_edges, actual_cross_obstacle_edges
+    make_layout,
+    ground_truth_edges,
+    actual_cross_obstacle_edges,
 )
 
 random.seed(1234)
@@ -52,8 +54,10 @@ else:
     a_id, b_id = tuple(edge_ids)
     nodeA, nodeB = id_to_node[a_id], id_to_node[b_id]
     obA, obB = id_to_obstacle[a_id], id_to_obstacle[b_id]
-    print(f"missing edge: nodeA=({nodeA.x:.3f},{nodeA.y:.3f}) on obstacle {id(obA)}  "
-          f"nodeB=({nodeB.x:.3f},{nodeB.y:.3f}) on obstacle {id(obB)}")
+    print(
+        f"missing edge: nodeA=({nodeA.x:.3f},{nodeA.y:.3f}) on obstacle {id(obA)}  "
+        f"nodeB=({nodeB.x:.3f},{nodeB.y:.3f}) on obstacle {id(obB)}"
+    )
 
     # confirm it's actually a real commonTangents candidate and genuinely unblocked
     pairs = obA.commonTangents(obB)
@@ -61,8 +65,11 @@ else:
     print(f"is a real commonTangents candidate from obA->obB: {bool(match)}")
 
     seg = LineString([(nodeA.x, nodeA.y), (nodeB.x, nodeB.y)])
-    blockers = [o for o in field.polygonObstacles if o is not obA and o is not obB
-                and (o.polygon.crosses(seg) or o.polygon.contains(seg))]
+    blockers = [
+        o
+        for o in field.polygonObstacles
+        if o is not obA and o is not obB and (o.polygon.crosses(seg) or o.polygon.contains(seg))
+    ]
     print(f"third obstacles actually blocking this segment (should be empty): {len(blockers)}")
 
     # inspect nodeA's occlusion arcs to see which one incorrectly fired
@@ -71,8 +78,12 @@ else:
     for i, (lo, hi, pivot, blockerOb, near, far) in enumerate(nodeA.occlusionArcs):
         t = ((theta - pivot + math.pi) % (2 * math.pi)) - math.pi
         inrange = lo - 1e-9 <= t <= hi + 1e-9
-        print(f"  arc[{i}]: blocker={id(blockerOb)} lo={lo:.3f} hi={hi:.3f} pivot={pivot:.3f} "
-              f"near={near:.3f} far={far:.3f}  theta_wrapped={t:.3f}  CONTAINS_THETA={inrange}")
+        print(
+            f"  arc[{i}]: blocker={id(blockerOb)} lo={lo:.3f} hi={hi:.3f} pivot={pivot:.3f} "
+            f"near={near:.3f} far={far:.3f}  theta_wrapped={t:.3f}  CONTAINS_THETA={inrange}"
+        )
         if inrange:
             realSeg = (nodeA.x, nodeA.y), (nodeB.x, nodeB.y)
-            print(f"    -> blockerOb.intersects(seg) = {blockerOb.intersects(realSeg)}  (this determined the block)")
+            print(
+                f"    -> blockerOb.intersects(seg) = {blockerOb.intersects(realSeg)}  (this determined the block)"
+            )

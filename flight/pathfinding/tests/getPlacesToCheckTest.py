@@ -19,10 +19,12 @@ utils/mask_gen.py's own broken import) has since been fixed to import from
 the classes' real current locations, so flight.pathfinder now imports
 directly, no stubbing needed.
 """
+
 import math
 import random
 
 import matplotlib
+
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from matplotlib.patches import Rectangle, Polygon as MplPolygon
@@ -30,7 +32,10 @@ import numpy as np
 
 from flight.pathfinder import Pathfinder, WIDTHOFFIELD, HEIGHTOFFIELD, WIDTHOFSQUARE
 from flight.pathfinding.path_cover import (
-    path_cover, path_cover_unseen, unseen_path_runs, _polyline_normals_per_vertex,
+    path_cover,
+    path_cover_unseen,
+    unseen_path_runs,
+    _polyline_normals_per_vertex,
 )
 
 SCRATCH_DIR = (
@@ -112,20 +117,20 @@ def test_mines_land_near_their_detected_square(pf):
         # square-diagonal of the detected point, not just "somewhere".
         ok = ok and dist <= WIDTHOFSQUARE * math.sqrt(2)
 
-    print(f"test_mines_land_near_their_detected_square: "
-          f"requested={len(MINE_LOCAL_POSITIONS)} placed={len(all_mines)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_mines_land_near_their_detected_square: "
+        f"requested={len(MINE_LOCAL_POSITIONS)} placed={len(all_mines)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
 def test_shortest_path_connects_start_to_end(pf):
     path = pf.get_shortest_path()
 
-    ok = (
-        len(path) >= 2
-        and path[0] in pf.startingNodes
-        and path[-1] in pf.endingNodes
+    ok = len(path) >= 2 and path[0] in pf.startingNodes and path[-1] in pf.endingNodes
+    print(
+        f"test_shortest_path_connects_start_to_end: nodes={len(path)} -> {'PASS' if ok else 'FAIL'}"
     )
-    print(f"test_shortest_path_connects_start_to_end: nodes={len(path)} -> {'PASS' if ok else 'FAIL'}")
     return ok
 
 
@@ -162,8 +167,13 @@ def test_get_places_to_check_matches_expected_local_points(pf):
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     shape_size_ft = matSizeCells * WIDTHOFSQUARE
     shapesToVisit = path_cover_unseen(
-        path_points, pf.seen_tracker, shape_size_ft, (0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID, pf.numOfDrones,
+        path_points,
+        pf.seen_tracker,
+        shape_size_ft,
+        (0.0, 0.0),
+        (WIDTHOFFIELD, HEIGHTOFFIELD),
+        pf.droneID,
+        pf.numOfDrones,
     )
     # getPlacesToCheck anchors the tour to whatever it left as
     # nextPlaceToCheckLocal on its own PREVIOUS call -- must pass that same
@@ -178,8 +188,10 @@ def test_get_places_to_check_matches_expected_local_points(pf):
     ok = len(actual) == len(expected)
     for (alat, alon), (elat, elon) in zip(actual, expected):
         ok = ok and abs(alat - elat) < 1e-9 and abs(alon - elon) < 1e-9
-    print(f"test_get_places_to_check_matches_expected_local_points: "
-          f"points={len(actual)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_get_places_to_check_matches_expected_local_points: "
+        f"points={len(actual)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -204,8 +216,13 @@ def _shapes_to_visit_path(pf, path):
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     shape_size_ft = matSizeCells * WIDTHOFSQUARE
     shapesToVisit = path_cover_unseen(
-        path_points, pf.seen_tracker, shape_size_ft, (0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID, pf.numOfDrones,
+        path_points,
+        pf.seen_tracker,
+        shape_size_ft,
+        (0.0, 0.0),
+        (WIDTHOFFIELD, HEIGHTOFFIELD),
+        pf.droneID,
+        pf.numOfDrones,
     )
     return shape_size_ft, shapesToVisit
 
@@ -225,8 +242,10 @@ def test_shapes_cover_the_path_footprint(pf):
 
     target = set(ourPortion.on_cells())
     ok = target.issubset(covered) and len(shapesToVisit) > 0
-    print(f"test_shapes_cover_the_path_footprint (cellgrid): target_cells={len(target)} "
-          f"placements={len(shapesToVisit)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_shapes_cover_the_path_footprint (cellgrid): target_cells={len(target)} "
+        f"placements={len(shapesToVisit)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -247,19 +266,21 @@ def test_path_cover_covers_the_shortest_path(pf):
             t = k / n
             samples.append((p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])))
     in_field = [
-        (x, y) for x, y in samples
-        if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD
+        (x, y) for x, y in samples if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD
     ]
 
     half = shape_size_ft / 2.0
+
     def is_covered(pt):
         x, y = pt
         return any(abs(x - cx) <= half and abs(y - cy) <= half for cx, cy in shapesToVisit)
 
     uncovered = [s for s in in_field if not is_covered(s)]
     ok = len(uncovered) == 0 and len(shapesToVisit) > 0
-    print(f"test_path_cover_covers_the_shortest_path: samples={len(in_field)} "
-          f"uncovered={len(uncovered)} placements={len(shapesToVisit)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_path_cover_covers_the_shortest_path: samples={len(in_field)} "
+        f"uncovered={len(uncovered)} placements={len(shapesToVisit)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -285,7 +306,12 @@ def test_next_place_to_check_stays_fixed_across_replan():
     x, y = pf.coord_converter.latlon_to_local(lat, lon)
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     half = (matSizeCells * WIDTHOFSQUARE) / 2.0
-    corners_local = [(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)]
+    corners_local = [
+        (x - half, y - half),
+        (x + half, y - half),
+        (x + half, y + half),
+        (x - half, y + half),
+    ]
     corners_latlon = [pf.coord_converter.local_to_latlon(cx, cy) for cx, cy in corners_local]
     pf.accept_image_corner_coord(corners_latlon)
 
@@ -299,13 +325,16 @@ def test_next_place_to_check_stays_fixed_across_replan():
     dists = [math.hypot(px - x, py - y) for px, py in remaining_local]
     new_first_local = pf.coord_converter.latlon_to_local(*third_call[0]) if third_call else None
     anchored = (
-        not remaining_local or new_first_local is None
+        not remaining_local
+        or new_first_local is None
         or math.hypot(new_first_local[0] - x, new_first_local[1] - y) <= max(dists)
     )
 
     ok = unchanged_matches and moved_on and anchored
-    print(f"test_next_place_to_check_stays_fixed_across_replan: "
-          f"unchanged_matches={unchanged_matches} moved_on={moved_on} anchored={anchored} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_next_place_to_check_stays_fixed_across_replan: "
+        f"unchanged_matches={unchanged_matches} moved_on={moved_on} anchored={anchored} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -320,9 +349,12 @@ def test_path_cover_overlap_tightens_spacing(pf):
     bounds = ((0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD))
 
     baseline = path_cover(path_points, shape_size_ft, *bounds, pf.droneID, pf.numOfDrones)
-    overlapped = path_cover(path_points, shape_size_ft, *bounds, pf.droneID, pf.numOfDrones, overlap=0.3)
+    overlapped = path_cover(
+        path_points, shape_size_ft, *bounds, pf.droneID, pf.numOfDrones, overlap=0.3
+    )
 
     half = shape_size_ft / 2.0
+
     def is_covered(pt, centers):
         x, y = pt
         return any(abs(x - cx) <= half and abs(y - cy) <= half for cx, cy in centers)
@@ -335,12 +367,16 @@ def test_path_cover_overlap_tightens_spacing(pf):
         for k in range(n + 1):
             t = k / n
             samples.append((p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])))
-    in_field = [(x, y) for x, y in samples if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD]
+    in_field = [
+        (x, y) for x, y in samples if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD
+    ]
     uncovered = [s for s in in_field if not is_covered(s, overlapped)]
 
     ok = len(overlapped) > len(baseline) and len(uncovered) == 0
-    print(f"test_path_cover_overlap_tightens_spacing: baseline={len(baseline)} "
-          f"overlap=0.3->{len(overlapped)} uncovered={len(uncovered)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_path_cover_overlap_tightens_spacing: baseline={len(baseline)} "
+        f"overlap=0.3->{len(overlapped)} uncovered={len(uncovered)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -359,8 +395,14 @@ def test_path_cover_wide_path_uses_multiple_rows(pf):
     path_width = shape_size_ft * 1.5
 
     centers = path_cover(
-        path_points, shape_size_ft, (0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID, pf.numOfDrones, overlap=0.15, path_width=path_width,
+        path_points,
+        shape_size_ft,
+        (0.0, 0.0),
+        (WIDTHOFFIELD, HEIGHTOFFIELD),
+        pf.droneID,
+        pf.numOfDrones,
+        overlap=0.15,
+        path_width=path_width,
     )
 
     normals = _polyline_normals_per_vertex(path_points)
@@ -380,22 +422,34 @@ def test_path_cover_wide_path_uses_multiple_rows(pf):
             for frac in (-0.45, -0.2, 0.0, 0.2, 0.45):
                 off = frac * path_width
                 samples.append((cx + off * nx, cy + off * ny))
-    in_field = [(x, y) for x, y in samples if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD]
+    in_field = [
+        (x, y) for x, y in samples if 0.0 <= x <= WIDTHOFFIELD and 0.0 <= y <= HEIGHTOFFIELD
+    ]
 
     half = shape_size_ft / 2.0
+
     def is_covered(pt):
         x, y = pt
         return any(abs(x - cx) <= half and abs(y - cy) <= half for cx, cy in centers)
 
     uncovered = [s for s in in_field if not is_covered(s)]
-    used_multiple_rows = len(centers) > len(path_cover(
-        path_points, shape_size_ft, (0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID, pf.numOfDrones, overlap=0.15,
-    ))
+    used_multiple_rows = len(centers) > len(
+        path_cover(
+            path_points,
+            shape_size_ft,
+            (0.0, 0.0),
+            (WIDTHOFFIELD, HEIGHTOFFIELD),
+            pf.droneID,
+            pf.numOfDrones,
+            overlap=0.15,
+        )
+    )
     ok = used_multiple_rows and len(uncovered) == 0
-    print(f"test_path_cover_wide_path_uses_multiple_rows: path_width={path_width:.1f} "
-          f"shape_size={shape_size_ft:.1f} placements={len(centers)} "
-          f"cross_width_samples={len(in_field)} uncovered={len(uncovered)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_path_cover_wide_path_uses_multiple_rows: path_width={path_width:.1f} "
+        f"shape_size={shape_size_ft:.1f} placements={len(centers)} "
+        f"cross_width_samples={len(in_field)} uncovered={len(uncovered)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -451,8 +505,10 @@ def test_get_places_to_check_respects_seen_cells(pf):
     ok = len(after) < len(baseline) and none_in_seen_band and pf.seen_tracker.count() > 0
 
     pf.seen_tracker.clear_all()
-    print(f"test_get_places_to_check_respects_seen_cells: baseline={len(baseline)} "
-          f"after_seen={len(after)} none_in_seen_band={none_in_seen_band} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_get_places_to_check_respects_seen_cells: baseline={len(baseline)} "
+        f"after_seen={len(after)} none_in_seen_band={none_in_seen_band} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -484,23 +540,60 @@ def render_combined_image(pf, save_path):
         arr[y, x] = 1
 
     fig, ax = plt.subplots(figsize=(8, 20), dpi=100)
-    ax.imshow(arr, cmap="Greys", vmin=0, vmax=1, interpolation="nearest",
-              origin="lower", alpha=0.9, extent=(0, WIDTHOFFIELD, 0, HEIGHTOFFIELD))
+    ax.imshow(
+        arr,
+        cmap="Greys",
+        vmin=0,
+        vmax=1,
+        interpolation="nearest",
+        origin="lower",
+        alpha=0.9,
+        extent=(0, WIDTHOFFIELD, 0, HEIGHTOFFIELD),
+    )
 
     # Mines are drawn as their actual safety-zone polygon, not a point
     # marker -- includes merged unionObstacles (overlapping mines are
     # allowed and expected to merge), each still exposing .vertices the same
     # way a standalone BlockMine does.
     for obstacle in list(pf.nodeField.mines) + list(pf.nodeField.unionObstacles):
-        ax.add_patch(MplPolygon(list(obstacle.vertices), closed=True, facecolor="firebrick",
-                                 edgecolor="darkred", alpha=0.4, linewidth=0.7, zorder=4))
+        ax.add_patch(
+            MplPolygon(
+                list(obstacle.vertices),
+                closed=True,
+                facecolor="firebrick",
+                edgecolor="darkred",
+                alpha=0.4,
+                linewidth=0.7,
+                zorder=4,
+            )
+        )
 
     for cx, cy in shapesToVisit:
         llx, lly = cx - shape_side_ft / 2.0, cy - shape_side_ft / 2.0
-        ax.add_patch(Rectangle((llx, lly), shape_side_ft, shape_side_ft, facecolor="tab:blue",
-                                edgecolor="tab:blue", alpha=0.2, linewidth=0.8, zorder=2))
-        ax.add_patch(Rectangle((llx, lly), shape_side_ft, shape_side_ft, facecolor="none",
-                                edgecolor="tab:blue", alpha=0.7, linewidth=0.8, zorder=3))
+        ax.add_patch(
+            Rectangle(
+                (llx, lly),
+                shape_side_ft,
+                shape_side_ft,
+                facecolor="tab:blue",
+                edgecolor="tab:blue",
+                alpha=0.2,
+                linewidth=0.8,
+                zorder=2,
+            )
+        )
+        ax.add_patch(
+            Rectangle(
+                (llx, lly),
+                shape_side_ft,
+                shape_side_ft,
+                facecolor="none",
+                edgecolor="tab:blue",
+                alpha=0.7,
+                linewidth=0.8,
+                zorder=3,
+            )
+        )
 
     # the outputted route between shape centers, drawn under the centers
     # themselves so the dots stay visible on top of it
@@ -521,7 +614,7 @@ def render_combined_image(pf, save_path):
     ax.set_ylim(0, HEIGHTOFFIELD)
     ax.set_aspect("equal")
     ax.set_title(
-        f"getPlacesToCheck method=\"path\" (droneID=1, numOfDrones=1)\n"
+        f'getPlacesToCheck method="path" (droneID=1, numOfDrones=1)\n'
         f"{len(shapesToVisit)} shapes to check, {shape_side_ft:.1f}ft square each",
         fontsize=11,
     )

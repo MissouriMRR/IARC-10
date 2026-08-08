@@ -16,7 +16,9 @@ class BlockMine(PolygonObstacle):
         # rather than drifting as the safety radius grows. Falls back to
         # the initial centroid for a BlockMine built without going through
         # Field.addFromProtoMine (e.g. directly in tests).
-        self.origin = origin if origin is not None else (self.polygon.centroid.x, self.polygon.centroid.y)
+        self.origin = (
+            origin if origin is not None else (self.polygon.centroid.x, self.polygon.centroid.y)
+        )
 
     def expand(self, distance):
         for node in self.nodes:

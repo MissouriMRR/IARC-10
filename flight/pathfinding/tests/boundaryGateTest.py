@@ -7,6 +7,7 @@ vertices/nodes (nothing deleted), edges between two in-bounds vertices still
 get added, and any edge touching the out-of-bounds vertex is silently skipped
 rather than replaced with a fabricated "corner hugging" shortcut edge.
 """
+
 from flight.pathfinding.nodeField.field import Field
 
 
@@ -50,9 +51,17 @@ def test_out_of_bounds_vertex_kept_but_edges_gated():
     # (d) v1 is still reachable via the obstacle's own node list (not deleted)
     v1_still_in_obstacle = v1_node in obstacle.nodes
 
-    passed = has_all_vertices and has_all_nodes and v2_v0_connected and v1_has_no_edges and v1_still_in_obstacle
-    print(f"v2-v0 edge exists: {v2_v0_connected}  v1 has no graph edges: {v1_has_no_edges}  "
-          f"v1 still in obstacle.nodes: {v1_still_in_obstacle}")
+    passed = (
+        has_all_vertices
+        and has_all_nodes
+        and v2_v0_connected
+        and v1_has_no_edges
+        and v1_still_in_obstacle
+    )
+    print(
+        f"v2-v0 edge exists: {v2_v0_connected}  v1 has no graph edges: {v1_has_no_edges}  "
+        f"v1 still in obstacle.nodes: {v1_still_in_obstacle}"
+    )
     print(f"test_out_of_bounds_vertex_kept_but_edges_gated: -> {'PASS' if passed else 'FAIL'}")
     return passed
 
@@ -65,8 +74,10 @@ def test_fully_in_bounds_obstacle_unaffected():
         node in field.fieldConnection.nodeGraph and len(field.fieldConnection.nodeGraph[node]) > 0
         for node in obstacle.nodes
     )
-    print(f"test_fully_in_bounds_obstacle_unaffected: all_nodes_connected={all_nodes_connected} "
-          f"-> {'PASS' if all_nodes_connected else 'FAIL'}")
+    print(
+        f"test_fully_in_bounds_obstacle_unaffected: all_nodes_connected={all_nodes_connected} "
+        f"-> {'PASS' if all_nodes_connected else 'FAIL'}"
+    )
     return all_nodes_connected
 
 
@@ -79,15 +90,28 @@ def test_isolated_in_bounds_vertex_in_convex_hull_merge():
     (a node whose own perimeter neighbors are both out of bounds never gets
     a nodeGraph entry from the perimeter loop at all)."""
     field = make_field()
-    E = [(30, 45), (-10, 40), (-10, -50), (-50, -50), (-50, 150), (-10, 150),
-         (-10, 70), (30, 65), (-10, 60), (-10, 50), (30, 45)]
+    E = [
+        (30, 45),
+        (-10, 40),
+        (-10, -50),
+        (-50, -50),
+        (-50, 150),
+        (-10, 150),
+        (-10, 70),
+        (30, 65),
+        (-10, 60),
+        (-10, 50),
+        (30, 45),
+    ]
     field.createPolygonObstacle(E)
     D = [(-51, -51), (-49, -51), (-49, 149), (-51, 149), (-51, -51)]
     try:
         field.createPolygonObstacle(D)
         merged = len(field.unionObstacles) > 0
-        print(f"test_isolated_in_bounds_vertex_in_convex_hull_merge: no crash, merged={merged} -> "
-              f"{'PASS' if merged else 'FAIL'}")
+        print(
+            f"test_isolated_in_bounds_vertex_in_convex_hull_merge: no crash, merged={merged} -> "
+            f"{'PASS' if merged else 'FAIL'}"
+        )
         return merged
     except KeyError as e:
         print(f"test_isolated_in_bounds_vertex_in_convex_hull_merge: KeyError raised -> FAIL ({e})")

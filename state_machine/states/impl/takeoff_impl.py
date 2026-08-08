@@ -17,6 +17,7 @@ from state_machine.interdrone import CMD_MSG, get_input
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 from flight.pathfinder import Pathfinder
 
+
 async def run(self: Takeoff) -> State:
     """
     Implements the run method for the Takeoff state.
@@ -70,7 +71,6 @@ async def run(self: Takeoff) -> State:
                 return POIF(self.drone, self.flight_settings, self.interdrone)
 
             if self.interdrone.get_cmd_msg() == CMD_MSG.MISSION or action_type.lower() == "mission":
-
 
                 if self.drone.id == 1:
 

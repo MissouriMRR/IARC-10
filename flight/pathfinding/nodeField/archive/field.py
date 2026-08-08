@@ -10,10 +10,8 @@ from flight.pathfinding.nodeField import node_connection as nc
 from flight.pathfinding.nodeField import node as n
 from flight.newPathfinding import diamondMine as dM
 
+SQUARE_SIZE = 2
 
-
-
-SQUARE_SIZE=2
 
 # Field generates nodes off of mines, generates mines too
 class Field:
@@ -76,11 +74,8 @@ class Field:
             (self.xMin + self.xMax / 2, self.yMin + self.yMax / 2), self.xMax, self.yMax
         )  # Used for collision detection, holds mines
 
-        self.polygonObstacles=[]
+        self.polygonObstacles = []
         Connection.field = self
-
-
-
 
     def addFloatingNode(self, x: float, y: float, ndType: str = None) -> "Node":
         """
@@ -141,7 +136,7 @@ class Field:
             returnList.append(self.addFloatingNode(pos[0], pos[1], "end"))
         return returnList
 
-    #Returns which competition square a set of coordinates is in.
+    # Returns which competition square a set of coordinates is in.
     def getSquareCoordinates(self, x: float, y: float) -> tuple[int, int]:
         """
         Given a set of coordinates, return which competition square it is in
@@ -176,7 +171,6 @@ class Field:
             rh: height of the rectangle
         """
 
-
         # Closest x on square
         closestX = rx
         if cx >= rx + rw:
@@ -197,44 +191,49 @@ class Field:
         distance = (distX**2 + distY**2) ** 0.5
 
         return distance <= r
-    def addPolyMine(self, centerX: float, centerY: float, radius:int, safteyRadius:float):
-        #Get the square the mine is in
-        squareX, squareY = self.getSquareCoordinates(centerX, centerY)
-        #Get the if any adjacent sqaures are within the saftey radius of the mine
-        implicatedSquares = [] #An implicated square is a square we treat has having a mine in it, because it is within the margin of error
-        
 
-        squaresOutward=(centerX+safteyRadius)//SQUARE_SIZE +1 
-        
-        for x in range(int(squareX-squaresOutward), int(squareX+squaresOutward)):
-            for y in range(int(squareY-squaresOutward), int(squareY+squaresOutward)):
+    def addPolyMine(self, centerX: float, centerY: float, radius: int, safteyRadius: float):
+        # Get the square the mine is in
+        squareX, squareY = self.getSquareCoordinates(centerX, centerY)
+        # Get the if any adjacent sqaures are within the saftey radius of the mine
+        implicatedSquares = (
+            []
+        )  # An implicated square is a square we treat has having a mine in it, because it is within the margin of error
+
+        squaresOutward = (centerX + safteyRadius) // SQUARE_SIZE + 1
+
+        for x in range(int(squareX - squaresOutward), int(squareX + squaresOutward)):
+            for y in range(int(squareY - squaresOutward), int(squareY + squaresOutward)):
                 if x < 0 or y < 0:
                     continue
-                #TODO: Fix this
-                if x > self.xMax//SQUARE_SIZE or y > self.yMax//SQUARE_SIZE:
+                # TODO: Fix this
+                if x > self.xMax // SQUARE_SIZE or y > self.yMax // SQUARE_SIZE:
                     continue
 
-                #Check if the square is within the saftey radius of the mine
-                if Field.circle_rect_intersects(centerX, centerY, safteyRadius, x*SQUARE_SIZE, y*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE):
-                    implicatedSquares.append((x,y))
-        
-        #Remove fully enclosed squares
+                # Check if the square is within the saftey radius of the mine
+                if Field.circle_rect_intersects(
+                    centerX,
+                    centerY,
+                    safteyRadius,
+                    x * SQUARE_SIZE,
+                    y * SQUARE_SIZE,
+                    SQUARE_SIZE,
+                    SQUARE_SIZE,
+                ):
+                    implicatedSquares.append((x, y))
 
+        # Remove fully enclosed squares
 
-           
-
-
-
-        #Create a polygon which surrounds the mine and saftey radius.
+        # Create a polygon which surrounds the mine and saftey radius.
 
     def addMine(self, centerX: float, centerY: float, radius: int, color: str = ""):
 
-        self.circle_rect_intersects(centerX,centerY)
-        newMine=BlockyObstacle()
+        self.circle_rect_intersects(centerX, centerY)
+        newMine = BlockyObstacle()
         """
         Given the simulated local coordinates, radius, and optional color;
         add a new Mine object centered at the coordinates to the field and generate/regenerate nodes and connections
-        
+
         newMine = Mine(centerX, centerY, radius, color=color)
         self.mines.append(newMine)
         self.mineQuadTree.insert((centerX, centerY), data=newMine)
@@ -303,7 +302,6 @@ class Field:
                 if connection.mineCollision(newMine):
                     connection.deleteConnection()
         """
-
 
     # Purely for debugging will have a growing list of parameters
     def plotField(
@@ -501,6 +499,7 @@ class Field:
 
         for mine in self.mines:
             mine.connectMineNodes()
+
     @staticmethod  # Given two points, get the line equation and slope (to determine negative or positive slope)
     def getLine(point1: tuple, point2: tuple) -> tuple[Callable[[float], float], float]:
         """
@@ -666,4 +665,4 @@ def _link():
     Node = n.Node
     MineNode = n.MineNode
     seg = nc.seg
-    BlockyObstacle=dM.BlockyObstacle
+    BlockyObstacle = dM.BlockyObstacle

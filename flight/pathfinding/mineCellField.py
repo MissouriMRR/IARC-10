@@ -17,6 +17,7 @@ deliberate, not redundant -- it's the difference between "what the node
 graph treats as the obstacle" and "which competition squares are actually
 inside the mine's declared safety radius".
 """
+
 from flight.pathfinding.cellField.cellField import CellField
 from flight.pathfinding.protoMine import SQUARE_SIDE_LENGTH_FT
 
@@ -38,7 +39,10 @@ def build_mine_cell_field(proto_mine) -> CellField:
         raise ValueError("protoMine has an empty blockMatrix -- nothing to build a CellField from")
 
     min_corner = (proto_mine.centerGridOffset[0], proto_mine.centerGridOffset[1])
-    max_corner = (min_corner[0] + width * SQUARE_SIDE_LENGTH_FT, min_corner[1] + height * SQUARE_SIDE_LENGTH_FT)
+    max_corner = (
+        min_corner[0] + width * SQUARE_SIDE_LENGTH_FT,
+        min_corner[1] + height * SQUARE_SIDE_LENGTH_FT,
+    )
     field = CellField(width, height, min_corner=min_corner, max_corner=max_corner)
     for y, row in enumerate(block_matrix):
         for x, value in enumerate(row):

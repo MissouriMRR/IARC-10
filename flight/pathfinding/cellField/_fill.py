@@ -5,6 +5,7 @@ Everything here is built on _fill_bit_range/_combine_bit_range, which write
 a contiguous run of bits directly on the byte array -- cost proportional to
 the run's size, not the whole field's.
 """
+
 import math
 
 
@@ -134,15 +135,19 @@ class _FillMixin:
             return
 
         first_mask = (0xFF << bit_lo) & 0xFF
-        data[byte_lo] = (data[byte_lo] | first_mask) if value else (data[byte_lo] & ~first_mask & 0xFF)
+        data[byte_lo] = (
+            (data[byte_lo] | first_mask) if value else (data[byte_lo] & ~first_mask & 0xFF)
+        )
 
         if byte_hi > byte_lo + 1:
             fill_byte = 0xFF if value else 0x00
-            data[byte_lo + 1:byte_hi] = bytes((fill_byte,)) * (byte_hi - byte_lo - 1)
+            data[byte_lo + 1 : byte_hi] = bytes((fill_byte,)) * (byte_hi - byte_lo - 1)
 
         if bit_hi > 0:
             last_mask = (1 << bit_hi) - 1
-            data[byte_hi] = (data[byte_hi] | last_mask) if value else (data[byte_hi] & ~last_mask & 0xFF)
+            data[byte_hi] = (
+                (data[byte_hi] | last_mask) if value else (data[byte_hi] & ~last_mask & 0xFF)
+            )
 
     def fill_rect(self, x0: int, y0: int, x1: int, y1: int, value: bool = True) -> None:
         """
@@ -158,7 +163,9 @@ class _FillMixin:
             row_base = y * self._stride + self._buffer
             self._fill_bit_range(row_base + x0c, row_base + x1c, value)
 
-    def fill_aligned_rect_covered(self, x0: float, y0: float, x1: float, y1: float, value: bool = True) -> None:
+    def fill_aligned_rect_covered(
+        self, x0: float, y0: float, x1: float, y1: float, value: bool = True
+    ) -> None:
         """
         Real-world-coordinate counterpart to fill_rect, for the common case
         of an AXIS-ALIGNED (not rotated) rectangle -- e.g. a camera
@@ -175,7 +182,9 @@ class _FillMixin:
         col_lo, row_lo, col_hi, row_hi = self._aligned_rect_covered_range(x0, y0, x1, y1)
         self.fill_rect(col_lo, row_lo, col_hi, row_hi, value)
 
-    def fill_aligned_rect_touched(self, x0: float, y0: float, x1: float, y1: float, value: bool = True) -> None:
+    def fill_aligned_rect_touched(
+        self, x0: float, y0: float, x1: float, y1: float, value: bool = True
+    ) -> None:
         """
         Loose counterpart to fill_aligned_rect_covered: sets every cell
         [x0,x1] x [y0,y1] overlaps with POSITIVE area (same semantics as
@@ -250,7 +259,7 @@ class _FillMixin:
             dx2 = r2 - dy * dy
             if dx2 < 0:
                 continue
-            dx = int(dx2 ** 0.5)
+            dx = int(dx2**0.5)
             while (dx + 1) * (dx + 1) <= dx2:  # guard against float sqrt rounding down
                 dx += 1
             while dx * dx > dx2:

@@ -3,6 +3,7 @@ Verification for CellField: a bit-packed, single-bit-per-cell grid backed by
 one Python arbitrary-precision int, with a row-buffer trick that lets a raw
 shift move columns without corrupting adjacent rows.
 """
+
 import random
 
 from flight.pathfinding.cellField.cellField import CellField
@@ -85,8 +86,10 @@ def test_vertical_slice_correctness():
         right_width = sliced.width == width
         if actual != expected or not right_height or not right_width:
             all_ok = False
-            print(f"  MISMATCH [{start_frac},{end_frac}): expected={len(expected)} "
-                  f"actual={len(actual)} right_height={right_height} right_width={right_width}")
+            print(
+                f"  MISMATCH [{start_frac},{end_frac}): expected={len(expected)} "
+                f"actual={len(actual)} right_height={right_height} right_width={right_width}"
+            )
 
     print(f"test_vertical_slice_correctness: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
@@ -168,8 +171,10 @@ def test_vertical_slice_reasonably_fast_for_huge_field():
     budget = 1.0
     fast = elapsed <= budget
     ok = correct and same_size and fast
-    print(f"test_vertical_slice_reasonably_fast_for_huge_field: elapsed={elapsed*1000:.3f}ms "
-          f"(budget={budget*1000:.0f}ms) correct={correct} same_size={same_size} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_vertical_slice_reasonably_fast_for_huge_field: elapsed={elapsed*1000:.3f}ms "
+        f"(budget={budget*1000:.0f}ms) correct={correct} same_size={same_size} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -205,8 +210,10 @@ def test_cover_with_shape_single_placement_suffices():
     fully_covered = target_cells.issubset(covered)
     single_placement = len(centers) == 1
     ok = fully_covered and single_placement
-    print(f"test_cover_with_shape_single_placement_suffices: placements={len(centers)} "
-          f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_single_placement_suffices: placements={len(centers)} "
+        f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -229,8 +236,10 @@ def test_cover_with_shape_multiple_placements():
     fully_covered = target_cells.issubset(covered)
     reasonable_count = len(centers) == 3  # exactly one placement per cluster is optimal here
     ok = fully_covered and reasonable_count
-    print(f"test_cover_with_shape_multiple_placements: placements={len(centers)} "
-          f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_multiple_placements: placements={len(centers)} "
+        f"fully_covered={fully_covered} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -277,12 +286,15 @@ def test_cover_with_shape_center_shifts_result_correctly():
     centers_b = target.cover_with_shape(shape, shape_center=(2.0, 2.0))
 
     ok = (
-        len(centers_a) == 1 and len(centers_b) == 1
+        len(centers_a) == 1
+        and len(centers_b) == 1
         and abs((centers_b[0][0] - centers_a[0][0]) - 2.0) < 1e-9
         and abs((centers_b[0][1] - centers_a[0][1]) - 2.0) < 1e-9
     )
-    print(f"test_cover_with_shape_center_shifts_result_correctly: a={centers_a} b={centers_b} "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_center_shifts_result_correctly: a={centers_a} b={centers_b} "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -306,8 +318,10 @@ def test_cover_with_shape_offfield_center_falls_back_to_cutoff_center():
         in_bounds = 0.0 <= cx <= 10.0 and 0.0 <= cy <= 10.0
         matches_cutoff_center = abs(cx - 0.5) < 1e-9 and abs(cy - 0.5) < 1e-9
         ok = in_bounds and matches_cutoff_center
-    print(f"test_cover_with_shape_offfield_center_falls_back_to_cutoff_center: "
-          f"centers={centers} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_offfield_center_falls_back_to_cutoff_center: "
+        f"centers={centers} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -327,8 +341,10 @@ def test_cover_with_shape_rect_tuple_matches_equivalent_cellfield():
     via_cellfield = target.cover_with_shape(rect_shape)
 
     ok = via_tuple == via_cellfield and len(via_tuple) > 0
-    print(f"test_cover_with_shape_rect_tuple_matches_equivalent_cellfield: "
-          f"placements={len(via_tuple)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_rect_tuple_matches_equivalent_cellfield: "
+        f"placements={len(via_tuple)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -352,8 +368,10 @@ def test_cover_with_shape_rect_tuple_covers_everything():
 
     target_cells = set(target.on_cells())
     ok = target_cells.issubset(covered)
-    print(f"test_cover_with_shape_rect_tuple_covers_everything: placements={len(centers)} "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_rect_tuple_covers_everything: placements={len(centers)} "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -362,7 +380,9 @@ def test_cover_with_shape_rect_tuple_default_center():
     target.set(5, 5)
     centers = target.cover_with_shape((2, 3))  # default center -> (1.0, 1.5)
     ok = len(centers) == 1
-    print(f"test_cover_with_shape_rect_tuple_default_center: centers={centers} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_rect_tuple_default_center: centers={centers} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -415,8 +435,10 @@ def test_cover_with_shape_perfect_tiling_has_zero_overlap():
     covers_target = set(target.on_cells()).issubset(all_covered)
 
     ok = right_count and zero_overlap and covers_target
-    print(f"test_cover_with_shape_perfect_tiling_has_zero_overlap: placements={len(centers)} "
-          f"(optimal={optimal_count}) overlap_cells={overlap_cells} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_cover_with_shape_perfect_tiling_has_zero_overlap: placements={len(centers)} "
+        f"(optimal={optimal_count}) overlap_cells={overlap_cells} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -441,7 +463,9 @@ def test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak():
                     if offset in tried:
                         continue
                     tried.add(offset)
-                    covered = {(sx2 + offset[0], sy2 + offset[1]) for sx2, sy2 in shape_cells} & remaining
+                    covered = {
+                        (sx2 + offset[0], sy2 + offset[1]) for sx2, sy2 in shape_cells
+                    } & remaining
                     if best_covered is None or len(covered) > len(best_covered):
                         best_offset = offset
                         best_covered = covered
@@ -493,10 +517,18 @@ def test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak():
     less_or_equal_overlap = real_overlap <= naive_overlap
     strictly_better_here = real_overlap < naive_overlap
 
-    ok = count_not_much_worse and less_or_equal_overlap and strictly_better_here and naive_covers and real_covers
-    print(f"test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak: "
-          f"naive(placements={len(naive_centers)}, overlap={naive_overlap}) "
-          f"real(placements={len(real_centers)}, overlap={real_overlap}) -> {'PASS' if ok else 'FAIL'}")
+    ok = (
+        count_not_much_worse
+        and less_or_equal_overlap
+        and strictly_better_here
+        and naive_covers
+        and real_covers
+    )
+    print(
+        f"test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak: "
+        f"naive(placements={len(naive_centers)}, overlap={naive_overlap}) "
+        f"real(placements={len(real_centers)}, overlap={real_overlap}) -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -533,7 +565,9 @@ def test_bitwise_ops():
     )
 
     ok = functional_ok and inplace_ok
-    print(f"test_bitwise_ops: functional={functional_ok} inplace={inplace_ok} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_bitwise_ops: functional={functional_ok} inplace={inplace_ok} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -569,9 +603,11 @@ def test_shift_correctness():
 
             if functional_actual != expected or inplace_actual != expected or not still_unchanged:
                 all_ok = False
-                print(f"  MISMATCH dx={dx} dy={dy}: expected={sorted(expected)} "
-                      f"functional={sorted(functional_actual)} inplace={sorted(inplace_actual)} "
-                      f"shift_left_original_unchanged={still_unchanged}")
+                print(
+                    f"  MISMATCH dx={dx} dy={dy}: expected={sorted(expected)} "
+                    f"functional={sorted(functional_actual)} inplace={sorted(inplace_actual)} "
+                    f"shift_left_original_unchanged={still_unchanged}"
+                )
 
     print(f"test_shift_correctness: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
@@ -607,10 +643,17 @@ def test_expand_correctness():
     inplace_field.expand_inplace()
     inplace_actual = set(inplace_field.on_cells())
 
-    ok = functional_actual == expected and inplace_actual == expected and unchanged_after and distinct_object
+    ok = (
+        functional_actual == expected
+        and inplace_actual == expected
+        and unchanged_after
+        and distinct_object
+    )
     if not ok:
-        print(f"  expected={sorted(expected)} functional={sorted(functional_actual)} "
-              f"inplace={sorted(inplace_actual)} unchanged_after={unchanged_after}")
+        print(
+            f"  expected={sorted(expected)} functional={sorted(functional_actual)} "
+            f"inplace={sorted(inplace_actual)} unchanged_after={unchanged_after}"
+        )
     print(f"test_expand_correctness: -> {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -628,7 +671,9 @@ def test_expand_empty_and_full_field():
     full_ok = full_expanded.count() == width * height  # already saturated, expand is a no-op
 
     ok = empty_ok and full_ok
-    print(f"test_expand_empty_and_full_field: empty_ok={empty_ok} full_ok={full_ok} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_expand_empty_and_full_field: empty_ok={empty_ok} full_ok={full_ok} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -647,8 +692,10 @@ def test_expand_requires_buffer_raises():
         raised_inplace = True
 
     ok = raised_functional and raised_inplace
-    print(f"test_expand_requires_buffer_raises: functional={raised_functional} "
-          f"inplace={raised_inplace} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_expand_requires_buffer_raises: functional={raised_functional} "
+        f"inplace={raised_inplace} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -666,8 +713,10 @@ def test_shift_dx_exceeds_buffer_raises():
         raised_inplace = True
 
     ok = raised_functional and raised_inplace
-    print(f"test_shift_dx_exceeds_buffer_raises: functional={raised_functional} "
-          f"inplace={raised_inplace} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_shift_dx_exceeds_buffer_raises: functional={raised_functional} "
+        f"inplace={raised_inplace} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -784,8 +833,10 @@ def test_large_scale_sanity():
     time_ok = elapsed <= time_budget_s
 
     ok = shift_ok and count_ok and or_ok and time_ok
-    print(f"test_large_scale_sanity: shift_ok={shift_ok} count_ok={count_ok} or_ok={or_ok} "
-          f"elapsed={elapsed:.2f}s (budget={time_budget_s}s) -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_large_scale_sanity: shift_ok={shift_ok} count_ok={count_ok} or_ok={or_ok} "
+        f"elapsed={elapsed:.2f}s (budget={time_budget_s}s) -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -848,8 +899,10 @@ def test_fill_disk():
         actual = set(field.on_cells())
         if actual != expected:
             all_ok = False
-            print(f"  MISMATCH disk center=({cx},{cy}) r={radius}: "
-                  f"expected={len(expected)} actual={len(actual)}")
+            print(
+                f"  MISMATCH disk center=({cx},{cy}) r={radius}: "
+                f"expected={len(expected)} actual={len(actual)}"
+            )
 
     field = CellField(width, height)
     field.fill_disk(20, 20, -1)  # negative radius is a no-op
@@ -869,8 +922,10 @@ def test_fill_polygon_covered_axis_aligned_rect():
     actual = set(field.on_cells())
     expected = {(x, y) for x in range(2, 6) for y in range(2, 6)}
     ok = actual == expected
-    print(f"test_fill_polygon_covered_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_covered_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -883,8 +938,10 @@ def test_fill_polygon_covered_offset_rect():
     actual = set(field.on_cells())
     expected = {(x, y) for x in range(4, 9) for y in range(4, 9)}
     ok = actual == expected
-    print(f"test_fill_polygon_covered_offset_rect: count={len(actual)} (expected {len(expected)}) "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_covered_offset_rect: count={len(actual)} (expected {len(expected)}) "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -894,7 +951,9 @@ def test_fill_polygon_covered_excludes_partially_clipped_cells():
     field = CellField(10, 10)
     field.fill_polygon_covered([(5.1, 5.1), (5.4, 5.1), (5.4, 5.4), (5.1, 5.4)])
     ok = field.count() == 0
-    print(f"test_fill_polygon_covered_excludes_partially_clipped_cells: count={field.count()} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_covered_excludes_partially_clipped_cells: count={field.count()} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -908,7 +967,9 @@ def test_fill_polygon_covered_rotated():
     cx, cy = 5, 5
     symmetric = all((2 * cx - 1 - x, 2 * cy - 1 - y) in on for x, y in on)
     ok = len(on) > 0 and symmetric
-    print(f"test_fill_polygon_covered_rotated: count={len(on)} symmetric={symmetric} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_covered_rotated: count={len(on)} symmetric={symmetric} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -932,8 +993,10 @@ def test_fill_polygon_touched_axis_aligned_rect():
     actual = set(field.on_cells())
     expected = {(x, y) for x in range(2, 6) for y in range(2, 6)}
     ok = actual == expected
-    print(f"test_fill_polygon_touched_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
-          f"-> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_touched_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -950,8 +1013,10 @@ def test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors
     actual = set(field.on_cells())
     expected = {(x, y) for x in range(3, 10) for y in range(3, 10)}
     ok = actual == expected
-    print(f"test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors: "
-          f"count={len(actual)} (expected {len(expected)}) -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors: "
+        f"count={len(actual)} (expected {len(expected)}) -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -963,7 +1028,9 @@ def test_fill_polygon_touched_single_cell_no_diagonal_bleed():
     field.fill_polygon_touched([(5, 5), (6, 5), (6, 6), (5, 6)])
     actual = set(field.on_cells())
     ok = actual == {(5, 5)}
-    print(f"test_fill_polygon_touched_single_cell_no_diagonal_bleed: cells={sorted(actual)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_touched_single_cell_no_diagonal_bleed: cells={sorted(actual)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -979,8 +1046,10 @@ def test_fill_polygon_touched_covers_more_than_fill_polygon_covered():
     covered = set(covered_field.on_cells())
     touched = set(touched_field.on_cells())
     ok = covered == set() and touched == {(5, 5)} and covered.issubset(touched)
-    print(f"test_fill_polygon_touched_covers_more_than_fill_polygon_covered: "
-          f"covered={len(covered)} touched={len(touched)} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_polygon_touched_covers_more_than_fill_polygon_covered: "
+        f"covered={len(covered)} touched={len(touched)} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -998,10 +1067,10 @@ def test_fill_polygon_touched_invalid_raises():
 def test_fill_aligned_rect_matches_polygon_equivalents():
     width, height = 20, 16
     boxes = [
-        (2.0, 3.0, 9.0, 11.0),      # exactly on cell boundaries
-        (2.4, 3.6, 8.7, 10.1),      # arbitrary, no boundary alignment
-        (0.0, 0.0, 20.0, 16.0),     # the whole field
-        (5.0, 5.0, 5.001, 9.0),     # a hairline-thin box (much thinner than a cell)
+        (2.0, 3.0, 9.0, 11.0),  # exactly on cell boundaries
+        (2.4, 3.6, 8.7, 10.1),  # arbitrary, no boundary alignment
+        (0.0, 0.0, 20.0, 16.0),  # the whole field
+        (5.0, 5.0, 5.001, 9.0),  # a hairline-thin box (much thinner than a cell)
     ]
     all_ok = True
     for x0, y0, x1, y1 in boxes:
@@ -1021,9 +1090,15 @@ def test_fill_aligned_rect_matches_polygon_equivalents():
 
         if not (covered_ok and touched_ok):
             all_ok = False
-            print(f"  MISMATCH box=({x0},{y0},{x1},{y1}) covered_ok={covered_ok} touched_ok={touched_ok}")
-            print(f"    covered ref={sorted(covered_ref.on_cells())} fast={sorted(covered_fast.on_cells())}")
-            print(f"    touched ref={sorted(touched_ref.on_cells())} fast={sorted(touched_fast.on_cells())}")
+            print(
+                f"  MISMATCH box=({x0},{y0},{x1},{y1}) covered_ok={covered_ok} touched_ok={touched_ok}"
+            )
+            print(
+                f"    covered ref={sorted(covered_ref.on_cells())} fast={sorted(covered_fast.on_cells())}"
+            )
+            print(
+                f"    touched ref={sorted(touched_ref.on_cells())} fast={sorted(touched_fast.on_cells())}"
+            )
 
     print(f"test_fill_aligned_rect_matches_polygon_equivalents: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
@@ -1070,9 +1145,11 @@ def test_fill_aligned_rect_faster_than_polygon():
 
     correct = fast_cells == poly_cells
     faster = fast_time < poly_time
-    print(f"test_fill_aligned_rect_faster_than_polygon: fast={fast_time*1000:.3f}ms "
-          f"poly={poly_time*1000:.3f}ms correct={correct} faster={faster} -> "
-          f"{'PASS' if (correct and faster) else 'FAIL'}")
+    print(
+        f"test_fill_aligned_rect_faster_than_polygon: fast={fast_time*1000:.3f}ms "
+        f"poly={poly_time*1000:.3f}ms correct={correct} faster={faster} -> "
+        f"{'PASS' if (correct and faster) else 'FAIL'}"
+    )
     return correct and faster
 
 
@@ -1095,9 +1172,11 @@ def test_fill_disk_faster_than_per_cell_set():
     correct = set(field.on_cells()) == cells
     faster = bulk_time < naive_time
     ok = correct and faster
-    print(f"test_fill_disk_faster_than_per_cell_set: cells={len(cells)} "
-          f"bulk={bulk_time*1000:.3f}ms naive={naive_time*1000:.3f}ms "
-          f"correct={correct} faster={faster} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_fill_disk_faster_than_per_cell_set: cells={len(cells)} "
+        f"bulk={bulk_time*1000:.3f}ms naive={naive_time*1000:.3f}ms "
+        f"correct={correct} faster={faster} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -1151,8 +1230,10 @@ def test_apply_mask():
             actual = set(field.on_cells())
             if actual != expected:
                 all_ok = False
-                print(f"  MISMATCH op={op} offset=({ox},{oy}): "
-                      f"expected={len(expected)} actual={len(actual)}")
+                print(
+                    f"  MISMATCH op={op} offset=({ox},{oy}): "
+                    f"expected={len(expected)} actual={len(actual)}"
+                )
 
     field = CellField(width, height)
     try:
@@ -1183,8 +1264,10 @@ def test_apply_mask_cost_independent_of_field_size():
     # not a precise complexity proof
     ratio = times[-1] / times[0] if times[0] > 0 else float("inf")
     ok = ratio < 20
-    print(f"test_apply_mask_cost_independent_of_field_size: times={[f'{t*1000:.3f}ms' for t in times]} "
-          f"ratio(largest/smallest)={ratio:.1f} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_apply_mask_cost_independent_of_field_size: times={[f'{t*1000:.3f}ms' for t in times]} "
+        f"ratio(largest/smallest)={ratio:.1f} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -1284,13 +1367,17 @@ def test_mark_path_exact_corner_ties():
         if i > 0 and not ((i - 1, i) in actual or (i, i - 1) in actual):
             all_ok = False
 
-    print(f"test_mark_path_exact_corner_ties: cells={sorted(actual)} -> {'PASS' if all_ok else 'FAIL'}")
+    print(
+        f"test_mark_path_exact_corner_ties: cells={sorted(actual)} -> {'PASS' if all_ok else 'FAIL'}"
+    )
     return all_ok
 
 
 def test_from_path_factory():
     path = [(1.0, 1.0), (18.0, 1.0), (18.0, 13.0)]
-    field = CellField.from_path(path, min_corner=(0.0, 0.0), max_corner=(20.0, 15.0), width=20, height=15)
+    field = CellField.from_path(
+        path, min_corner=(0.0, 0.0), max_corner=(20.0, 15.0), width=20, height=15
+    )
 
     reference = CellField(20, 15, min_corner=(0.0, 0.0), max_corner=(20.0, 15.0))
     reference.mark_path(path)
@@ -1300,8 +1387,10 @@ def test_from_path_factory():
     right_bounds = field.min_corner == (0.0, 0.0) and field.max_corner == (20.0, 15.0)
 
     ok = matches_manual and right_shape and right_bounds
-    print(f"test_from_path_factory: matches_manual={matches_manual} right_shape={right_shape} "
-          f"right_bounds={right_bounds} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_from_path_factory: matches_manual={matches_manual} right_shape={right_shape} "
+        f"right_bounds={right_bounds} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -1372,8 +1461,10 @@ def test_out_of_bounds_path_stays_fast():
 
     budget = 1.0
     ok = elapsed <= budget
-    print(f"test_out_of_bounds_path_stays_fast: elapsed={elapsed*1000:.3f}ms "
-          f"(budget={budget*1000:.0f}ms) -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_out_of_bounds_path_stays_fast: elapsed={elapsed*1000:.3f}ms "
+        f"(budget={budget*1000:.0f}ms) -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -1418,9 +1509,11 @@ def test_block_commands_diagonal_reconstructs_displacement():
     alternating = all(count == 1 for _, count in commands)
 
     ok = only_cardinal and correct_displacement and alternating
-    print(f"test_block_commands_diagonal_reconstructs_displacement: "
-          f"displacement=({dx},{dy}) expected=({expected_dx},{expected_dy}) "
-          f"steps={total_steps} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_block_commands_diagonal_reconstructs_displacement: "
+        f"displacement=({dx},{dy}) expected=({expected_dx},{expected_dy}) "
+        f"steps={total_steps} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 
@@ -1439,7 +1532,9 @@ def test_block_commands_out_of_bounds_gap_no_crash():
         print(f"  raised: {e!r}")
 
     ok = not raised and len(commands) > 0 and all(c in "UDLR" for c, _ in commands)
-    print(f"test_block_commands_out_of_bounds_gap_no_crash: commands={commands} -> {'PASS' if ok else 'FAIL'}")
+    print(
+        f"test_block_commands_out_of_bounds_gap_no_crash: commands={commands} -> {'PASS' if ok else 'FAIL'}"
+    )
     return ok
 
 

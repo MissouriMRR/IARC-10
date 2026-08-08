@@ -4,6 +4,7 @@ enumerating "on" cells. Everything here is O(field size) by nature (a
 whole-field op has to touch the whole field) -- the goal is just to pay that
 cost once per call via native bulk operations, not per cell.
 """
+
 from typing import Iterator
 
 _BYTE_BITS = tuple(tuple(i for i in range(8) if (b >> i) & 1) for b in range(256))
@@ -127,7 +128,7 @@ class _BitwiseOpsMixin:
         height = self._height
         n = len(data)
         for start in range(0, n, _ON_CELLS_CHUNK_SIZE):
-            chunk = data[start:start + _ON_CELLS_CHUNK_SIZE]
+            chunk = data[start : start + _ON_CELLS_CHUNK_SIZE]
             zero = _ZERO_CHUNK if len(chunk) == _ON_CELLS_CHUNK_SIZE else bytes(len(chunk))
             if chunk == zero:
                 continue
