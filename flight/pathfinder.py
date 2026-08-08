@@ -202,6 +202,13 @@ def node_path_length(nodePath) -> float:
 WIDTHOFSQUARE=2
 WIDTHOFFIELD=80
 HEIGHTOFFIELD=300
+
+# Default hysteresis margin for get_shortest_path's ending-node choice (a
+# fraction of the true-best route length) -- see its docstring. 0.03 (3%)
+# comfortably swallows the sub-1ft near-ties observed between candidate
+# ending nodes on a ~300ft-long field while still switching for a genuine
+# multi-foot detour around a real obstruction.
+PATH_HYSTERESIS_TOLERANCE = 0.03
 class Pathfinder:
     def __init__(
         self, real_corner_coords: tuple[tuple[float, float]], altitude: float, fov_deg: float, droneID:int, numOfDrones:int
@@ -316,6 +323,22 @@ class Pathfinder:
         # flying toward. None until the first getPlacesToCheck call.
         self.nextPlaceToCheckLocal = None
 
+        # Which ending node get_shortest_path chose LAST time -- kept
+        # across calls to give the chosen route hysteresis (see
+        # get_shortest_path's docstring). None until the first call.
+        self.previousEndNode = None
+
+        # Pins get_active_shortest_path's start once the drone has actually
+        # made progress (see advance_checkpoint) -- None means "haven't
+        # discovered anything yet", so get_active_shortest_path falls back
+        # to the true field entry, matching get_shortest_path exactly.
+        self.checkpointNode = None
+
+        # The FROZEN sequence of nodes actually already traveled (see
+        # advance_checkpoint/get_shortest_path) -- only ever grows, never
+        # recomputed. Empty until the first advance_checkpoint call.
+        self.flownPrefixNodes = []
+
     # Thin wrapper -- see the module-level order_waypoints for the actual
     # heuristic (kept free of self so it's directly testable without
     # constructing a full Pathfinder).
@@ -393,21 +416,219 @@ class Pathfinder:
         self.nodeField.expandField(mine_radius_increment)
         #self.nodeField.increaseRadius(mine_radius_increment)
 
-    def get_shortest_path(self):
-        start = self.startingNodes
-        end = self.endingNodes
-        shortestPathLength=math.inf
-        bestPathNodes=[]
-        for i in start:
-            newGraph = Graph(self.nodeField.fieldConnection.nodeGraph)
-            newPath = newGraph.shortest_path(i, end)
-            
-            if(node_path_length(newPath) < shortestPathLength):
-                shortestPathLength=node_path_length(newPath)
-                bestPathNodes=newPath
+    def _compute_shortest_path(self, start_nodes: list, hysteresis_tolerance: float):
+        """
+        Shared Dijkstra-based path search used by both get_shortest_path
+        (always from self.startingNodes) and get_active_shortest_path
+        (from self.checkpointNode when set -- see its docstring): returns
+        the node-path from whichever of `start_nodes` to whichever ending
+        node currently gives the shortest route -- WITH hysteresis: if the
+        PREVIOUSLY chosen ending node (self.previousEndNode) is still
+        reachable and its distance is within `hysteresis_tolerance` (a
+        fraction of the true best available distance) of that true best,
+        the path keeps using that SAME ending node instead of switching.
 
-                
-        return bestPathNodes
+        Why hysteresis: with ~20 candidate ending nodes spread across a
+        long, narrow field (see buildNodeField), most of them are near-tied
+        in total length -- the field's north-south extent dominates, so
+        which of the ~20 end x-positions you finish at barely matters.
+        WITHOUT hysteresis, adding any new mine ANYWHERE in the field --
+        even one nowhere near the current path -- perturbs the graph just
+        enough to flip which near-tied candidate comes out numerically
+        ahead, swapping in an almost entirely different route even though
+        nothing relevant actually changed. Verified on a 70-mine simulated
+        run: the chosen ending node swung essentially at random across
+        replans (41->37->49->29->45->25->29->17->37->37->41->13->57->...)
+        while the path's own LENGTH barely moved (302.0->306.8 ft over 20
+        replans, ~1.5%). Since seen_tracker's progress is tied to the
+        path's actual cell geometry, each gratuitous route swap discarded
+        most of the previous coverage progress and forced a large fresh
+        getPlacesToCheck pass -- this was the dominant driver of the most
+        expensive simulated runs (500+ waypoints), far more than the cost
+        of replanning itself.
+
+        Comparing `stable` (the distance to the SAME ending node,
+        recomputed on the CURRENT graph) against `best` (the true minimum
+        among all candidates, also on the current graph) -- rather than
+        just "did the path change" -- means a real obstruction still
+        forces a real switch: if a newly discovered mine actually blocks or
+        meaningfully lengthens the route to the previous ending node, its
+        distance grows past the tolerance and a genuinely better ending
+        node wins as before. Hysteresis only suppresses swaps between
+        options that were already within noise of each other.
+
+        self.previousEndNode is shared between get_shortest_path and
+        get_active_shortest_path -- both are choosing among the same set
+        of near-tied ending-node candidates, so keeping them in sync (not
+        letting one drift toward a different ending node than the other)
+        matters more than any benefit from tracking them separately.
+
+        Reuses Graph.shortest_distances directly (one Dijkstra run per
+        starting node) instead of Graph.shortest_path, since picking the
+        best target from a list is no longer just "the global minimum" --
+        both the true-best and the previous-end-node's distance are needed
+        from the same run to compare them.
+        """
+        end = self.endingNodes
+
+        best = None    # (length, end_node, predecessors)
+        stable = None  # same, but restricted to self.previousEndNode
+
+        for i in start_nodes:
+            newGraph = Graph(self.nodeField.fieldConnection.nodeGraph)
+            distances, predecessors = newGraph.shortest_distances(i)
+
+            for e in end:
+                d = distances.get(e, math.inf)
+                if d < math.inf and (best is None or d < best[0]):
+                    best = (d, e, predecessors)
+
+            if self.previousEndNode is not None:
+                d = distances.get(self.previousEndNode, math.inf)
+                if d < math.inf and (stable is None or d < stable[0]):
+                    stable = (d, self.previousEndNode, predecessors)
+
+        if best is None:
+            self.previousEndNode = None
+            return []
+
+        _, chosen_end, chosen_predecessors = best
+        if stable is not None and stable[0] <= best[0] * (1.0 + hysteresis_tolerance):
+            _, chosen_end, chosen_predecessors = stable
+
+        path_nodes = []
+        current = chosen_end
+        while current:
+            path_nodes.append(current)
+            current = chosen_predecessors[current]
+        path_nodes.reverse()
+
+        self.previousEndNode = chosen_end
+        return path_nodes
+
+    def get_active_shortest_path(self, hysteresis_tolerance: float = PATH_HYSTERESIS_TOLERANCE):
+        """
+        The path that should actually drive ONGOING coverage planning:
+        from self.checkpointNode (see advance_checkpoint) if one has been
+        set, otherwise from the true field entry (self.startingNodes) --
+        so a Pathfinder that hasn't discovered anything yet behaves exactly
+        like get_shortest_path.
+
+        Why a second, truncated path at all: recomputing from the TRUE
+        start on every call means a mine discovered near the beginning of
+        the corridor could reshape the path's EARLY portion even after the
+        drone has already physically flown through there -- a real drone
+        can't retroactively re-route ground it already covered, so
+        replanning that portion is both wasted work and not physically
+        meaningful. Pinning the start to advance_checkpoint's
+        last-actually-reached node means every replan only reconsiders the
+        corridor still AHEAD of the drone, which is smaller (cheaper to
+        search) and never churns on a region that's already behind it.
+        """
+        if self.checkpointNode is None:
+            return self._compute_shortest_path(self.startingNodes, hysteresis_tolerance)
+
+        path = self._compute_shortest_path([self.checkpointNode], hysteresis_tolerance)
+        if path:
+            return path
+
+        # The pinned checkpoint became disconnected from every ending node
+        # -- can happen if a LATER mine discovery invalidates the tangent
+        # connections through it (see Field._cleanupInvalidatedConnections)
+        # after it was already pinned. Silently returning [] here would
+        # make getPlacesToCheck look like "nothing left to check" and end
+        # the mission early even though most of the corridor is still
+        # unphotographed (this exact failure mode was caught by
+        # test_seen_covers_final_path going from checking a real path to
+        # vacuously checking an empty one). Fall back to a full search from
+        # the true start instead, which stays connected to SOME ending node
+        # as long as the mission remains solvable at all -- and reset the
+        # checkpoint/frozen prefix together, since get_shortest_path's
+        # flownPrefixNodes[:-1] + active concatenation is only valid when
+        # `active` actually starts at the checkpoint; once this fallback
+        # path starts at the true field entry instead, keeping the old
+        # frozen prefix around would silently corrupt that concatenation.
+        self.checkpointNode = None
+        self.flownPrefixNodes = []
+        return self._compute_shortest_path(self.startingNodes, hysteresis_tolerance)
+
+    def get_shortest_path(self, hysteresis_tolerance: float = PATH_HYSTERESIS_TOLERANCE):
+        """
+        The FULL official path for the whole mission: self.flownPrefixNodes
+        (the FROZEN sequence of nodes actually already traveled, accumulated
+        by advance_checkpoint -- never recomputed, since a real drone can't
+        un-fly and re-fly a different early route just because a later
+        discovery changed what the "ideal" route would have been) followed
+        by get_active_shortest_path()'s current plan for everything still
+        ahead. Identical to get_active_shortest_path until the first
+        advance_checkpoint call (flownPrefixNodes starts empty).
+
+        This is the path final-state checks (test_seen_covers_final_path,
+        _verify_places_to_check_cover_need, path_or_seen_any_set) validate
+        against. It deliberately does NOT independently recompute a fresh
+        "true start to end" route on every call: doing so would answer a
+        different question (what's the best possible route GIVEN
+        everything now known) than the one that actually matters for
+        mission completion (did we finish covering the route we actually
+        flew) -- those two routes can diverge once new mines are
+        discovered downstream of an already-flown, already-frozen prefix,
+        and validating "did we cover a route we never flew" is not a
+        meaningful check.
+        """
+        active = self.get_active_shortest_path(hysteresis_tolerance)
+        if self.flownPrefixNodes:
+            # flownPrefixNodes' last entry IS the checkpoint, i.e. active's
+            # own first node -- drop the duplicate before concatenating.
+            return self.flownPrefixNodes[:-1] + active
+        return active
+
+    def advance_checkpoint(self) -> None:
+        """
+        Pins get_active_shortest_path's start to the FURTHEST node along
+        the current active path such that everything from the current
+        checkpoint (or true start) through that node is already fully
+        covered by self.seen_tracker -- i.e. "the last actually checked
+        node", derived from real photographed coverage.
+
+        Deliberately NOT based on the position of whatever waypoint just
+        triggered a mine discovery: getPlacesToCheck's places are
+        TSP-ordered for shortest travel distance (order_waypoints), not
+        necessarily visited in strict path order, so a mine found at a
+        waypoint further along the corridor can trigger a replan before
+        some EARLIER (in path order) waypoint from the same batch was ever
+        actually visited. Pinning to "wherever the discovering waypoint
+        happened to be" was verified to leave real, unphotographed gaps
+        behind the pinned checkpoint (test_seen_covers_final_path caught
+        it directly). Walking the path and checking actual seen_tracker
+        coverage segment by segment can't make that mistake -- it only
+        ever advances as far as coverage can actually prove.
+
+        Stops advancing at the first node whose prefix isn't fully
+        covered, even if some segment further along happens to be
+        incidentally covered already (e.g. from a differently-routed
+        earlier pass) -- a gap anywhere in the prefix means the drone
+        can't be assumed to have covered everything up to a later point,
+        so this never advances past a known hole.
+        """
+        active_path = self.get_active_shortest_path()
+        if len(active_path) < 2:
+            return
+
+        best_idx = 0
+        for i in range(1, len(active_path)):
+            prefix_cells = self.get_cell_path(active_path[: i + 1])
+            if (prefix_cells & ~self.seen_tracker).count() == 0:
+                best_idx = i
+            else:
+                break
+
+        if best_idx == 0:
+            return  # no progress past the current checkpoint/start
+
+        if not self.flownPrefixNodes:
+            self.flownPrefixNodes.append(active_path[0])
+        self.flownPrefixNodes.extend(active_path[1:best_idx + 1])
+        self.checkpointNode = active_path[best_idx]
 
 
     def get_cell_path(self,nodePath):
@@ -419,6 +640,27 @@ class Pathfinder:
 
         self.path_tracker.mark_path(path)
         return self.path_tracker
+
+    def get_shortest_path_cells(self) -> frozenset[tuple[int, int]]:
+        """
+        Convenience: the CURRENT shortest path's cell footprint (see
+        get_cell_path/mark_path), snapshotted as an immutable frozenset
+        rather than the live self.path_tracker CellField -- get_cell_path
+        clears and re-marks self.path_tracker in place on every call, so a
+        caller comparing "the path before" against "the path after" some
+        change (e.g. discovering a mine) needs its own stable copy of the
+        "before" cells, not a reference that a later call will overwrite
+        out from under it.
+
+        Meant for exactly that before/after comparison -- e.g. a caller
+        deciding whether a newly discovered mine actually changed anything
+        worth replanning for: adding an obstacle that doesn't intersect the
+        current route often leaves get_shortest_path's result (and so this
+        cell footprint) completely unchanged, especially now that
+        get_shortest_path has hysteresis (see its docstring) damping
+        gratuitous route swaps from unrelated graph perturbations.
+        """
+        return frozenset(self.get_cell_path(self.get_shortest_path()).on_cells())
 
     def _verify_places_to_check_cover_need(self, need_field, placements_local, along_ft, across_ft):
         """
@@ -551,8 +793,14 @@ class Pathfinder:
         that the returned placements' footprints actually cover everything
         this call needed to cover -- raises RuntimeError if not, rather
         than silently returning an incomplete list.
+
+        Plans against get_active_shortest_path, NOT get_shortest_path --
+        once advance_checkpoint has pinned a start (see its docstring),
+        this call only reconsiders the corridor still ahead of the drone,
+        not the whole mission from the true field entry. Behaves exactly
+        like get_shortest_path until the first advance_checkpoint call.
         """
-        shortest_path=self.get_shortest_path()
+        shortest_path=self.get_active_shortest_path()
         self.best_node_List=shortest_path
 
         # matSize is the camera footprint in feet; both methods below need

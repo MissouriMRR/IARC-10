@@ -9,11 +9,14 @@ getPlacesToCheckTest.py for that), but the actual discover-as-you-fly loop:
   2. Build an empty Pathfinder (buildNodeField only, zero mines known).
   3. Ask it for places to check, in order.
   4. "Visit" each one: if a not-yet-discovered true mine is under that
-     photo's footprint, add it (add_discovered_mine) and mark the photo
-     seen (accept_image_corner_coord) -- then STOP visiting this queue and
-     replan from scratch, since a newly discovered mine can change the
-     node graph and so the shortest path itself. If no mine is there,
-     just mark it seen and move on to the next queued place.
+     photo's footprint, add it (add_discovered_mine), mark the photo seen
+     (accept_image_corner_coord), pin the checkpoint to this waypoint
+     (advance_checkpoint) so the next replan only reconsiders the corridor
+     still ahead -- not the whole mission from the true field entry (see
+     Pathfinder.get_active_shortest_path) -- then STOP visiting this queue
+     and replan, since a newly discovered mine can change the node graph
+     and so the shortest path itself. If no mine is there, just mark it
+     seen and move on to the next queued place.
   5. Repeat until getPlacesToCheck returns nothing left to check, which
      happens exactly when the current shortest path's whole cell footprint
      is already marked seen (the two termination conditions the task
@@ -208,7 +211,18 @@ def simulate_one_drone(
                     mine_lat, mine_lon = pf.coord_converter.local_to_latlon(mx, my)
                     pf.add_discovered_mine(mine_lat, mine_lon)
                 found_mine_this_pass = True
-                break  # the graph just changed -- stop this queue, replan
+                # Pin the next replan's search to start from the furthest
+                # point actually PROVEN checked by seen_tracker coverage
+                # (not just wherever this particular waypoint happens to
+                # be -- see Pathfinder.advance_checkpoint's docstring for
+                # why that's unsound given TSP-ordered visiting).
+                pf.advance_checkpoint()
+                # A newly discovered mine changes the node graph, so stop
+                # this queue and replan -- with the checkpoint pinned above,
+                # the next getPlacesToCheck call only needs to replan the
+                # corridor still ahead, not the whole mission from the true
+                # start (see get_active_shortest_path).
+                break
 
         if record_frames:
             frames.append(_snapshot_frame(pf, replans, discovered, visited))
