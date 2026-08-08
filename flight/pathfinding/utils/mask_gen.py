@@ -1,4 +1,11 @@
-import flight.pathfinding.nodeField.node_generation as nodeg
+# node_generation.py doesn't exist -- nodeg.Node (used below as a type hint,
+# which Python evaluates at class-definition time) now lives in node.py.
+# nodeg.Mine, referenced inside this class's very first __init__ overload,
+# has no current equivalent (see BlockMine) -- left unresolved since that
+# __init__ is immediately shadowed by later ones in this same class (Python
+# keeps only the last definition of a repeated method name) and can never
+# actually run.
+import flight.pathfinding.nodeField.node as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
 import math

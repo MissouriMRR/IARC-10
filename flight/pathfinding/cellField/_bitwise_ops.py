@@ -34,6 +34,44 @@ class _BitwiseOpsMixin:
     def shift_inplace(self, dx: int, dy: int) -> None:
         self._load_int(self._shifted_bits(dx, dy))
 
+    def _expanded_bits(self) -> int:
+        if self._buffer < 1:
+            raise ValueError(
+                f"expand needs buffer>=1 (to shift left/right by one column "
+                f"without corrupting the adjacent row -- see shift/_shifted_bits), "
+                f"got buffer={self._buffer}"
+            )
+        bits = self._as_int()
+        stride = self._stride
+        # OR the field with itself shifted +-1 column and +-1 row (the four
+        # von Neumann neighbors) directly on the whole backing int -- four
+        # native shift+OR passes, not a per-cell loop, so this costs the
+        # same O(field size) as a single shift()/AND/OR regardless of how
+        # many cells are set. Each shifted term can spill into a row's
+        # buffer zone or past the field's own top/bottom edge; masking once
+        # at the end (inside _load_int, same as shift()) clears all of that
+        # in one pass instead of after every individual term -- valid
+        # because ANDing a single mask over an OR of terms is the same as
+        # ANDing each term first, then OR-ing.
+        return bits | (bits << 1) | (bits >> 1) | (bits << stride) | (bits >> stride)
+
+    def expand(self):
+        """
+        Returns a new CellField where every currently-on cell's four
+        von Neumann (up/down/left/right, NOT diagonal) neighbors are also
+        on, in addition to the cell itself -- a single-cell dilation. See
+        _expanded_bits: built from native bulk shift+OR on the field's
+        whole backing int, the same cost model as shift()/AND/OR/XOR, not
+        a per-cell Python loop.
+        """
+        new = self._new_like()
+        new._load_int(self._expanded_bits())
+        return new
+
+    def expand_inplace(self) -> None:
+        """In-place version of expand() -- see its docstring."""
+        self._load_int(self._expanded_bits())
+
     def __and__(self, other):
         self._require_same_shape(other)
         new = self._new_like()

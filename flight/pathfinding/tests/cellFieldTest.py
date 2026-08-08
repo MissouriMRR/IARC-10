@@ -77,9 +77,11 @@ def test_vertical_slice_correctness():
         sliced = field.vertical_slice(start_frac, end_frac)
         start_row = round(start_frac * height)
         end_row = round(end_frac * height)
-        expected = {(x, y - start_row) for x, y in cells if start_row <= y < end_row}
+        # same-size output: cells inside the band keep their ORIGINAL (x,y),
+        # everything outside the band is cleared
+        expected = {(x, y) for x, y in cells if start_row <= y < end_row}
         actual = set(sliced.on_cells())
-        right_height = sliced.height == end_row - start_row
+        right_height = sliced.height == height
         right_width = sliced.width == width
         if actual != expected or not right_height or not right_width:
             all_ok = False
@@ -110,13 +112,16 @@ def test_vertical_slice_corners_and_coordinates():
     field = CellField(10, 20, min_corner=(0.0, 0.0), max_corner=(10.0, 40.0))  # cell_size = (1,2)
     top_quarter = field.vertical_slice(0.75, 1.0)
 
-    right_min = top_quarter.min_corner == (0.0, 30.0)
-    right_max = top_quarter.max_corner == (10.0, 40.0)
-    right_cell_size = top_quarter.cell_size == (1.0, 2.0)
-    # a point at the bottom of the slice's own frame maps to its own row 0
-    right_local_mapping = top_quarter.real_to_cell(5.0, 31.0) == (5, 0)
+    # same-size output: corners/cell_size match the ORIGINAL field exactly,
+    # so real_to_cell/cell_to_real on the result stay consistent with self
+    same_min = top_quarter.min_corner == field.min_corner
+    same_max = top_quarter.max_corner == field.max_corner
+    same_cell_size = top_quarter.cell_size == field.cell_size
+    same_shape = (top_quarter.width, top_quarter.height) == (field.width, field.height)
+    # a point in the ORIGINAL field's own frame maps consistently on both
+    right_mapping = top_quarter.real_to_cell(5.0, 31.0) == field.real_to_cell(5.0, 31.0) == (5, 15)
 
-    ok = right_min and right_max and right_cell_size and right_local_mapping
+    ok = same_min and same_max and same_cell_size and same_shape and right_mapping
     print(f"test_vertical_slice_corners_and_coordinates: -> {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -142,13 +147,15 @@ def test_vertical_slice_invalid_raises():
     return ok
 
 
-def test_vertical_slice_fast_for_huge_field():
+def test_vertical_slice_reasonably_fast_for_huge_field():
+    # Same-size output means this can't be cheaper than O(field size) --
+    # the output itself is that big -- but it should still be a plain bulk
+    # byte-copy plus two range-clears, not per-cell work, so it should stay
+    # fast in absolute terms even at a large scale.
     import time
 
     width, height = 20000, 20000
     field = CellField(width, height)
-    # a handful of set cells within the slice we'll take, so it's not a
-    # trivially-empty operation
     for x, y in [(10, 5), (15, 8), (100, 12)]:
         field.set(x, y)
 
@@ -157,11 +164,12 @@ def test_vertical_slice_fast_for_huge_field():
     elapsed = time.perf_counter() - t0
 
     correct = set(sliced.on_cells()) == {(10, 5), (15, 8), (100, 12)}
-    budget = 0.05
+    same_size = (sliced.width, sliced.height) == (width, height)
+    budget = 1.0
     fast = elapsed <= budget
-    ok = correct and fast
-    print(f"test_vertical_slice_fast_for_huge_field: elapsed={elapsed*1000:.3f}ms "
-          f"(budget={budget*1000:.0f}ms) correct={correct} -> {'PASS' if ok else 'FAIL'}")
+    ok = correct and same_size and fast
+    print(f"test_vertical_slice_reasonably_fast_for_huge_field: elapsed={elapsed*1000:.3f}ms "
+          f"(budget={budget*1000:.0f}ms) correct={correct} same_size={same_size} -> {'PASS' if ok else 'FAIL'}")
     return ok
 
 
@@ -278,6 +286,220 @@ def test_cover_with_shape_center_shifts_result_correctly():
     return ok
 
 
+def test_cover_with_shape_offfield_center_falls_back_to_cutoff_center():
+    # A single target cell right at the field's bottom-left corner, covered
+    # by a shape much bigger than the field -- the greedy tiebreak (lowest
+    # y, then lowest x) picks the offset that covers the target with the
+    # shape's OWN top-right-most cell, so the shape's bulk (and its nominal
+    # bounding-box center) ends up hanging far off the field into negative
+    # coordinates. The returned point must NOT be that off-field center --
+    # it must be the centroid of just the on-field portion, which here is
+    # exactly the one on-field cell (0,0) -- its own center, (0.5, 0.5).
+    target = CellField(10, 10)
+    target.set(0, 0)
+
+    centers = target.cover_with_shape((8, 8))  # much bigger than the 10x10 field
+
+    ok = len(centers) == 1
+    if ok:
+        cx, cy = centers[0]
+        in_bounds = 0.0 <= cx <= 10.0 and 0.0 <= cy <= 10.0
+        matches_cutoff_center = abs(cx - 0.5) < 1e-9 and abs(cy - 0.5) < 1e-9
+        ok = in_bounds and matches_cutoff_center
+    print(f"test_cover_with_shape_offfield_center_falls_back_to_cutoff_center: "
+          f"centers={centers} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_cover_with_shape_rect_tuple_matches_equivalent_cellfield():
+    # shape=(w,h) should behave EXACTLY as if the caller had built a solid
+    # w x h CellField and passed that instead -- same placements, same
+    # default center -- not just "also produces valid coverage".
+    width, height = 30, 25
+    target = CellField(width, height)
+    for cx, cy in [(5, 5), (20, 15), (25, 3)]:
+        target.fill_rect(cx, cy, cx + 5, cy + 5)
+
+    rect_shape = CellField(2, 3, buffer=0)
+    rect_shape.fill_rect(0, 0, 2, 3)
+
+    via_tuple = target.cover_with_shape((2, 3))
+    via_cellfield = target.cover_with_shape(rect_shape)
+
+    ok = via_tuple == via_cellfield and len(via_tuple) > 0
+    print(f"test_cover_with_shape_rect_tuple_matches_equivalent_cellfield: "
+          f"placements={len(via_tuple)} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_cover_with_shape_rect_tuple_covers_everything():
+    width, height = 30, 20
+    target = CellField(width, height)
+    for cx, cy in [(2, 2), (20, 4), (10, 14)]:
+        target.fill_rect(cx, cy, cx + 4, cy + 6)
+
+    shape_w, shape_h = 2, 3
+    shape_center = (shape_w / 2.0, shape_h / 2.0)
+    centers = target.cover_with_shape((shape_w, shape_h), shape_center=shape_center)
+
+    covered = set()
+    for cx, cy in centers:
+        ox = round((cx - target.min_corner[0]) / target.cell_size[0] - shape_center[0])
+        oy = round((cy - target.min_corner[1]) / target.cell_size[1] - shape_center[1])
+        for sx in range(shape_w):
+            for sy in range(shape_h):
+                covered.add((sx + ox, sy + oy))
+
+    target_cells = set(target.on_cells())
+    ok = target_cells.issubset(covered)
+    print(f"test_cover_with_shape_rect_tuple_covers_everything: placements={len(centers)} "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_cover_with_shape_rect_tuple_default_center():
+    target = CellField(10, 10)
+    target.set(5, 5)
+    centers = target.cover_with_shape((2, 3))  # default center -> (1.0, 1.5)
+    ok = len(centers) == 1
+    print(f"test_cover_with_shape_rect_tuple_default_center: centers={centers} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_cover_with_shape_rect_tuple_invalid_raises():
+    target = CellField(10, 10)
+    target.set(5, 5)
+    results = []
+    for bad_shape in [(2,), (2, 3, 4), (0, 3), (2, -1), (0, 0)]:
+        try:
+            target.cover_with_shape(bad_shape)
+            results.append(False)
+        except ValueError:
+            results.append(True)
+    ok = all(results)
+    print(f"test_cover_with_shape_rect_tuple_invalid_raises: -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def _placement_footprints(shape_size, shape_center, centers, field):
+    w, h = shape_size
+    shape_cells = [(x, y) for x in range(w) for y in range(h)]
+    footprints = []
+    for cx, cy in centers:
+        ox = round((cx - field.min_corner[0]) / field.cell_size[0] - shape_center[0])
+        oy = round((cy - field.min_corner[1]) / field.cell_size[1] - shape_center[1])
+        footprints.append({(sx + ox, sy + oy) for sx, sy in shape_cells})
+    return footprints
+
+
+def test_cover_with_shape_perfect_tiling_has_zero_overlap():
+    # A target region that divides EXACTLY into whole shape tiles has a
+    # zero-overlap optimal tiling available -- confirms the overlap
+    # tiebreaker actually finds it, not just "some" cover.
+    width, height = 20, 20
+    target = CellField(width, height)
+    target.fill_rect(2, 2, 10, 8)  # 8x6 region, divides evenly by 2x2 -> 12 tiles exactly
+
+    shape_size = (2, 2)
+    shape_center = (1.0, 1.0)
+    centers = target.cover_with_shape(shape_size, shape_center=shape_center)
+    footprints = _placement_footprints(shape_size, shape_center, centers, target)
+
+    all_covered = set().union(*footprints) if footprints else set()
+    total_cells = sum(len(f) for f in footprints)
+    overlap_cells = total_cells - len(all_covered)
+
+    optimal_count = 12
+    right_count = len(centers) == optimal_count
+    zero_overlap = overlap_cells == 0
+    covers_target = set(target.on_cells()).issubset(all_covered)
+
+    ok = right_count and zero_overlap and covers_target
+    print(f"test_cover_with_shape_perfect_tiling_has_zero_overlap: placements={len(centers)} "
+          f"(optimal={optimal_count}) overlap_cells={overlap_cells} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak():
+    # Reference implementation WITHOUT the overlap tiebreaker (plain greedy,
+    # ties broken arbitrarily by iteration order) -- confirms the real
+    # method's total overlap is never worse, and is strictly better on a
+    # case where plain greedy's arbitrary tie-breaking creates avoidable
+    # overlap.
+    def naive_cover(field, shape_size, shape_center):
+        w, h = shape_size
+        shape_cells = [(x, y) for x in range(w) for y in range(h)]
+        remaining = set(field.on_cells())
+        placements = []
+        while remaining:
+            best_offset = None
+            best_covered = None
+            tried = set()
+            for rx, ry in remaining:
+                for sx, sy in shape_cells:
+                    offset = (rx - sx, ry - sy)
+                    if offset in tried:
+                        continue
+                    tried.add(offset)
+                    covered = {(sx2 + offset[0], sy2 + offset[1]) for sx2, sy2 in shape_cells} & remaining
+                    if best_covered is None or len(covered) > len(best_covered):
+                        best_offset = offset
+                        best_covered = covered
+            placements.append(best_offset)
+            remaining -= best_covered
+        centers = []
+        for ox, oy in placements:
+            cx = field.min_corner[0] + (ox + shape_center[0]) * field.cell_size[0]
+            cy = field.min_corner[1] + (oy + shape_center[1]) * field.cell_size[1]
+            centers.append((cx, cy))
+        return centers
+
+    def total_overlap(shape_size, shape_center, centers, field):
+        footprints = _placement_footprints(shape_size, shape_center, centers, field)
+        total = sum(len(f) for f in footprints)
+        union = len(set().union(*footprints)) if footprints else 0
+        return total - union
+
+    width, height = 30, 20
+    target = CellField(width, height)
+    # an irregular target (union of overlapping disks) is exactly the kind
+    # of shape where naive greedy's ties create avoidable overlap
+    target.fill_disk(8, 8, 5)
+    target.fill_disk(20, 10, 4)
+    target.fill_disk(14, 14, 3)
+
+    shape_size = (2, 2)
+    shape_center = (1.0, 1.0)
+
+    naive_centers = naive_cover(target, shape_size, shape_center)
+    real_centers = target.cover_with_shape(shape_size, shape_center=shape_center)
+
+    naive_overlap = total_overlap(shape_size, shape_center, naive_centers, target)
+    real_overlap = total_overlap(shape_size, shape_center, real_centers, target)
+
+    naive_footprints = _placement_footprints(shape_size, shape_center, naive_centers, target)
+    real_footprints = _placement_footprints(shape_size, shape_center, real_centers, target)
+    target_cells = set(target.on_cells())
+    naive_covers = target_cells.issubset(set().union(*naive_footprints))
+    real_covers = target_cells.issubset(set().union(*real_footprints))
+
+    # Greedy tie-breaking that reduces overlap can occasionally cost a small
+    # number of extra placements later on (different choices cascade), so
+    # this isn't asserted as strictly non-worse -- just not worse by much,
+    # in exchange for a real overlap reduction, which is the property that
+    # actually matters here.
+    count_margin = 3
+    count_not_much_worse = len(real_centers) <= len(naive_centers) + count_margin
+    less_or_equal_overlap = real_overlap <= naive_overlap
+    strictly_better_here = real_overlap < naive_overlap
+
+    ok = count_not_much_worse and less_or_equal_overlap and strictly_better_here and naive_covers and real_covers
+    print(f"test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak: "
+          f"naive(placements={len(naive_centers)}, overlap={naive_overlap}) "
+          f"real(placements={len(real_centers)}, overlap={real_overlap}) -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def test_bitwise_ops():
     width, height = 12, 9
     seed_a = random_cells(width, height, 20, seed=1)
@@ -353,6 +575,81 @@ def test_shift_correctness():
 
     print(f"test_shift_correctness: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
+
+
+def naive_expand(cells, width, height):
+    result = set()
+    for x, y in cells:
+        for nx, ny in ((x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < width and 0 <= ny < height:
+                result.add((nx, ny))
+    return result
+
+
+def test_expand_correctness():
+    width, height, buffer = 10, 8, 1
+    # cells at every row's leftmost/rightmost column (where a horizontal
+    # expand would spill into the buffer zone) and at the top/bottom rows
+    # (where a vertical expand would spill past the field entirely), plus a
+    # scattering of interior cells.
+    edge_cells = {(0, y) for y in range(height)} | {(width - 1, y) for y in range(height)}
+    edge_cells |= {(x, 0) for x in range(width)} | {(x, height - 1) for x in range(width)}
+    interior_cells = random_cells(width, height, 15, seed=43)
+    cells = edge_cells | interior_cells
+    expected = naive_expand(cells, width, height)
+
+    field = make_field_from_cells(width, height, cells, buffer)
+    functional_actual = set(field.expand().on_cells())
+    unchanged_after = set(field.on_cells()) == cells
+    distinct_object = field.expand() is not field
+
+    inplace_field = make_field_from_cells(width, height, cells, buffer)
+    inplace_field.expand_inplace()
+    inplace_actual = set(inplace_field.on_cells())
+
+    ok = functional_actual == expected and inplace_actual == expected and unchanged_after and distinct_object
+    if not ok:
+        print(f"  expected={sorted(expected)} functional={sorted(functional_actual)} "
+              f"inplace={sorted(inplace_actual)} unchanged_after={unchanged_after}")
+    print(f"test_expand_correctness: -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_expand_empty_and_full_field():
+    width, height = 6, 5
+    empty = CellField(width, height)
+    empty_ok = empty.expand().count() == 0
+
+    full = CellField(width, height)
+    for x in range(width):
+        for y in range(height):
+            full.set(x, y)
+    full_expanded = full.expand()
+    full_ok = full_expanded.count() == width * height  # already saturated, expand is a no-op
+
+    ok = empty_ok and full_ok
+    print(f"test_expand_empty_and_full_field: empty_ok={empty_ok} full_ok={full_ok} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_expand_requires_buffer_raises():
+    field = CellField(10, 10, buffer=0)
+    field.set(3, 3)
+    raised_functional = False
+    raised_inplace = False
+    try:
+        field.expand()
+    except ValueError:
+        raised_functional = True
+    try:
+        field.expand_inplace()
+    except ValueError:
+        raised_inplace = True
+
+    ok = raised_functional and raised_inplace
+    print(f"test_expand_requires_buffer_raises: functional={raised_functional} "
+          f"inplace={raised_inplace} -> {'PASS' if ok else 'FAIL'}")
+    return ok
 
 
 def test_shift_dx_exceeds_buffer_raises():
@@ -561,6 +858,222 @@ def test_fill_disk():
 
     print(f"test_fill_disk: -> {'PASS' if all_ok else 'FAIL'}")
     return all_ok
+
+
+def test_fill_polygon_covered_axis_aligned_rect():
+    # A grid-aligned rectangle should cover EXACTLY the cells inside it,
+    # including cells whose corner exactly touches the rectangle's own
+    # boundary -- not just the strict interior.
+    field = CellField(10, 10)
+    field.fill_polygon_covered([(2, 2), (6, 2), (6, 6), (2, 6)])
+    actual = set(field.on_cells())
+    expected = {(x, y) for x in range(2, 6) for y in range(2, 6)}
+    ok = actual == expected
+    print(f"test_fill_polygon_covered_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_covered_offset_rect():
+    # Same shape, NOT grid-aligned (a more realistic case -- real image
+    # corners essentially never land exactly on cell boundaries) -- exactly
+    # the cells fully inside should be set, nothing partially clipped.
+    field = CellField(20, 20)
+    field.fill_polygon_covered([(3.3, 3.3), (9.7, 3.3), (9.7, 9.7), (3.3, 9.7)])
+    actual = set(field.on_cells())
+    expected = {(x, y) for x in range(4, 9) for y in range(4, 9)}
+    ok = actual == expected
+    print(f"test_fill_polygon_covered_offset_rect: count={len(actual)} (expected {len(expected)}) "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_covered_excludes_partially_clipped_cells():
+    # A polygon smaller than a single cell must cover ZERO cells -- no cell
+    # is FULLY inside it, even though it clips one cell's interior.
+    field = CellField(10, 10)
+    field.fill_polygon_covered([(5.1, 5.1), (5.4, 5.1), (5.4, 5.4), (5.1, 5.4)])
+    ok = field.count() == 0
+    print(f"test_fill_polygon_covered_excludes_partially_clipped_cells: count={field.count()} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_covered_rotated():
+    # A rotated (diamond) polygon -- not axis-aligned at all -- should still
+    # only set cells strictly/fully within it, and should be symmetric for
+    # a symmetric input.
+    field = CellField(10, 10)
+    field.fill_polygon_covered([(5, 2), (8, 5), (5, 8), (2, 5)])
+    on = set(field.on_cells())
+    cx, cy = 5, 5
+    symmetric = all((2 * cx - 1 - x, 2 * cy - 1 - y) in on for x, y in on)
+    ok = len(on) > 0 and symmetric
+    print(f"test_fill_polygon_covered_rotated: count={len(on)} symmetric={symmetric} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_covered_invalid_raises():
+    field = CellField(10, 10)
+    raised = False
+    try:
+        field.fill_polygon_covered([(1, 1), (2, 2)])  # only 2 vertices
+    except ValueError:
+        raised = True
+    print(f"test_fill_polygon_covered_invalid_raises: -> {'PASS' if raised else 'FAIL'}")
+    return raised
+
+
+def test_fill_polygon_touched_axis_aligned_rect():
+    # Grid-aligned, so touched should equal exactly the same 4x4 block
+    # fill_polygon_covered gets -- no partially-clipped border cells exist
+    # for a perfectly grid-aligned rectangle.
+    field = CellField(10, 10)
+    field.fill_polygon_touched([(2, 2), (6, 2), (6, 6), (2, 6)])
+    actual = set(field.on_cells())
+    expected = {(x, y) for x in range(2, 6) for y in range(2, 6)}
+    ok = actual == expected
+    print(f"test_fill_polygon_touched_axis_aligned_rect: count={len(actual)} (expected {len(expected)}) "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors():
+    # An offset (non-grid-aligned) rectangle: touched must include the ring
+    # of cells the rectangle only PARTIALLY clips (fill_polygon_covered
+    # excludes those, since they're not FULLY inside) -- a real, larger set
+    # than "covered" -- but must NOT include cells with only a zero-area
+    # (corner or edge) boundary contact, which a naive closed-boundary
+    # containment test would wrongly include (verified empirically to
+    # inflate a 4x4 true footprint to 6x6 before this was fixed).
+    field = CellField(20, 20)
+    field.fill_polygon_touched([(3.3, 3.3), (9.7, 3.3), (9.7, 9.7), (3.3, 9.7)])
+    actual = set(field.on_cells())
+    expected = {(x, y) for x in range(3, 10) for y in range(3, 10)}
+    ok = actual == expected
+    print(f"test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors: "
+          f"count={len(actual)} (expected {len(expected)}) -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_touched_single_cell_no_diagonal_bleed():
+    # A polygon that's exactly one grid-aligned cell must touch ONLY that
+    # cell -- not its edge- or corner-adjacent neighbors, which share zero
+    # area with it.
+    field = CellField(10, 10)
+    field.fill_polygon_touched([(5, 5), (6, 5), (6, 6), (5, 6)])
+    actual = set(field.on_cells())
+    ok = actual == {(5, 5)}
+    print(f"test_fill_polygon_touched_single_cell_no_diagonal_bleed: cells={sorted(actual)} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_touched_covers_more_than_fill_polygon_covered():
+    # touched is always a SUPERSET of covered for the same polygon -- and
+    # for a small (sub-few-cell) shape like a real mine's safety-zone
+    # polygon, covered can come back completely empty while touched
+    # correctly still marks its actual footprint.
+    covered_field = CellField(10, 10)
+    covered_field.fill_polygon_covered([(5.1, 5.1), (5.9, 5.1), (5.9, 5.9), (5.1, 5.9)])
+    touched_field = CellField(10, 10)
+    touched_field.fill_polygon_touched([(5.1, 5.1), (5.9, 5.1), (5.9, 5.9), (5.1, 5.9)])
+    covered = set(covered_field.on_cells())
+    touched = set(touched_field.on_cells())
+    ok = covered == set() and touched == {(5, 5)} and covered.issubset(touched)
+    print(f"test_fill_polygon_touched_covers_more_than_fill_polygon_covered: "
+          f"covered={len(covered)} touched={len(touched)} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_polygon_touched_invalid_raises():
+    field = CellField(10, 10)
+    raised = False
+    try:
+        field.fill_polygon_touched([(1, 1), (2, 2)])  # only 2 vertices
+    except ValueError:
+        raised = True
+    print(f"test_fill_polygon_touched_invalid_raises: -> {'PASS' if raised else 'FAIL'}")
+    return raised
+
+
+def test_fill_aligned_rect_matches_polygon_equivalents():
+    width, height = 20, 16
+    boxes = [
+        (2.0, 3.0, 9.0, 11.0),      # exactly on cell boundaries
+        (2.4, 3.6, 8.7, 10.1),      # arbitrary, no boundary alignment
+        (0.0, 0.0, 20.0, 16.0),     # the whole field
+        (5.0, 5.0, 5.001, 9.0),     # a hairline-thin box (much thinner than a cell)
+    ]
+    all_ok = True
+    for x0, y0, x1, y1 in boxes:
+        poly = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+        covered_ref = CellField(width, height)
+        covered_ref.fill_polygon_covered(poly)
+        covered_fast = CellField(width, height)
+        covered_fast.fill_aligned_rect_covered(x0, y0, x1, y1)
+        covered_ok = set(covered_ref.on_cells()) == set(covered_fast.on_cells())
+
+        touched_ref = CellField(width, height)
+        touched_ref.fill_polygon_touched(poly)
+        touched_fast = CellField(width, height)
+        touched_fast.fill_aligned_rect_touched(x0, y0, x1, y1)
+        touched_ok = set(touched_ref.on_cells()) == set(touched_fast.on_cells())
+
+        if not (covered_ok and touched_ok):
+            all_ok = False
+            print(f"  MISMATCH box=({x0},{y0},{x1},{y1}) covered_ok={covered_ok} touched_ok={touched_ok}")
+            print(f"    covered ref={sorted(covered_ref.on_cells())} fast={sorted(covered_fast.on_cells())}")
+            print(f"    touched ref={sorted(touched_ref.on_cells())} fast={sorted(touched_fast.on_cells())}")
+
+    print(f"test_fill_aligned_rect_matches_polygon_equivalents: -> {'PASS' if all_ok else 'FAIL'}")
+    return all_ok
+
+
+def test_fill_aligned_rect_reversed_bounds():
+    # x1<x0 and/or y1<y0 should behave identically to the normalized order
+    width, height = 12, 12
+    a = CellField(width, height)
+    a.fill_aligned_rect_covered(2.0, 3.0, 8.0, 9.0)
+    b = CellField(width, height)
+    b.fill_aligned_rect_covered(8.0, 9.0, 2.0, 3.0)
+    covered_ok = set(a.on_cells()) == set(b.on_cells()) and a.count() > 0
+
+    c = CellField(width, height)
+    c.fill_aligned_rect_touched(2.0, 3.0, 8.0, 9.0)
+    d = CellField(width, height)
+    d.fill_aligned_rect_touched(8.0, 9.0, 2.0, 3.0)
+    touched_ok = set(c.on_cells()) == set(d.on_cells()) and c.count() > 0
+
+    ok = covered_ok and touched_ok
+    print(f"test_fill_aligned_rect_reversed_bounds: -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_fill_aligned_rect_faster_than_polygon():
+    import time
+
+    width, height = 2000, 2000
+    field = CellField(width, height, max_corner=(width, height))
+    box = (300.0, 300.0, 1700.0, 1700.0)
+    poly = [(box[0], box[1]), (box[2], box[1]), (box[2], box[3]), (box[0], box[3])]
+
+    t0 = time.perf_counter()
+    field.fill_aligned_rect_covered(*box)
+    fast_time = time.perf_counter() - t0
+    fast_cells = set(field.on_cells())
+
+    poly_field = CellField(width, height, max_corner=(width, height))
+    t1 = time.perf_counter()
+    poly_field.fill_polygon_covered(poly)
+    poly_time = time.perf_counter() - t1
+    poly_cells = set(poly_field.on_cells())
+
+    correct = fast_cells == poly_cells
+    faster = fast_time < poly_time
+    print(f"test_fill_aligned_rect_faster_than_polygon: fast={fast_time*1000:.3f}ms "
+          f"poly={poly_time*1000:.3f}ms correct={correct} faster={faster} -> "
+          f"{'PASS' if (correct and faster) else 'FAIL'}")
+    return correct and faster
 
 
 def test_fill_disk_faster_than_per_cell_set():
@@ -938,15 +1451,25 @@ def main():
         test_vertical_slice_index_matches_fraction(),
         test_vertical_slice_corners_and_coordinates(),
         test_vertical_slice_invalid_raises(),
-        test_vertical_slice_fast_for_huge_field(),
+        test_vertical_slice_reasonably_fast_for_huge_field(),
         test_cover_with_shape_single_placement_suffices(),
         test_cover_with_shape_multiple_placements(),
         test_cover_with_shape_empty_target(),
         test_cover_with_shape_no_shape_cells_raises(),
         test_cover_with_shape_center_shifts_result_correctly(),
+        test_cover_with_shape_offfield_center_falls_back_to_cutoff_center(),
+        test_cover_with_shape_rect_tuple_matches_equivalent_cellfield(),
+        test_cover_with_shape_rect_tuple_covers_everything(),
+        test_cover_with_shape_rect_tuple_default_center(),
+        test_cover_with_shape_rect_tuple_invalid_raises(),
+        test_cover_with_shape_perfect_tiling_has_zero_overlap(),
+        test_cover_with_shape_overlap_tiebreak_reduces_overlap_vs_no_tiebreak(),
         test_bitwise_ops(),
         test_shift_correctness(),
         test_shift_dx_exceeds_buffer_raises(),
+        test_expand_correctness(),
+        test_expand_empty_and_full_field(),
+        test_expand_requires_buffer_raises(),
         test_inplace_vs_functional_identity(),
         test_to_from_bytes_roundtrip(),
         test_on_cells_matches_naive_scan(),
@@ -954,6 +1477,19 @@ def main():
         test_large_scale_sanity(),
         test_fill_rect(),
         test_fill_disk(),
+        test_fill_polygon_covered_axis_aligned_rect(),
+        test_fill_polygon_covered_offset_rect(),
+        test_fill_polygon_covered_excludes_partially_clipped_cells(),
+        test_fill_polygon_covered_rotated(),
+        test_fill_polygon_covered_invalid_raises(),
+        test_fill_polygon_touched_axis_aligned_rect(),
+        test_fill_polygon_touched_includes_clipped_border_but_not_diagonal_neighbors(),
+        test_fill_polygon_touched_single_cell_no_diagonal_bleed(),
+        test_fill_polygon_touched_covers_more_than_fill_polygon_covered(),
+        test_fill_polygon_touched_invalid_raises(),
+        test_fill_aligned_rect_matches_polygon_equivalents(),
+        test_fill_aligned_rect_reversed_bounds(),
+        test_fill_aligned_rect_faster_than_polygon(),
         test_fill_disk_faster_than_per_cell_set(),
         test_apply_mask(),
         test_apply_mask_cost_independent_of_field_size(),

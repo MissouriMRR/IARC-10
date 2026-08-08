@@ -174,14 +174,32 @@ class _PathMixin:
         return field
 
     def _segment_cells(
-        self, p0: tuple[float, float], p1: tuple[float, float]
+        self, p0: tuple[float, float], p1: tuple[float, float], include_tie_neighbors: bool = False
     ) -> list[tuple[int, int]]:
         # Like _mark_segment's traversal, but returns the ORDERED list of
-        # cells visited instead of setting bits, and resolves an exact
-        # grid-corner tie as two explicit single-axis steps rather than a
-        # diagonal jump -- every consecutive pair in the result always
-        # differs by exactly one cell in exactly one axis, which is what
-        # block_commands needs to describe the walk as U/D/L/R moves.
+        # cells visited instead of setting bits, and (by default) resolves
+        # an exact grid-corner tie as two explicit single-axis steps rather
+        # than a diagonal jump -- every consecutive pair in the result then
+        # always differs by exactly one cell in exactly one axis, which is
+        # what block_commands needs to describe the walk as U/D/L/R moves.
+        #
+        # A tie is the segment passing EXACTLY through a grid corner, where
+        # it grazes all 4 surrounding cells but has zero length actually
+        # inside 2 of them (the two NOT on whichever single-axis route gets
+        # picked) -- _mark_segment (used for CellField.mark_path, the
+        # "ground truth" path footprint drawn everywhere else in this
+        # codebase, e.g. get_cell_path) marks all 4 of those cells
+        # unconditionally, since it isn't constrained to a walkable single-
+        # file route. That means the default (include_tie_neighbors=False)
+        # output here can legitimately disagree with mark_path's -- a cell
+        # mark_path considers "on the path" gets silently skipped by the
+        # single-axis route chosen through a tie. include_tie_neighbors=True
+        # (see path_cells' same-named parameter) closes that gap for
+        # callers that need to match mark_path's cell set exactly (not walk
+        # a flyable cardinal path) -- it appends BOTH tie neighbors, so a
+        # tie's two new cells end up diagonal (not single-axis) neighbors
+        # of each other, which callers needing a strict cardinal walk
+        # (block_commands) must not use.
         cs_x, cs_y = self._cell_size
         min_x, min_y = self._min_corner
         x0 = (p0[0] - min_x) / cs_x
@@ -227,10 +245,17 @@ class _PathMixin:
             if abs(t_max_x - t_max_y) < EPS:
                 if t_max_x > 1.0 + EPS:
                     break
-                col += step_col
-                cells.append((col, row))
-                row += step_row
-                cells.append((col, row))
+                if include_tie_neighbors:
+                    cells.append((col + step_col, row))
+                    cells.append((col, row + step_row))
+                    col += step_col
+                    row += step_row
+                    cells.append((col, row))
+                else:
+                    col += step_col
+                    cells.append((col, row))
+                    row += step_row
+                    cells.append((col, row))
                 t_max_x += t_delta_x
                 t_max_y += t_delta_y
             elif t_max_x < t_max_y:
@@ -257,15 +282,29 @@ class _PathMixin:
         # past the clamps above.
         return [(c, r) for c, r in cells if 0 <= c < self._width and 0 <= r < self._height]
 
-    def path_cells(self, path: Sequence[tuple[float, float]]) -> list[tuple[int, int]]:
+    def path_cells(
+        self, path: Sequence[tuple[float, float]], include_tie_neighbors: bool = False
+    ) -> list[tuple[int, int]]:
         """
-        Converts real-world `path` waypoints into an ordered, cardinal-step
-        (never diagonal) list of (col, row) cells, clipped to this field's
-        bounds. If the path leaves and re-enters the field, the returned
-        list simply stops covering the out-of-bounds portion and picks back
-        up on re-entry -- consecutive cells across that gap won't be a
-        single step apart; block_commands() skips such a transition rather
-        than raising.
+        Converts real-world `path` waypoints into an ordered list of
+        (col, row) cells, clipped to this field's bounds. If the path
+        leaves and re-enters the field, the returned list simply stops
+        covering the out-of-bounds portion and picks back up on re-entry --
+        consecutive cells across that gap won't be a single step apart;
+        block_commands() skips such a transition rather than raising.
+
+        include_tie_neighbors=False (default): every consecutive pair is a
+        single cardinal (never diagonal) step -- required for
+        block_commands to describe the walk as U/D/L/R moves. At an exact
+        grid-corner tie this picks only ONE of the two possible single-axis
+        routes through the corner, which can disagree with mark_path's more
+        conservative "touch every cell the segment grazes" rasterization
+        (see _segment_cells) -- fine for a flyable path, but NOT for
+        deciding whether every cell mark_path would call "on the path" has
+        actually been covered (see path_cover.unseen_path_runs, which needs
+        include_tie_neighbors=True for exactly that reason). True includes
+        both tie-corner neighbors, at the cost of consecutive pairs
+        sometimes being diagonal rather than strictly cardinal.
         """
         if not path:
             return []
@@ -275,7 +314,7 @@ class _PathMixin:
 
         cells: list[tuple[int, int]] = []
         for i in range(len(path) - 1):
-            seg_cells = self._segment_cells(path[i], path[i + 1])
+            seg_cells = self._segment_cells(path[i], path[i + 1], include_tie_neighbors=include_tie_neighbors)
             if not seg_cells:
                 continue
             if cells and cells[-1] == seg_cells[0]:

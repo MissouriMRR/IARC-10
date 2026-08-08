@@ -45,9 +45,9 @@ cycle and no mixin needs to know about any other.
   corrupting the row above/below — any overflow lands in the buffer zone,
   which gets masked off after the shift. `buffer` defaults to `1`; set it
   higher if you'll ever shift by more than 1 cell in one call.
-- **Row-major layout** means a *vertical* slice (a contiguous range of rows)
-  is just a byte-slice plus a small sub-byte realignment — see
-  `vertical_slice`.
+- **Row-major layout** means clearing everything outside a contiguous range
+  of rows (`vertical_slice`) is one bulk byte-copy plus two range-clears,
+  not a per-cell loop — see `vertical_slice`.
 
 ## Quick start
 
@@ -162,24 +162,44 @@ per cell — meaningfully faster for large filled regions.
 
 ### Sub-fields and shape coverage
 
-- **`vertical_slice(start_frac, end_frac) -> CellField`** — a new, smaller
-  field containing only the rows in the real-world band from `start_frac`
-  to `end_frac` of this field's height (e.g. `(0.0, 0.25)` for the bottom
-  quarter, `(0.75, 1.0)` for the top quarter). Width/buffer are unchanged;
-  corners are recomputed so the result's own `(0,0)` lines up correctly.
-  Cheap even for a tiny slice of a huge field — extracting rows is a
-  byte-slice of the source, not a conversion of the whole thing.
+- **`vertical_slice(start_frac, end_frac) -> CellField`** — a new field the
+  **same size** as this one (same width, height, buffer, and corners), with
+  every cell outside the real-world band from `start_frac` to `end_frac` of
+  this field's height cleared (e.g. `(0.0, 0.25)` for the bottom quarter,
+  `(0.75, 1.0)` for the top quarter) and every cell inside it copied as-is.
+  Because the result matches this field's shape exactly, it can be combined
+  directly with this field or any other same-shaped field (AND/OR/XOR,
+  `apply_mask`, etc.) with no coordinate translation needed. Implemented as
+  one bulk byte-copy plus two range-clears (`_fill_bit_range`), not a
+  per-cell loop — inherently O(field size) since the output is that size,
+  but no more than that.
 - **`vertical_slice_index(n, m) -> CellField`** — convenience for "the
   n-th (0-indexed) of m equal vertical slices", e.g. `vertical_slice_index(0, 4)`
-  for the bottom quarter.
+  for the bottom quarter. Same same-size output as `vertical_slice`.
 - **`cover_with_shape(shape, shape_center=None) -> [(x, y), ...]`** — finds
-  placements of `shape` (a small `CellField` mask) whose union covers every
-  on cell in this field, returning each placement's center in real-world
-  coordinates. Geometric set cover is NP-hard in general, so this is the
-  standard **greedy** heuristic (repeatedly place wherever it covers the
-  most still-uncovered cells) — provably within a log factor of optimal,
-  not optimal itself. `shape_center` (default: the shape's bounding-box
+  placements of `shape` whose union covers every on cell in this field,
+  returning each placement's center in real-world coordinates. `shape` is
+  either a small `CellField` mask (for a non-rectangular footprint, e.g. a
+  `fill_disk` shape) or a plain `(width, height)` pair — e.g. `(2, 3)` —
+  for a solid rectangular block, which is the common case and doesn't need
+  a `CellField` built just for it. Geometric set cover is NP-hard in
+  general, so this is the standard **greedy** heuristic (repeatedly place
+  wherever it covers the most still-uncovered cells) — provably within a
+  log factor of optimal, not optimal itself. Ties on new-coverage count are
+  broken first by preferring whichever candidate overlaps already-placed
+  shapes the least (so equally good candidates don't needlessly stack on
+  each other), then by lowest y then lowest x (a consistent, corner-anchored
+  sweep, so an early tie doesn't arbitrarily misalign the whole tiling) —
+  this reliably finds a zero-overlap tiling when the target region divides
+  evenly into shape-sized tiles, and meaningfully reduces overlap on
+  irregular regions, occasionally at the cost of a placement or two more
+  than plain greedy. `shape_center` (default: the shape's bounding-box
   center) is the point within the shape each returned coordinate refers to.
+  A placement near the field's edge is allowed to hang off the edge (only
+  one of its own cells needs to land on an actual target cell) — if that
+  puts `shape_center` itself outside the field, the returned point falls
+  back to the centroid of just the on-field portion of that placement
+  instead, so every returned point is always actually on the field.
   Cost is roughly O(remaining&sup2; &times; shape area) — fine for hundreds
   of cells to cover, not built for huge target sets.
 
@@ -203,5 +223,6 @@ cell. Omit `save_path` to show it interactively instead.
 `flight/pathfinding/tests/cellFieldTest.py` — run directly with
 `python flight/pathfinding/tests/cellFieldTest.py`. Covers correctness for
 every method above plus the performance properties called out here (e.g.
-`apply_mask`/`vertical_slice` cost staying independent of the field's
-overall size, `fill_disk` beating a per-cell `set()` loop).
+`apply_mask` cost staying independent of the field's overall size,
+`fill_disk` beating a per-cell `set()` loop, `vertical_slice` staying fast
+in absolute terms even at large scale).
