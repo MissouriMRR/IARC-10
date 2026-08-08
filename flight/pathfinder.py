@@ -17,7 +17,7 @@ import math
 
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer
 from flight.pathfinding.path_subdivision import Path
-from flight.pathfinding.node_generation import Field
+from flight.pathfinding.nodeField.field import Field
 from flight.pathfinding.path_calculation import Graph
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 from flight.pathfinding.cellField.cellField import CellField
@@ -221,6 +221,8 @@ PATH_HYSTERESIS_TOLERANCE = 0.03
 
 
 class Pathfinder:
+    instance: "Pathfinder" = None  # Static variable for singleton access
+
     def __init__(
         self,
         real_corner_coords: tuple[tuple[float, float]],
@@ -357,6 +359,10 @@ class Pathfinder:
         # advance_checkpoint/get_shortest_path) -- only ever grows, never
         # recomputed. Empty until the first advance_checkpoint call.
         self.flownPrefixNodes = []
+
+        # Set the singleton instance
+        if Pathfinder.instance is None:
+            Pathfinder.instance = self
 
     # Thin wrapper -- see the module-level order_waypoints for the actual
     # heuristic (kept free of self so it's directly testable without
