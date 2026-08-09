@@ -181,6 +181,6 @@ else
     log_message "ERROR: Failed to update mission_config.json"
 fi
 
-uv run run.py -i $PI_NUMBER
+# uv run run.py -i $PI_NUMBER
 
 exit 0
