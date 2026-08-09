@@ -314,9 +314,7 @@ def run_scan(cam, config, state, save_dir):
 
     try:
         start = time.perf_counter()
-        frames = [
-            cam.capture_and_detect_mines() for _ in range(state.frames_per_scan)
-        ]
+        frames = [cam.capture_and_detect_mines() for _ in range(state.frames_per_scan)]
         results = analyze_frames(
             frames,
             iou_threshold=config["voteIoU"],
@@ -440,23 +438,19 @@ def make_handler(output, state, frame_size, trigger_scan):
                 self.send_header("Location", "/index.html")
                 self.end_headers()
             elif path == "/index.html":
-                body = PAGE.format(
-                    width=width, height=height, frames=state.frames_per_scan
-                ).encode("utf-8")
+                body = PAGE.format(width=width, height=height, frames=state.frames_per_scan).encode(
+                    "utf-8"
+                )
                 self._send(200, "text/html; charset=utf-8", body)
             elif path == "/scan.json":
-                results, scan_number, elapsed_ms, timestamp, scanning = (
-                    state.snapshot()
-                )
+                results, scan_number, elapsed_ms, timestamp, scanning = state.snapshot()
                 self._send_json(
                     {
                         "scan_number": scan_number,
                         "scanning": scanning,
                         "frames": state.frames_per_scan,
                         "elapsed_ms": elapsed_ms,
-                        "timestamp": (
-                            timestamp.strftime("%H:%M:%S") if timestamp else ""
-                        ),
+                        "timestamp": (timestamp.strftime("%H:%M:%S") if timestamp else ""),
                         "confirmed_count": sum(1 for r in results if r.confirmed),
                         "candidates": [r.to_dict() for r in results],
                     }
@@ -466,9 +460,7 @@ def make_handler(output, state, frame_size, trigger_scan):
                 self.send_header("Age", "0")
                 self.send_header("Cache-Control", "no-cache, private")
                 self.send_header("Pragma", "no-cache")
-                self.send_header(
-                    "Content-Type", "multipart/x-mixed-replace; boundary=FRAME"
-                )
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
                 self.end_headers()
                 try:
                     while True:
@@ -537,12 +529,8 @@ def parse_args():
         choices=("xy", "yx"),
         help="override bboxOrder; wrong value mirrors boxes across the diagonal",
     )
-    p.add_argument(
-        "--bitrate", type=int, default=4_000_000, help="MJPEG bitrate in bits/s"
-    )
-    p.add_argument(
-        "--no-save", action="store_true", help="do not write per-scan JSON records"
-    )
+    p.add_argument("--bitrate", type=int, default=4_000_000, help="MJPEG bitrate in bits/s")
+    p.add_argument("--no-save", action="store_true", help="do not write per-scan JSON records")
     return p.parse_args()
 
 
