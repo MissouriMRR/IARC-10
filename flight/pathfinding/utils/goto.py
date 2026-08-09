@@ -68,7 +68,7 @@ async def move_to(
     latitude: float,
     longitude: float,
     altitude: float,
-    airspeed: float | None = None,
+    groundspeed: float | None = None,
     tolerance: float | None = None,
     max_tolerance: float | None = None,
     altitude_tolerance: float | None = None,
@@ -104,9 +104,12 @@ async def move_to(
         The requested longitude to move to, in degrees.
     altitude : float
         The requested altitude to go to, in meters.
-    airspeed : float, default None
-        The requested airspeed in meters per second,
-        or None to let DroneKit decide the airspeed.
+    groundspeed : float, default None
+        The requested groundspeed in meters per second, or None to let the
+        autopilot decide. Groundspeed rather than airspeed because this is a
+        multirotor: DroneKit will send either, but a copter's navigation is
+        commanded in groundspeed and its handling of an airspeed request is not
+        something to depend on.
     tolerance : float, default None
         The horizontal tolerance in meters, or None for 2 meters.
     max_tolerance : float, default None
@@ -141,7 +144,7 @@ async def move_to(
         altitude_tolerance = ALTITUDE_TOLERANCE_M
 
     target = dronekit.LocationGlobalRelative(latitude, longitude, altitude)
-    drone.simple_goto(target, airspeed=airspeed)
+    drone.simple_goto(target, groundspeed=groundspeed)
     # First determine if we need to move fast through waypoints or need to slow down at each one
     # Then loops until the waypoint is reached
     logging.info("Going to waypoint")
@@ -224,7 +227,7 @@ async def move_to(
                     max_tolerance,
                     altitude_tolerance,
                 )
-                drone.simple_goto(target, airspeed=airspeed)
+                drone.simple_goto(target, groundspeed=groundspeed)
                 best_distance = math.inf
                 best_altitude_error = math.inf
                 last_progress = now

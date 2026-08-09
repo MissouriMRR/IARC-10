@@ -52,9 +52,11 @@ HOLD_ABORT_S: float = 15.0
 # POIF requirement: 20 ft.
 LEG_ALTITUDE_M: float = 6.0
 
-# Airspeed bounds how far two drones can drift apart in waypoint index during a
-# leg, so flying the 1.31 m legs faster only widens that window.
-LEG_AIRSPEED_M_S: float = 2.0
+# Speed bounds how far two drones can drift apart in waypoint index between
+# lockstep checks, so this is a formation parameter as much as a pace one.
+# Groundspeed, not airspeed: a copter navigates in groundspeed, and DroneKit will
+# happily send either.
+LEG_GROUNDSPEED_M_S: float = 2.0
 
 # The vehicle flies to LEG_TOLERANCE_M whenever it can
 LEG_TOLERANCE_M: float = 0.35
@@ -179,6 +181,8 @@ class Drone:
         self.end_nodes = []
         self.waypoints = []
         self.formation_abort: str | None = None
+        # Last speed sent to the autopilot, so commandPoint can skip re-sending it.
+        self._commanded_groundspeed: float | None = None
         # TODO: add reference to mine and path data classes
 
     @property
@@ -640,6 +644,39 @@ class Drone:
 
         return closest
 
+    def commandPoint(
+        self,
+        lat: float,
+        long: float,
+        altitude: float,
+        groundspeed: float | None = None,
+        force: bool = False,
+    ) -> None:
+        """Point the vehicle at a location and return immediately.
+
+        `move_to` commands a target and then blocks until the drone arrives,
+        which is the right shape for a leg flown one waypoint at a time and the
+        wrong one for a target that moves every tick. This is the non-blocking
+        half: the caller owns the loop, decides when the target has been passed,
+        and re-commands as often as it likes.
+
+        The speed is only re-sent when it changes. DroneKit turns the keyword
+        into a separate DO_CHANGE_SPEED message, and repeating that at the
+        controller's tick rate is a message per tick spent restating something
+        the autopilot already knows. Pass `force` to re-send it anyway, for the
+        case where the vehicle appears to have missed the command entirely.
+        """
+        if force:
+            self._commanded_groundspeed = None
+        if groundspeed is not None and groundspeed != self._commanded_groundspeed:
+            self._commanded_groundspeed = groundspeed
+            self.vehicle.simple_goto(
+                dronekit.LocationGlobalRelative(lat, long, altitude),
+                groundspeed=groundspeed,
+            )
+            return
+        self.vehicle.simple_goto(dronekit.LocationGlobalRelative(lat, long, altitude))
+
     async def gotoWaypoint(
         self,
         peer_states: Iterable[Any] = (),
@@ -788,7 +825,7 @@ class Drone:
             curWaypoint.lat,
             curWaypoint.long,
             LEG_ALTITUDE_M,
-            airspeed=LEG_AIRSPEED_M_S,
+            groundspeed=LEG_GROUNDSPEED_M_S,
             tolerance=LEG_TOLERANCE_M,
             max_tolerance=LEG_MAX_TOLERANCE_M,
             abort_check=leg_guard,

@@ -8,10 +8,11 @@ deadlocked every drone at waypoint index 3 and never recovered.
 """
 
 import math
+import random
 
 import pytest
 
-from flight.circlePath import circle_waypoints
+from flight.circlePath import CircleProgress, circle_waypoints, phase_of, point_at_phase
 from flight.waypoint import (
     COLLISION_RADIUS,
     FORMATION_TOLERANCE_M,
@@ -23,7 +24,12 @@ from flight.waypoint import (
 )
 from state_machine.drone import Drone, FormationLost
 from state_machine.drone_state import DroneState
-from state_machine.states.impl.poif_impl import ENTRY_BEARING_DEG
+from state_machine.states.impl.poif_impl import (
+    ENTRY_BEARING_DEG,
+    LEAD_STOP_LEGS,
+    LockstepGovernor,
+    _peer_centre,
+)
 
 # The demo as the rules specify it: 10 ft of hover-line separation, a ~30 ft
 # diameter circle, four vehicles.
@@ -475,3 +481,245 @@ class TestFormationLostIsRaised:
         drone.formation_abort = "peer too close"
         with pytest.raises(FormationLost):
             drone._check_still_ours()
+
+
+_M_PER_DEG_LAT = 1.0 / _DEG_LAT_PER_M
+
+
+def _noisy(lat: float, lon: float, sigma: float, rng: random.Random) -> tuple[float, float]:
+    """A position fix with `sigma` metres of Gaussian error on each axis."""
+    scale = _DEG_LAT_PER_M
+    return (
+        lat + rng.gauss(0.0, sigma) * scale,
+        lon + rng.gauss(0.0, sigma) * scale / math.cos(math.radians(lat)),
+    )
+
+
+class TestPhaseGeometry:
+    """`phase_of` is the measurement the whole pursuit controller is built on."""
+
+    def test_round_trips_with_point_at_phase(self):
+        for drone_id in range(1, NUM_DRONES + 1):
+            centre = _center(drone_id)
+            for k in range(360):
+                want = 2.0 * math.pi * k / 360.0
+                lat, lon = point_at_phase(*centre, RADIUS_M, want, ENTRY_BEARING_DEG)
+                got = phase_of(*centre, lat, lon, ENTRY_BEARING_DEG)
+                assert abs((got - want + math.pi) % (2.0 * math.pi) - math.pi) < 1e-9
+
+    def test_waypoint_index_lands_on_its_exact_phase(self):
+        """Index i must read as exactly 2*pi*i/N, or crossings fire off-position."""
+        for drone_id in range(1, NUM_DRONES + 1):
+            lap = _lap(drone_id)
+            for i, waypoint in enumerate(lap):
+                got = phase_of(*_center(drone_id), waypoint.lat, waypoint.long, ENTRY_BEARING_DEG)
+                want = 2.0 * math.pi * i / POINTS_PER_LAP
+                assert abs((got - want + math.pi) % (2.0 * math.pi) - math.pi) < 1e-8
+
+    def test_phase_ignores_radius(self):
+        """A drone off its circle still has a well-defined phase."""
+        centre = _center(1)
+        for radius in (1.0, 3.0, RADIUS_M, 8.0):
+            lat, lon = point_at_phase(*centre, radius, 1.234, ENTRY_BEARING_DEG)
+            assert abs(phase_of(*centre, lat, lon, ENTRY_BEARING_DEG) - 1.234) < 1e-8
+
+    def test_peer_centre_recovers_the_circle_from_a_waypoint(self):
+        """The governor turns a peer's measured position into a phase this way."""
+        for drone_id in range(1, NUM_DRONES + 1):
+            lap = _lap(drone_id)
+            for index in (0, 5, 12, 23):
+                state = DroneState(drone_id, "127.0.0.1")
+                state.last_reached_waypoint = lap[index]
+                recovered = _peer_centre(state)
+                assert recovered is not None
+                assert (
+                    segment_distance(recovered, recovered, _center(drone_id), _center(drone_id))
+                    < 1e-6
+                )
+
+
+class TestCircleProgress:
+    """Unwrapping laps, and surviving the position noise that comes with them."""
+
+    def _tracker(self, drone_id: int = 1, start_index: int = 0) -> CircleProgress:
+        return CircleProgress(
+            *_center(drone_id),
+            RADIUS_M,
+            POINTS_PER_LAP,
+            start_bearing_deg=ENTRY_BEARING_DEG,
+            max_speed_m_s=2.0,
+            start_index=start_index,
+        )
+
+    def _fly(self, tracker: CircleProgress, index: float, sigma=0.0, rng=None, dt=0.2):
+        lat, lon = point_at_phase(
+            *_center(1), RADIUS_M, index * 2.0 * math.pi / POINTS_PER_LAP, ENTRY_BEARING_DEG
+        )
+        if sigma:
+            lat, lon = _noisy(lat, lon, sigma, rng)
+        return tracker.update(lat, lon, dt)
+
+    def test_unwraps_across_every_lap(self):
+        """Phase alone cannot tell lap 0 index 23 from lap 9 index 23."""
+        tracker = self._tracker()
+        for step in range(1, 241):
+            index = self._fly(tracker, step * 0.5)
+            assert abs(index - step * 0.5) < 1e-6
+
+    def test_seeding_near_the_seam_does_not_read_a_lap_ahead(self):
+        """A drone a hair short of index 0 is at index 0, not index 24."""
+        tracker = self._tracker(start_index=0)
+        index = self._fly(tracker, -0.02)
+        assert abs(index) < 0.5
+
+    def test_rejects_an_impossible_jump_and_recovers(self):
+        tracker = self._tracker()
+        self._fly(tracker, 0.0)
+        self._fly(tracker, 0.2)
+        before = tracker.index
+
+        self._fly(tracker, 6.0)  # 25 m in 0.2 s
+        assert tracker.rejected == 1
+        assert tracker.index == pytest.approx(before)
+
+        assert self._fly(tracker, 0.4) == pytest.approx(0.4, abs=1e-6)
+
+    def test_noise_does_not_bias_progress(self):
+        """Summing clamped deltas would creep ahead of the truth; this must not.
+
+        Reported progress running ahead of reality means broadcasting waypoints
+        the drone has not reached, which moves every peer's barrier with it.
+        """
+        for sigma in (0.15, 0.25, 0.35):
+            rng = random.Random(11)
+            tracker = self._tracker()
+            index = 0.0
+            for step in range(1, 1200):
+                index = self._fly(tracker, step * 0.2, sigma=sigma, rng=rng)
+            assert abs(index - 1199 * 0.2) < 0.5, f"drifted at sigma={sigma}"
+
+    def test_every_waypoint_crossing_fires_once_and_in_order(self):
+        """What drives the peer messages, so a miss or a repeat desynchronises."""
+        for sigma in (0.0, 0.15, 0.25, 0.35):
+            rng = random.Random(5)
+            tracker = self._tracker()
+            crossed: list[int] = []
+            last = 0
+            true_index = 0.0
+            while true_index < 240:
+                true_index += 0.08
+                index = self._fly(tracker, true_index, sigma=sigma, rng=rng)
+                while index >= last + 1 + 0.05:
+                    last += 1
+                    crossed.append(last)
+            assert crossed == list(range(1, len(crossed) + 1)), f"out of order at sigma={sigma}"
+            assert len(crossed) >= 239, f"missed crossings at sigma={sigma}"
+
+    def test_plausibility_gate_keeps_good_fixes_at_real_gps_noise(self):
+        """A gate budgeting for travel but not noise throws away real data.
+
+        At 0.25 m it discarded 13% of good fixes and at 0.35 m one in five, each
+        one freezing the reported phase for a tick. A formation pacing itself on
+        stale phases comes apart.
+        """
+        for sigma in (0.15, 0.25, 0.35):
+            rng = random.Random(3)
+            tracker = self._tracker()
+            for step in range(1, 1000):
+                self._fly(tracker, step * 0.08, sigma=sigma, rng=rng)
+            assert tracker.rejected / 1000 < 0.02, f"{tracker.rejected} rejects at sigma={sigma}"
+
+
+class _Swarm:
+    """The peer list a governor reads, and nothing else."""
+
+    def __init__(self, states):
+        self.interdrone = type("_I", (), {"drone_states": states})()
+
+
+class TestLockstepGovernor:
+    """The barrier's replacement: same one-leg bound, expressed as a position."""
+
+    def _peer_at(self, drone_id: int, index: float, reported: int | None = None) -> DroneState:
+        state = DroneState(drone_id, "127.0.0.1")
+        lap = _lap(drone_id)
+        state.last_reached_waypoint = lap[
+            int(index) % POINTS_PER_LAP if reported is None else reported
+        ]
+        lat, lon = point_at_phase(
+            *_center(drone_id),
+            RADIUS_M,
+            index * 2.0 * math.pi / POINTS_PER_LAP,
+            ENTRY_BEARING_DEG,
+        )
+        state.set_live_position(lat, lon, 6.0)
+        state.touch()
+        return state
+
+    def _limit(self, peers, my_index: float, ticks: int = 40) -> float:
+        """Settle the smoothing filter, then read the limit."""
+        governor = LockstepGovernor(_Swarm(peers))
+        my_phase = my_index * 2.0 * math.pi / POINTS_PER_LAP % (2.0 * math.pi)
+        limit = 0.0
+        for tick in range(ticks):
+            limit, _ = governor.limit(my_phase, my_index, tick * 0.2)
+        return limit
+
+    def test_level_swarm_may_fly_a_full_leg_ahead(self):
+        peers = [self._peer_at(i, 6.0) for i in (2, 3, 4)]
+        assert self._limit(peers, 6.0) == pytest.approx(6.0 + LEAD_STOP_LEGS, abs=0.05)
+
+    def test_limit_tracks_the_slowest_peer_not_the_average(self):
+        peers = [self._peer_at(2, 6.0), self._peer_at(3, 5.0), self._peer_at(4, 7.0)]
+        assert self._limit(peers, 6.0) == pytest.approx(5.0 + LEAD_STOP_LEGS, abs=0.05)
+
+    def test_a_full_leg_ahead_stops_us(self):
+        """The bound formation_floor assumes. Being at the limit means no carrot."""
+        peers = [self._peer_at(i, 6.0) for i in (2, 3, 4)]
+        limit = self._limit(peers, 6.0 + LEAD_STOP_LEGS)
+        assert limit <= 6.0 + LEAD_STOP_LEGS + 0.05
+
+    def test_stale_peer_is_ignored(self):
+        """A crashed drone must not park the swarm forever."""
+        stale = self._peer_at(2, 0.0)
+        stale._last_heard_monotonic = None  # never heard from
+        assert self._limit([stale], 6.0) == math.inf
+
+    def test_flying_alone_is_unconstrained(self):
+        assert self._limit([], 6.0) == math.inf
+
+    def test_live_peer_that_has_never_reported_stops_us(self):
+        """It could be anywhere on its circle, including alongside us."""
+        blank = DroneState(2, "127.0.0.1")
+        blank.touch()
+        assert self._limit([blank], 6.0) == -math.inf
+
+    def test_limit_is_smooth_under_position_noise(self):
+        """The defect this design replaced: a limit that chatters is chased.
+
+        Scaling speed by the headroom left made the commanded point snap between
+        "here" and a full carrot ahead at the tick rate whenever the lead sat
+        near the threshold, and a drone chasing that swings wide of its circle.
+        Radial error, not index skew, is what then eats the separation.
+        """
+        rng = random.Random(17)
+        governor = LockstepGovernor(_Swarm([self._peer_at(i, 6.0) for i in (2, 3, 4)]))
+        my_phase = 6.0 * 2.0 * math.pi / POINTS_PER_LAP
+
+        limits = []
+        for tick in range(200):
+            for state in governor.state.interdrone.drone_states:
+                lat, lon = point_at_phase(
+                    *_center(state.drone_id),
+                    RADIUS_M,
+                    my_phase,
+                    ENTRY_BEARING_DEG,
+                )
+                state.set_live_position(*_noisy(lat, lon, 0.25, rng), 6.0)
+                state.touch()
+            limit, _ = governor.limit(my_phase, 6.0, tick * 0.2)
+            limits.append(limit)
+
+        steady = limits[40:]
+        jitter = max(steady) - min(steady)
+        assert jitter < 0.6, f"limit swung {jitter:.2f} legs on a stationary formation"
