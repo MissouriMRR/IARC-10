@@ -257,9 +257,7 @@ def make_handler(output, state, frame_size):
                 self.send_header("Age", "0")
                 self.send_header("Cache-Control", "no-cache, private")
                 self.send_header("Pragma", "no-cache")
-                self.send_header(
-                    "Content-Type", "multipart/x-mixed-replace; boundary=FRAME"
-                )
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
                 self.end_headers()
                 try:
                     while True:
@@ -326,9 +324,7 @@ def parse_args():
         help="override bboxOrder; use this to check which one the model wants "
         "(wrong value mirrors boxes across the image diagonal)",
     )
-    p.add_argument(
-        "--bitrate", type=int, default=4_000_000, help="MJPEG bitrate in bits/s"
-    )
+    p.add_argument("--bitrate", type=int, default=4_000_000, help="MJPEG bitrate in bits/s")
     p.add_argument(
         "--detect-interval",
         type=float,
