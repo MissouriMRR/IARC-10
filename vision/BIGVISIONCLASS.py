@@ -113,8 +113,8 @@ class Vision:
     def get_mine_location(self, dronePose: DronePose, mine: Detection) -> tuple[float, float]:
         # convert mine pixel coordinates to world coordinates using drone GPS and gimbal angle
         ground = pixel_to_geocoord_gimbal(
-            px=mine.box[0] + (mine.box[2] - mine.box[0]) / 2, # x center of box
-            py=mine.box[1] + (mine.box[3] - mine.box[1]) / 2, # y center of box
+            px=mine.box[0], # box is (cx, cy, w, h) in image pixels
+            py=mine.box[1],
             image_width=mine.imageSize[0],
             image_height=mine.imageSize[1],
             h_fov=self.visionConfig["h_fov"],

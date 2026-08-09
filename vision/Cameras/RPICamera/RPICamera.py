@@ -24,7 +24,14 @@ class RPICamera(BaseCamera):
       self.labels = []
       self.picam2 = None
       self.imx500 = None
-      
+
+      # Order of the four numbers in each raw box the network emits.
+      #   "xy" -> [x1, y1, x2, y2]   (Ultralytics YOLO exported with format="imx")
+      #   "yx" -> [y1, x1, y2, x2]   (TensorFlow SSD models, picamera2's default)
+      # Getting this wrong mirrors every box across the image diagonal, so boxes
+      # land in the transposed spot and come out with width/height swapped.
+      self.bbox_order = self.config.get("bboxOrder", "xy")
+
 
 
    def initialize_camera(self) -> None:
@@ -96,15 +103,22 @@ class RPICamera(BaseCamera):
       scores = np.asarray(outputs[1][0], dtype=float)
       classes = np.asarray(outputs[2][0])
 
+      if boxes.size == 0:
+            return []
 
-      
-      boxes = boxes[:, [1, 0, 3, 2]]  # reorder from [y1,x1,y2,x2] to [x1,y1,x2,y2]
-      boxes = np.stack([
-         (boxes[:, 0] + boxes[:, 2]) / 2,
-         (boxes[:, 1] + boxes[:, 3]) / 2,
-         boxes[:, 2] - boxes[:, 0],
-         boxes[:, 3] - boxes[:, 1],
-      ], axis=1)  # convert to (cx, cy, w, h) to match Detection format
+      # Normalize the corner order to [y1, x1, y2, x2], which is what
+      # convert_inference_coords() takes.
+      if self.bbox_order == "xy":
+            boxes = boxes[:, [1, 0, 3, 2]]
+
+      # convert_inference_coords() wants 0..1 coordinates. Some exports emit
+      # input-tensor pixels instead, so scale those down first.
+      if np.nanmax(np.abs(boxes)) > 1.5:
+            boxes = boxes / np.array(
+               [self.input_h, self.input_w, self.input_h, self.input_w], dtype=float
+            )
+
+      frame_w, frame_h = self.picam2.camera_configuration()["main"]["size"]
 
       dets = []
       for box, score, cls in zip(boxes, scores, classes):
@@ -113,7 +127,20 @@ class RPICamera(BaseCamera):
             cls = int(cls)
             name = self.labels[cls] if 0 <= cls < len(self.labels) else f"id_{cls}"
 
-            dets.append(Detection(float(score), box, (self.input_w, self.input_h)))
+            # The network sees a square crop of the sensor, not the full preview
+            # frame, so normalized inference coords cannot be scaled straight
+            # onto the frame. convert_inference_coords() applies the ISP scaler
+            # crop and returns (x, y, w, h) in main-stream pixels.
+            x, y, w, h = self.imx500.convert_inference_coords(
+               tuple(box), metadata, self.picam2
+            )
+            dets.append(
+               Detection(
+                  float(score),
+                  (x + w / 2, y + h / 2, w, h),  # (cx, cy, w, h), main-frame pixels
+                  (frame_w, frame_h),
+               )
+            )
 
       dets.sort(key=lambda d: d.score, reverse=True)
       dets = dets[: self.config["maxDetections"]]
@@ -133,11 +160,13 @@ class RPICamera(BaseCamera):
       gray_array = np.array(grayscale_Image, dtype=np.uint8)
       apriltags = self.apriltagDetector.detect(gray_array)
 
+      frame_size = self.picam2.camera_configuration()["main"]["size"]
       detections=[]
       for i in apriltags:
          width = i.corners[2][0] - i.corners[0][0]
          height = i.corners[2][1] - i.corners[0][1]
-         detections.append(Detection(1.0, (i.center[0], i.center[1], width, height), (self.input_w, self.input_h)))
+         # corners are already in main-frame pixels, same space as mine boxes
+         detections.append(Detection(1.0, (i.center[0], i.center[1], width, height), frame_size))
       return detections
    
    def capture_image(self, only_metadata: bool) -> Image:

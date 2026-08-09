@@ -1,6 +1,7 @@
 {
    "modelPath": "models/best_imx_model/network.rpk",
    "labelsPath": "models/best_imx_model/labels.txt",
+   "bboxOrder": "xy",
    "shutterSpeed": 3000,
    "confThreshold": 0.65,
    "maxDetections": 5,

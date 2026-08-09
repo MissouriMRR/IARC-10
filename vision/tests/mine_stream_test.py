@@ -125,8 +125,8 @@ async function poll() {{
     }} else {{
       d.detections.forEach((x, i) => {{
         html += '[' + i + '] score=' + x.score.toFixed(3) +
-                ' cx=' + x.cx.toFixed(3) + ' cy=' + x.cy.toFixed(3) +
-                ' w=' + x.w.toFixed(3) + ' h=' + x.h.toFixed(3) + '<br>';
+                ' cx=' + x.cx.toFixed(0) + ' cy=' + x.cy.toFixed(0) +
+                ' w=' + x.w.toFixed(0) + ' h=' + x.h.toFixed(0) + ' px<br>';
       }});
     }}
     document.getElementById('dets').innerHTML = html;
@@ -140,24 +140,14 @@ poll();
 """
 
 
-def normalized_box(box, input_size):
-    """Return (cx, cy, w, h) in 0..1. The IMX500 post-processed outputs are
-    already normalized, but fall back to dividing by the input tensor size if a
-    model ever emits pixel coordinates."""
+def box_to_pixels(box, frame_w, frame_h):
+    """RPICamera already returns (cx, cy, w, h) in main-stream pixels, which is
+    the same frame this overlay draws into, so just convert to corners."""
     cx, cy, w, h = (float(v) for v in box)
-    if max(abs(cx), abs(cy), abs(w), abs(h)) > 1.5:
-        in_w, in_h = input_size
-        if in_w > 0 and in_h > 0:
-            cx, cy, w, h = cx / in_w, cy / in_h, w / in_w, h / in_h
-    return cx, cy, w, h
-
-
-def box_to_pixels(box, input_size, frame_w, frame_h):
-    cx, cy, w, h = normalized_box(box, input_size)
-    x1 = int(round((cx - w / 2) * frame_w))
-    y1 = int(round((cy - h / 2) * frame_h))
-    x2 = int(round((cx + w / 2) * frame_w))
-    y2 = int(round((cy + h / 2) * frame_h))
+    x1 = int(round(cx - w / 2))
+    y1 = int(round(cy - h / 2))
+    x2 = int(round(cx + w / 2))
+    y2 = int(round(cy + h / 2))
     x1 = max(0, min(frame_w - 1, x1))
     y1 = max(0, min(frame_h - 1, y1))
     x2 = max(0, min(frame_w - 1, x2))
@@ -170,7 +160,7 @@ def _label(array, text, org, scale=0.45):
     cv2.putText(array, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, TEXT_COLOR, 1)
 
 
-def make_overlay_callback(state, input_size, label_name):
+def make_overlay_callback(state, label_name):
     """picamera2 pre_callback: draws boxes into the frame before it reaches the
     JPEG encoder, so the annotation is baked into the stream."""
 
@@ -180,7 +170,7 @@ def make_overlay_callback(state, input_size, label_name):
             array = m.array
             frame_h, frame_w = array.shape[:2]
             for score, box in boxes:
-                x1, y1, x2, y2 = box_to_pixels(box, input_size, frame_w, frame_h)
+                x1, y1, x2, y2 = box_to_pixels(box, frame_w, frame_h)
                 cv2.rectangle(array, (x1, y1), (x2, y2), BOX_COLOR, 2)
                 _label(array, f"{label_name} {score:.2f}", (x1, max(12, y1 - 6)))
             _label(
@@ -216,7 +206,7 @@ def detection_loop(cam, state, stop_event, interval):
             time.sleep(interval)
 
 
-def make_handler(output, state, input_size, frame_size):
+def make_handler(output, state, frame_size):
     width, height = frame_size
 
     class StreamingHandler(server.BaseHTTPRequestHandler):
@@ -249,10 +239,7 @@ def make_handler(output, state, input_size, frame_size):
                     "detect_fps": detect_fps,
                     "detections": [
                         dict(
-                            zip(
-                                ("cx", "cy", "w", "h"),
-                                normalized_box(box, input_size),
-                            ),
+                            zip(("cx", "cy", "w", "h"), (float(v) for v in box)),
                             score=score,
                         )
                         for score, box in boxes
@@ -334,6 +321,12 @@ def parse_args():
     p.add_argument("--conf", type=float, help="override confThreshold")
     p.add_argument("--max-detections", type=int, help="override maxDetections")
     p.add_argument(
+        "--bbox-order",
+        choices=("xy", "yx"),
+        help="override bboxOrder; use this to check which one the model wants "
+        "(wrong value mirrors boxes across the image diagonal)",
+    )
+    p.add_argument(
         "--bitrate", type=int, default=4_000_000, help="MJPEG bitrate in bits/s"
     )
     p.add_argument(
@@ -352,6 +345,8 @@ def main():
         config["confThreshold"] = args.conf
     if args.max_detections is not None:
         config["maxDetections"] = args.max_detections
+    if args.bbox_order is not None:
+        config["bboxOrder"] = args.bbox_order
 
     for key in ("modelPath", "labelsPath"):
         if not os.path.exists(config[key]):
@@ -360,6 +355,7 @@ def main():
     print(f"model:  {config['modelPath']}")
     print(f"labels: {config['labelsPath']}")
     print(f"conf threshold: {config['confThreshold']}")
+    print(f"bbox order: {config.get('bboxOrder', 'xy')}")
     print("Loading model onto the IMX500 (first run can take ~1 minute)...")
 
     cam = RPICamera(config)
@@ -371,7 +367,7 @@ def main():
     print(f"stream: {frame_size[0]}x{frame_size[1]}  inference input: {input_size}")
 
     state = DetectionState()
-    cam.picam2.pre_callback = make_overlay_callback(state, input_size, label_name)
+    cam.picam2.pre_callback = make_overlay_callback(state, label_name)
 
     output = StreamingOutput()
     encoder = MJPEGEncoder(bitrate=args.bitrate)
@@ -385,7 +381,7 @@ def main():
     )
     detect_thread.start()
 
-    handler = make_handler(output, state, input_size, frame_size)
+    handler = make_handler(output, state, frame_size)
     httpd = server.ThreadingHTTPServer((args.bind, args.port), handler)
     httpd.daemon_threads = True
 

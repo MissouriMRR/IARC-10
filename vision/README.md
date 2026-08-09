@@ -120,6 +120,28 @@ It prints the URLs to open, e.g. `http://192.168.1.42:8000/`. Useful flags:
 - `--conf 0.4` — lower the confidence threshold to see more boxes
 - `--config <path>` — use a different vision config JSON
 - `--bitrate 2000000` — lower stream bitrate on a weak WiFi link
+- `--bbox-order xy|yx` — override the `bboxOrder` config key (see below)
+
+### Box coordinates
+
+`capture_and_detect_mines()` returns `Detection.box` as `(cx, cy, w, h)` in
+**pixels of the main camera stream**, with `Detection.imageSize` set to that
+stream's size. The mapping from the network's square input tensor to the
+preview frame is done by `IMX500.convert_inference_coords()`, which accounts for
+the ISP scaler crop — normalized inference coords must never be scaled straight
+onto the frame, or boxes come out stretched.
+
+`bboxOrder` in the config says how the network orders the four numbers in each
+raw box:
+
+- `"xy"` — `[x1, y1, x2, y2]`. Ultralytics YOLO exported with `format="imx"`,
+  which is what `models/best_imx_model` is. This is the default.
+- `"yx"` — `[y1, x1, y2, x2]`. TensorFlow SSD models; picamera2's own default.
+
+If this is wrong, detection still works but every box is **mirrored across the
+image diagonal**: an object in the top-right gets a box in the bottom-left, and
+box width and height are swapped. Objects near the diagonal look fine, which
+makes it easy to miss. Flip `--bbox-order` if you see that.
 
 ## Trouble Shooting
 

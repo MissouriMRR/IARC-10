@@ -44,7 +44,7 @@ class TestRPICameraMineDetection(unittest.TestCase):
         print(f"\nDetected {len(detections)} mine(s):")
         for i, det in enumerate(detections):
             cx, cy, w, h = det.box
-            print(f"  [{i}] score={det.score:.3f}  cx={cx:.4f}  cy={cy:.4f}  w={w:.4f}  h={h:.4f}")
+            print(f"  [{i}] score={det.score:.3f}  cx={cx:.1f}  cy={cy:.1f}  w={w:.1f}  h={h:.1f}  (px)")
 
 
 if __name__ == "__main__":
