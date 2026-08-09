@@ -19,6 +19,7 @@ dependencies = [
     "pathlib>=1.0.1",
     "ultralytics>=8.4.14",
     "shapely>=2.1.2",
+    "pandas>=3.0.5",
 ]
 
 [tool.uv.sources]
