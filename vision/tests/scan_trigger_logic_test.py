@@ -286,8 +286,10 @@ def test_http():
         check("scan.json reports the confirmed count", payload["confirmed_count"] == 1)
         check("scan.json lists every candidate", len(payload["candidates"]) == 3)
         check("scan.json includes per-frame scores", len(payload["candidates"][0]["scores"]) == 5)
-        check("scan.json includes a reason per candidate",
-              all("reason" in c for c in payload["candidates"]))
+        check(
+            "scan.json includes a reason per candidate",
+            all("reason" in c for c in payload["candidates"]),
+        )
         check("scan.json reports idle after the scan", payload["scanning"] is False)
 
         # A trigger arriving mid-scan must be refused, not queued.

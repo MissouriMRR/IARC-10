@@ -55,9 +55,7 @@ def main():
     )
 
     # A confident flicker still fails: two frames is under the hit floor.
-    confirmed = vote_on_frames(
-        [[det(0.95, 100, 100)], [det(0.95, 100, 100)], [], [], []], **VOTE
-    )
+    confirmed = vote_on_frames([[det(0.95, 100, 100)], [det(0.95, 100, 100)], [], [], []], **VOTE)
     check("confident detection in only 2/5 frames is rejected", confirmed == [])
 
     # Present every frame but never convincing -- this is the case the averaged

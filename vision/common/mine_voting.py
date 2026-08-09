@@ -174,8 +174,6 @@ def vote_on_frames(
     """
     return [
         result.as_detection()
-        for result in analyze_frames(
-            frames, iou_threshold, min_hits, min_average_score
-        )
+        for result in analyze_frames(frames, iou_threshold, min_hits, min_average_score)
         if result.confirmed
     ]

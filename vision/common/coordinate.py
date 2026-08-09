@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from vision.common.attitude import Attitude
     from vision.common.camera_info import CameraInfo

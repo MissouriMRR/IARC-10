@@ -3,14 +3,15 @@ Integration test for RPICamera mine detection.
 Requires the physical IMX500 camera and the model files from mine_detection_config.json.
 Run from the vision/ directory so relative model paths resolve correctly.
 """
+
 import json
 import os
 import sys
 import unittest
 
-_TESTS_DIR  = os.path.dirname(os.path.abspath(__file__))
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _VISION_DIR = os.path.dirname(_TESTS_DIR)
-_IARC_DIR   = os.path.dirname(_VISION_DIR)
+_IARC_DIR = os.path.dirname(_VISION_DIR)
 for _p in (_IARC_DIR, _VISION_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -44,7 +45,9 @@ class TestRPICameraMineDetection(unittest.TestCase):
         print(f"\nDetected {len(detections)} mine(s):")
         for i, det in enumerate(detections):
             cx, cy, w, h = det.box
-            print(f"  [{i}] score={det.score:.3f}  cx={cx:.1f}  cy={cy:.1f}  w={w:.1f}  h={h:.1f}  (px)")
+            print(
+                f"  [{i}] score={det.score:.3f}  cx={cx:.1f}  cy={cy:.1f}  w={w:.1f}  h={h:.1f}  (px)"
+            )
 
 
 if __name__ == "__main__":

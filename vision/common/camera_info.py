@@ -16,6 +16,7 @@ class CameraInfo:
     vertical_fov_deg : float
         The vertical field of view of the camera in degrees.
     """
+
     horizontal_fov_deg: float
     vertical_fov_deg: float
 

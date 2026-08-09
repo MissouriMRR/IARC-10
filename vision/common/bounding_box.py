@@ -21,6 +21,7 @@ class BoundingBox:
     confidence : float, default 1.0
         The confidence score of the bounding box detection.
     """
+
     x_min: float
     y_min: float
     width: float

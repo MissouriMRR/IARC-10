@@ -35,7 +35,7 @@ def great_circle(p_lon, p_lat, q_lon, q_lat):
 
 
 """
-Big boy vision class used by the pathfinding algorithm 
+Big boy vision class used by the pathfinding algorithm
 """
 
 
@@ -55,7 +55,7 @@ class Vision:
     """
     def __init__(self, config: dict):
         self.mine_list: list[Mine] = []
-        self.image_list: list[Image] = [] 
+        self.image_list: list[Image] = []
         self.camera: Camera = Camera(config)
         self.camera.start_camera()
         self.drone: Drone = dronekit.connect(config["droneAddress"], wait_ready = True, baud = config["baudRate"])

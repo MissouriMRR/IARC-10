@@ -58,11 +58,7 @@ def summarize(name, samples, unit="ms"):
         f"{name}: mean {statistics.mean(samples):7.2f} {unit}  "
         f"median {statistics.median(samples):7.2f}  "
         f"min {ordered[0]:7.2f}  max {ordered[-1]:7.2f}"
-        + (
-            f"  stdev {statistics.stdev(samples):6.2f}"
-            if len(samples) > 1
-            else ""
-        )
+        + (f"  stdev {statistics.stdev(samples):6.2f}" if len(samples) > 1 else "")
     )
 
 

@@ -4,7 +4,9 @@ import numpy as np
 # -------------------
 # Load image
 # -------------------
-image = cv2.imread("/home/msz4y/MultirotorSoftware/IARC-10/wideScan/Test_Mine_Pictures/TestPic1.jpg")   # Change path if needed
+image = cv2.imread(
+    "/home/msz4y/MultirotorSoftware/IARC-10/wideScan/Test_Mine_Pictures/TestPic1.jpg"
+)  # Change path if needed
 output = image.copy()
 
 # -------------------
@@ -19,7 +21,7 @@ upper_green = np.array([210, 255, 255])
 mask = cv2.inRange(hsv, lower_green, upper_green)
 
 # Clean up small details
-kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
@@ -28,11 +30,11 @@ contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
 for c in contours:
     area = cv2.contourArea(c)
-    if area > 500:   # adjust threshold
-        x,y,w,h = cv2.boundingRect(c)
-        print(f'x: {x}\ny: {y}\nw: {w}\nh: {h}')
-        cv2.rectangle(output, (x,y), (x+w,y+h), (0,0,255), 2)
-        cv2.putText(output, "Candidate", (x,y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
+    if area > 500:  # adjust threshold
+        x, y, w, h = cv2.boundingRect(c)
+        print(f"x: {x}\ny: {y}\nw: {w}\nh: {h}")
+        cv2.rectangle(output, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        cv2.putText(output, "Candidate", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
 cv2.imwrite("new_mask_output.png", mask)
 cv2.imwrite("new_detection_output.png", output)
@@ -61,4 +63,3 @@ cv2.imwrite("new_detection_output.png", output)
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-

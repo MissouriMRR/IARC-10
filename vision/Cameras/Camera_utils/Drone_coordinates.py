@@ -38,61 +38,51 @@ def pixel_to_ground(u, v, W, H, FOVx_deg, FOVy_deg, yaw, pitch, roll, altitude):
 
     # 1. Convert pixel to normalized image coordinates in range [-1,1]
     x = (u - W/2) / (W/2)
-'''   
+'''
 # ============================================================
 # Data classes
 # ============================================================
 
+
 @dataclass
-class DronePose:  #these float values should be given by the flight controller
+class DronePose:  # these float values should be given by the flight controller
     lat: float
     lat = 37.9486929
     lon: float
-    lon =-91.7841478
+    lon = -91.7841478
     altitude: float
-    altitude = 30.357 # meters AGL
-    yaw: float # degrees
+    altitude = 30.357  # meters AGL
+    yaw: float  # degrees
     yaw = -2.106571572697931
-    pitch: float      # degrees
+    pitch: float  # degrees
     pitch = -79.59291162486421
-    roll: float       # degrees
+    roll: float  # degrees
     roll = 12.158130312273618
 
 
 @dataclass
-class GimbalPose:       #yaw pitch role values of gimbal
-    yaw: float        # degrees (relative to drone)
-    pitch: float      # degrees
-    roll: float       # degrees
+class GimbalPose:  # yaw pitch role values of gimbal
+    yaw: float  # degrees (relative to drone)
+    pitch: float  # degrees
+    roll: float  # degrees
 
 
 # ============================================================
 # Rotation math
 # ============================================================
 
-def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z directions
+
+def rotation_matrix(yaw, pitch, roll):  # Rotational matrices for the x,y,and z directions
     """
     ZYX rotation: yaw (Z), pitch (Y), roll (X)
     """
     yaw, pitch, roll = map(radians, (yaw, pitch, roll))
-#yaw z axis (rotate drone left and right)
-    Rz = np.array([
-        [cos(yaw), -sin(yaw), 0],
-        [sin(yaw),  cos(yaw), 0],
-        [0,         0,        1]
-    ])
-#pitch y axis (tilt forward backward)
-    Ry = np.array([
-        [ cos(pitch), 0, sin(pitch)],
-        [ 0,          1, 0         ],
-        [-sin(pitch), 0, cos(pitch)]
-    ])
-#roll x axis (tilt left/right)
-    Rx = np.array([
-        [1, 0,          0         ],
-        [0, cos(roll), -sin(roll)],
-        [0, sin(roll),  cos(roll)]
-    ])
+    # yaw z axis (rotate drone left and right)
+    Rz = np.array([[cos(yaw), -sin(yaw), 0], [sin(yaw), cos(yaw), 0], [0, 0, 1]])
+    # pitch y axis (tilt forward backward)
+    Ry = np.array([[cos(pitch), 0, sin(pitch)], [0, 1, 0], [-sin(pitch), 0, cos(pitch)]])
+    # roll x axis (tilt left/right)
+    Rx = np.array([[1, 0, 0], [0, cos(roll), -sin(roll)], [0, sin(roll), cos(roll)]])
 
     return Rz @ Ry @ Rx
 
@@ -101,7 +91,8 @@ def rotation_matrix(yaw, pitch, roll):  #Rotational matrices for the x,y,and z d
 # Geometry helpers
 # ============================================================
 
-def meters_to_latlon(dx, dy, lat):  #coverts meters into lat and lon coordinates using derivatives
+
+def meters_to_latlon(dx, dy, lat):  # coverts meters into lat and lon coordinates using derivatives
     earth_radius = 6378137.0
     dlat = dy / earth_radius
     dlon = dx / (earth_radius * cos(radians(lat)))
@@ -123,12 +114,9 @@ def intersect_ground(ray_world, altitude):
 # Main conversion
 # ============================================================
 
+
 def pixel_to_geocoord_gimbal(
-    px, py,
-    image_width, image_height,
-    h_fov, v_fov,
-    drone: DronePose,
-    gimbal: GimbalPose
+    px, py, image_width, image_height, h_fov, v_fov, drone: DronePose, gimbal: GimbalPose
 ):
     """
     Converts pixel coordinates to lat/lon
@@ -142,25 +130,13 @@ def pixel_to_geocoord_gimbal(
     h_fov = radians(1.41372)
     v_fov = radians(0.797528202)
 
-    ray_camera = np.array([
-        x * tan(h_fov / 2),
-        y * tan(v_fov / 2),
-        -1
-    ])
+    ray_camera = np.array([x * tan(h_fov / 2), y * tan(v_fov / 2), -1])
     ray_camera /= np.linalg.norm(ray_camera)
 
     # ---- Rotations ----
-    R_drone = rotation_matrix(
-        drone.yaw,
-        drone.pitch,
-        drone.roll
-    )
+    R_drone = rotation_matrix(drone.yaw, drone.pitch, drone.roll)
 
-    R_gimbal = rotation_matrix(
-        gimbal.yaw,
-        gimbal.pitch,
-        gimbal.roll
-    )
+    R_gimbal = rotation_matrix(gimbal.yaw, gimbal.pitch, gimbal.roll)
 
     # Camera orientation in world frame
     R_camera_world = R_drone @ R_gimbal
@@ -187,17 +163,13 @@ if __name__ == "__main__":
         lat=37.7749,
         lon=-122.4194,
         altitude=120,
-        yaw=15,      # drone turning
-        pitch=5,     # drone pitching forward
-        roll=8       # drone banking
+        yaw=15,  # drone turning
+        pitch=5,  # drone pitching forward
+        roll=8,  # drone banking
     )
 
     # Gimbal stabilizes roll & pitch, points slightly forward
-    gimbal_pose = GimbalPose(
-        yaw=0,       # locked forward
-        pitch=-90,   # nadir view
-        roll=0
-    )
+    gimbal_pose = GimbalPose(yaw=0, pitch=-90, roll=0)  # locked forward  # nadir view
 
     latlon = pixel_to_geocoord_gimbal(
         px=640,
@@ -207,7 +179,7 @@ if __name__ == "__main__":
         h_fov=84,
         v_fov=60,
         drone=drone_pose,
-        gimbal=gimbal_pose
+        gimbal=gimbal_pose,
     )
 
     print("Ground coordinate:", latlon)

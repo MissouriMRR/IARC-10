@@ -23,6 +23,7 @@ class Attitude:
         The yaw angle in degrees. A yaw of 0 is north, and 90 is east.
         When viewed from above, a positive yaw corresponds to a clockwise rotation.
     """
+
     roll_deg: float
     pitch_deg: float
     yaw_deg: float
