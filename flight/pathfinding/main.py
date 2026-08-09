@@ -28,9 +28,9 @@ def polygonMask(node1: nodeg.Node, node2: nodeg.Node, array_size: tuple[int, int
     y2 = node2.parentMine.y
     polygon = [
         (x1, y1),
-        (2(node1.x - x1) + x1, 2(node1.y - y1) + y1),
+        (2 * (node1.x - x1) + x1, 2 * (node1.y - y1) + y1),
         (x2, y2),
-        (2(node2.x - x2) + x2, 2(node2.y - y2) + y2),
+        (2 * (node2.x - x2) + x2, 2 * (node2.y - y2) + y2),
     ]
 
     img = Image.new("L", array_size, 0)
