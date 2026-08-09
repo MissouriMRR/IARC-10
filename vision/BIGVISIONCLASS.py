@@ -1,6 +1,3 @@
-from ast import List
-from importlib.resources import path
-
 from vision.common.image import Image
 from vision.common.detection import Detection
 from Cameras.baseCamera import BaseCamera
@@ -14,7 +11,7 @@ from vision.common.mine import Mine
 from vision.common.mine_voting import analyze_frames, vote_on_frames  # noqa: F401
 from enum import Enum
 import os
-import datetime
+from datetime import datetime
 from PIL import ImageDraw
 import json
 
@@ -68,38 +65,42 @@ class Vision:
     # save image file
     def _save_image(s, image: Image, detections: list[Detection]) -> None:
         print("Saving image...")
-        os.makedirs(s.config["pathToPics"], exist_ok=True)
-        image_name = f"image_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+        directory = s.visionConfig["pathToPics"]
+        os.makedirs(directory, exist_ok=True)
+        image_name = f"image_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         print("Drawing boxes...")
 
         draw = ImageDraw.Draw(image.image)
         for detection in detections:
-            box = detection.box
-            coords = (box[0], box[1], box[0] + box[2], box[1] + box[3])
+            # box is (cx, cy, w, h); ImageDraw wants opposite corners
+            cx, cy, w, h = detection.box
+            coords = (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
             draw.rectangle(coords, fill=None, outline=(0, 255, 0, 255), width=5)
-        image.image.save(f"{path}/{image_name}.png")
+        image.image.save(f"{directory}/{image_name}.png")
         print("--- Image saved ---")
 
         # save detections in capture
 
-    def _save_detections_to_json(s, detections: List[Detection]) -> None:
+    def _save_detections_to_json(s, detections: list[Detection]) -> None:
         print("Saving detections...")
-        os.makedirs(s.config["pathToDetections"], exist_ok=True)
-        file_name = f"detections_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
-        for detection in detections:
-            with open(f"{path}/{file_name}.json", "w") as f:
-                data = {
-                    # "path": path, # do we need this?
-                    "x": detection.box[0],
-                    "y": detection.box[1],
-                    "width": detection.box[2],
-                    "height": detection.box[3],
-                    # .item() is needed to convert numpy to python float, np isn't json serializable
-                    "category": detection.category.item(),
-                    "confidence": detection.confidence.item(),
-                }
-            json.dump(data, f)
+        directory = s.visionConfig["pathToDetections"]
+        os.makedirs(directory, exist_ok=True)
+        file_name = f"detections_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # One file per capture holding every detection, rather than reopening
+        # the same path per detection and keeping only the last.
+        data = [
+            {
+                "x": float(detection.box[0]),
+                "y": float(detection.box[1]),
+                "width": float(detection.box[2]),
+                "height": float(detection.box[3]),
+                "confidence": float(detection.score),
+            }
+            for detection in detections
+        ]
+        with open(f"{directory}/{file_name}.json", "w") as f:
+            json.dump(data, f, indent=2)
         print("--- Detections saved ---")
 
     def _cluster(self, mines_to_check: list[Detection], cluster_threshold: float) -> None:
