@@ -31,8 +31,8 @@ for _p in (_IARC_DIR, _VISION_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from BIGVISIONCLASS import vote_on_frames  # noqa: E402
 from Cameras.RPICamera.RPICamera import RPICamera  # noqa: E402
+from vision.common.mine_voting import vote_on_frames  # noqa: E402
 
 DEFAULT_CONFIG_PATH = os.path.join(_TESTS_DIR, "mine_detection_config.json")
 

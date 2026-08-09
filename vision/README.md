@@ -150,6 +150,10 @@ keeps a detection only if it appears in enough of them *and* its mean confidence
 across those frames clears a bar. Association between frames is by bounding-box
 IoU in image space.
 
+The vote itself lives in `common/mine_voting.py`, deliberately kept free of
+`dronekit`, `picamera2`, and `PIL` so it can be imported and tested anywhere.
+`BIGVISIONCLASS.py` re-exports it, so existing imports from there still work.
+
 Config keys (in `config.json` / `tests/mine_detection_config.json`):
 
 | key | default | meaning |

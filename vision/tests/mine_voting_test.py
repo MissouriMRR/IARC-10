@@ -1,15 +1,14 @@
 """
-Checks for the multi-frame mine vote in BIGVISIONCLASS.vote_on_frames().
+Checks for the multi-frame mine vote in vision.common.mine_voting.
 
 The vote is pure logic over Detection objects, so this runs anywhere -- no Pi,
-no camera, no model. Run it after touching the voting or IoU code:
+no camera, no model, no dronekit. Run it after touching the voting or IoU code:
 
     uv run vision/tests/mine_voting_test.py
 """
 
 import os
 import sys
-import types
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _VISION_DIR = os.path.dirname(_TESTS_DIR)
@@ -18,20 +17,8 @@ for _p in (_IARC_DIR, _VISION_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# BIGVISIONCLASS pulls in flight-only packages at import time. The vote itself
-# touches none of them, so stub whatever is missing to keep this runnable on a
-# dev machine that has no dronekit.
-for _name in ("dronekit", "PIL", "PIL.ImageDraw"):
-    if _name not in sys.modules:
-        try:
-            __import__(_name)
-        except ImportError:
-            sys.modules[_name] = types.ModuleType(_name)
-if isinstance(sys.modules.get("PIL"), types.ModuleType):
-    sys.modules["PIL"].ImageDraw = sys.modules["PIL.ImageDraw"]
-
-from BIGVISIONCLASS import _iou, vote_on_frames  # noqa: E402
 from vision.common.detection import Detection  # noqa: E402
+from vision.common.mine_voting import iou, vote_on_frames  # noqa: E402
 
 IMAGE_SIZE = (640, 480)
 
@@ -51,11 +38,11 @@ def check(name, condition):
 
 def main():
     print("iou:")
-    check("identical boxes -> 1.0", _iou((100, 100, 40, 40), (100, 100, 40, 40)) == 1.0)
-    check("disjoint boxes -> 0.0", _iou((100, 100, 40, 40), (500, 500, 40, 40)) == 0.0)
+    check("identical boxes -> 1.0", iou((100, 100, 40, 40), (100, 100, 40, 40)) == 1.0)
+    check("disjoint boxes -> 0.0", iou((100, 100, 40, 40), (500, 500, 40, 40)) == 0.0)
     check(
         "half-shifted boxes -> 1/3",
-        abs(_iou((100, 100, 40, 40), (120, 100, 40, 40)) - 1 / 3) < 1e-9,
+        abs(iou((100, 100, 40, 40), (120, 100, 40, 40)) - 1 / 3) < 1e-9,
     )
 
     print("\nvote:")

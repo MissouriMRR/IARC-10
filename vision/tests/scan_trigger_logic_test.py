@@ -73,17 +73,20 @@ def _stub_hardware():
         imx500.NetworkIntrinsics = object
         sys.modules["picamera2.devices.imx500"] = imx500
 
-    for name in ("dronekit", "PIL", "PIL.ImageDraw", "dt_apriltags"):
-        if name not in sys.modules:
-            try:
-                __import__(name)
-            except ImportError:
-                sys.modules[name] = types.ModuleType(name)
-    if isinstance(sys.modules.get("PIL"), types.ModuleType):
-        if not hasattr(sys.modules["PIL"], "ImageDraw"):
-            sys.modules["PIL"].ImageDraw = sys.modules["PIL.ImageDraw"]
-    if not hasattr(sys.modules["dt_apriltags"], "Detector"):
-        sys.modules["dt_apriltags"].Detector = object
+    # RPICamera imports these at module scope. Both ship with a working Pi
+    # install (PIL comes in with picamera2), so these stubs only ever fire on a
+    # dev machine.
+    try:
+        import dt_apriltags  # noqa: F401
+    except ImportError:
+        apriltags = types.ModuleType("dt_apriltags")
+        apriltags.Detector = object
+        sys.modules["dt_apriltags"] = apriltags
+
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        sys.modules["PIL"] = types.ModuleType("PIL")
 
 
 _stub_hardware()
