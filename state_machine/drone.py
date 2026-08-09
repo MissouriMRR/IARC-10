@@ -21,7 +21,7 @@ from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
-import flight.pathfinding.node_generation as nodeGen
+import flight.pathfinding.nodeField as nodeGen
 from state_machine.flight_settings import SimMode
 from flight.waypoint import (
     COLLISION_RADIUS,
