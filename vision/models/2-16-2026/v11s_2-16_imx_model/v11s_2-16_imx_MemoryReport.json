@@ -1,0 +1,22 @@
+{
+  "Memory Report": {
+    "Name": "v11s_2-16_imx",
+    "Runtime Memory Physical Size": "4.38MB",
+    "Model Memory Physical Size": "2.63MB",
+    "Reserved Memory": "1.00KB",
+    "Memory Usage": "7.01MB",
+    "Total Memory Available On Chip": "8.00MB",
+    "Memory Utilization": "88%",
+    "Fit In Chip": true,
+    "Input Persistent": false,
+    "Networks": [
+      {
+        "Hash": "v11s_2-16_imx",
+        "Name": "v11s_2-16_imx",
+        "Runtime Memory Physical Size": "4.38MB",
+        "Model Memory Physical Size": "2.63MB",
+        "Input Persistence Cost": "0B"
+      }
+    ]
+  }
+}

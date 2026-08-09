@@ -1,53 +1,59 @@
-import flight.pathfinding.node_generation as nodeg
+import flight.pathfinding.nodeField as nodeg
 import numpy as np
 from PIL import Image, ImageDraw
 import math
 
 
 class PolygonMask:
+    # Python has no overloading -- the mask variants below used to all be named
+    # __init__, so only the last definition survived and the others were
+    # unreachable. They are now named constructors returning self, which is the
+    # form seen_by_drone.py already calls them with.
     def __init__(self):
-        x1 = 1
-        x2 = 2
-        y1 = 1
-        y2 = 2
-        self.top_x = max([x1, x1, x2, x2])
-        self.bottom_x = min([x1, x1, x2, x2])
-        self.top_y = max([y1, y1, y2, y2])
-        self.bottom_y = min([y1, y1, y2, y2])
-        polygon = [
-            (x1 - self.bottom_x, y1 - self.bottom_y),
-            (x1 - self.bottom_x, y1 - self.bottom_y),
-            (x2 - self.bottom_x, y2 - self.bottom_y),
-            (x2 - self.bottom_x, y2 - self.bottom_y),
-        ]
+        self.top_x = 0
+        self.bottom_x = 0
+        self.top_y = 0
+        self.bottom_y = 0
+        self.body = None
 
     # Function for generating polygon masks based on node to node connections on differing mines
     # To be used for sight tracking and understanding where things need to be filled in on th ecurrent path
     # Array size is the dimensions of the sight array (which should be the same size as the minefield simulation array)
-    def __init__(self, node_1: nodeg.Node, node_2: nodeg.Node):
-        if node_1.getParentMine() != None:
+    def create_self_straight(self, node_1: nodeg.Node, node_2: nodeg.Node) -> "PolygonMask":
+        # x1/y1 is the center the node sweeps around, so the far edge of the
+        # swept band is the node mirrored across it. A floating node has no
+        # parent mine to sweep around, so it is its own center and contributes
+        # no width -- the old code reached for Mine.radius here, a class
+        # attribute of the archived Mine that the live BlockMine has no
+        # equivalent for.
+        if node_1.getParentMine() is not None:
             x1 = node_1.parentMine.x
             y1 = node_1.parentMine.y
         else:
-            x1 = node_1.x + nodeg.Mine.radius
+            x1 = node_1.x
             y1 = node_1.y
 
-        if node_2.getParentMine() != None:
+        if node_2.getParentMine() is not None:
             x2 = node_2.parentMine.x
             y2 = node_2.parentMine.y
         else:
-            x2 = node_2.x + nodeg.Mine.radius
+            x2 = node_2.x
             y2 = node_2.y
 
-        self.top_x = max([x1, 2(node_1.x - x1) + x1, x2, 2(node_2.x - x2) + x2])
-        self.bottom_x = min([x1, 2(node_1.x - x1) + x1, x2, 2(node_2.x - x2) + x2])
-        self.top_y = max([y1, 2(node_1.y - y1) + y1, y2, 2(node_2.y - y2) + y2])
-        self.bottom_y = min([y1, 2(node_1.y - y1) + y1, y2, 2(node_2.y - y2) + y2])
+        far_1_x = 2 * (node_1.x - x1) + x1
+        far_1_y = 2 * (node_1.y - y1) + y1
+        far_2_x = 2 * (node_2.x - x2) + x2
+        far_2_y = 2 * (node_2.y - y2) + y2
+
+        self.top_x = max([x1, far_1_x, x2, far_2_x])
+        self.bottom_x = min([x1, far_1_x, x2, far_2_x])
+        self.top_y = max([y1, far_1_y, y2, far_2_y])
+        self.bottom_y = min([y1, far_1_y, y2, far_2_y])
         polygon = [
             (x1 - self.bottom_x, y1 - self.bottom_y),
-            (2(node_1.x - x1) + x1 - self.bottom_x, 2(node_1.y - y1) + y1 - self.bottom_y),
+            (far_1_x - self.bottom_x, far_1_y - self.bottom_y),
             (x2 - self.bottom_x, y2 - self.bottom_y),
-            (2(node_2.x - x2) + x2 - self.bottom_x, 2(node_2.y - y2) + y2 - self.bottom_y),
+            (far_2_x - self.bottom_x, far_2_y - self.bottom_y),
         ]
 
         img = Image.new("L", [self.top_x - self.bottom_x, self.top_y - self.bottom_y], 0)
@@ -57,9 +63,9 @@ class PolygonMask:
 
     # Overload of the Polygon Mask function, this one is for specifically generating a predicted image area
     # should a picture be taken at a given path coord and orientation
-    def __init__(
+    def create_self_rect(
         self, center: tuple[float, float], tan_angle: float, cam_size: tuple[float, float]
-    ):
+    ) -> "PolygonMask":
         corner_1 = (
             center[0]
             + (cam_size[0] / 2) * np.cos(tan_angle)
@@ -100,16 +106,15 @@ class PolygonMask:
         corner_2 = np.subtract(corner_2, [self.bottom_x, self.bottom_y])
         corner_3 = np.subtract(corner_3, [self.bottom_x, self.bottom_y])
         corner_4 = np.subtract(corner_4, [self.bottom_x, self.bottom_y])
-        corners = [corner_1, corner_2, corner_3, corner_4]
+        corners = [tuple(c) for c in (corner_1, corner_2, corner_3, corner_4)]
 
-        img = Image.new("L", [self.top_x - self.bottom_x, self.top_y - self.bottom_y], 0)
         img = Image.new("L", [self.top_x - self.bottom_x, self.top_y - self.bottom_y], 0)
         ImageDraw.Draw(img).polygon(corners, outline=1, fill=1)
         self.body = np.array(img)
         return self
 
     # Here is where a future Arc/Pie slice shaped mask function will go
-    def __init__(self, node1: nodeg.Node, node2: nodeg.Node, pie: bool):
+    def create_self_pie(self, node1: nodeg.Node, node2: nodeg.Node) -> "PolygonMask":
         if node1.parentMine != node2.parentMine:
             raise ValueError("must have same parrent")
         x1 = node1.x - node1.parentMine.x
@@ -153,7 +158,7 @@ class PolygonMask:
             )
 
         if angle1 < 270 and angle2 > 270:
-            self.bottom_y.parentMine.y - (2 * radius)
+            self.bottom_y = node1.parentMine.y - (2 * radius)
         else:
             self.bottom_y = min(
                 node1.parentMine.y,
@@ -161,7 +166,7 @@ class PolygonMask:
             )
 
         if angle1 < 180 and angle2 > 180:
-            self.bottom_x = node1.parentMine.y - (2 * radius)
+            self.bottom_x = node1.parentMine.x - (2 * radius)
         else:
             self.bottom_x = min(
                 node1.parentMine.x,
@@ -171,9 +176,9 @@ class PolygonMask:
         if angle1 >= 270 and angle2 <= 90:
             self.top_x = node1.parentMine.x + (2 * radius)
         else:
-            self.top_x = min(
+            self.top_x = max(
                 node1.parentMine.x,
-                min(2 * radius * math.sin(angle1), 2 * radius * math.sin(angle2)),
+                max(2 * radius * math.sin(angle1), 2 * radius * math.sin(angle2)),
             )
 
         img = Image.new("L", (2 * radius, 2 * radius), 0)
@@ -181,3 +186,4 @@ class PolygonMask:
         draw.pieslice((0, 0), angle1, angle2, 1, 1)
 
         self.body = np.array(img)
+        return self
