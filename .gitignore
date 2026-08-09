@@ -2,7 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+Logs/*
 # C extensions
 *.so
 
@@ -214,3 +214,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Vision capture output (scan records, saved images, metadata)
+vision/captures/
+vision/metadata/

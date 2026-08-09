@@ -32,6 +32,16 @@ class RPICamera(BaseCamera):
       # land in the transposed spot and come out with width/height swapped.
       self.bbox_order = self.config.get("bboxOrder", "xy")
 
+      # Per-frame cutoff for what leaves this camera. Multi-frame voting needs a
+      # looser gate than the old single-shot one: a detection dropped here can
+      # never pull the voted average down, so filtering at confThreshold would
+      # floor every average at confThreshold and make the vote's own confidence
+      # gate a no-op. "voteThreshold" is that looser gate; without it set, the
+      # camera behaves exactly as it did before.
+      self.detect_threshold = self.config.get(
+         "voteThreshold", self.config["confThreshold"]
+      )
+
 
 
    def initialize_camera(self) -> None:
@@ -122,7 +132,7 @@ class RPICamera(BaseCamera):
 
       dets = []
       for box, score, cls in zip(boxes, scores, classes):
-            if score < self.config["confThreshold"]:
+            if score < self.detect_threshold:
                continue
             cls = int(cls)
             name = self.labels[cls] if 0 <= cls < len(self.labels) else f"id_{cls}"

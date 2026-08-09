@@ -143,6 +143,124 @@ image diagonal**: an object in the top-right gets a box in the bottom-left, and
 box width and height are swapped. Objects near the diagonal look fine, which
 makes it easy to miss. Flip `--bbox-order` if you see that.
 
+## Multi-frame mine voting
+
+`Vision.scan()` does not trust a single frame. It captures a burst of frames and
+keeps a detection only if it appears in enough of them *and* its mean confidence
+across those frames clears a bar. Association between frames is by bounding-box
+IoU in image space.
+
+Config keys (in `config.json` / `tests/mine_detection_config.json`):
+
+| key | default | meaning |
+| --- | --- | --- |
+| `scanFrames` | 5 | frames captured per scan |
+| `minFrameHits` | 3 | frames a candidate must appear in to be confirmed |
+| `minAverageConfidence` | 0.70 | mean score across those frames, inclusive |
+| `voteIoU` | 0.45 | box overlap needed to call two frames' detections the same object |
+| `voteThreshold` | 0.30 | per-frame cutoff for what enters the vote |
+
+`voteThreshold` is deliberately looser than `confThreshold`. A detection
+discarded at the camera can never pull a voted average *down*, so filtering the
+burst at 0.65 would floor every average at 0.65 and make
+`minAverageConfidence` a no-op. If `voteThreshold` is absent the camera falls
+back to `confThreshold` and behaves exactly as it did before.
+
+The confirmed `Detection.score` is the **burst average**, not any single frame's
+score, and its box is taken from the highest-scoring frame.
+
+### Cost
+
+Inference runs on the IMX500 sensor, not the Pi, and is pipelined into the frame
+stream — `capture_and_detect_mines()` waits for the next frame and reads an
+output tensor the sensor already computed. An N-frame scan therefore costs N
+camera frame intervals (~33 ms each at the default 30 fps inference rate), not N
+model runs. A 5-frame scan is ~170 ms. Uploading the `.rpk` to the sensor is a
+one-time startup cost, not a per-scan one.
+
+Measure it on real hardware with:
+
+```bash
+uv run vision/tests/scan_timing_test.py
+```
+
+### Caveat: the frames are captured back to back
+
+At ~33 ms apart the five frames are highly correlated. A false positive that is
+*stable* — a rock, a shadow, a patch of dirt — will appear in all five and pass
+the hit count exactly as a real mine does; only `minAverageConfidence` rejects
+it. Voting suppresses flicker, not persistent misclassification. If persistent
+false positives turn out to be the problem, spacing the frames out (so drone
+motion changes the viewpoint between them) is the lever, and it costs flight
+time: 200 ms spacing makes a scan ~1 s, 500 ms makes it ~2.5 s.
+
+Fast drift is the opposite failure: if the drone moves enough that a mine's box
+shifts by more than `voteIoU` allows between frames, each frame starts its own
+track and nothing is ever confirmed. `vision/tests/mine_voting_test.py` covers
+both edges.
+
+## Interactive scan test (press Enter, see the result)
+
+`tests/scan_trigger_test.py` runs one scan on demand and shows the verdict on a
+live web feed. Trigger with **Enter in the terminal** or the **Scan button** on
+the page; the result stays on screen until the next scan.
+
+```bash
+uv run vision/tests/scan_trigger_test.py
+```
+
+Open the printed URL, e.g. `http://192.168.1.42:8000/`.
+
+Boxes are colored by how the vote judged each candidate:
+
+| color | meaning |
+| --- | --- |
+| green | confirmed — passed both the frame count and the average confidence |
+| amber | seen in enough frames, but the averaged confidence was too low |
+| red | confident enough on average, but seen in too few frames |
+
+The amber and red boxes are the point of the test. They are the near-misses, and
+where they cluster tells you which threshold to move: a rock that keeps coming
+up amber at 0.68 average means `minAverageConfidence` is sitting right on the
+line. The side panel lists each candidate's per-frame scores, hit count, and
+average, so you can see the whole vote rather than just its outcome.
+
+Each scan writes a JSON record to `pathToDetections` with the full vote
+breakdown and the thresholds in force, so false positives can be reviewed later.
+Pass `--no-save` to skip that.
+
+Threshold overrides, for tuning without editing the config:
+
+- `--frames N` — frames per scan
+- `--min-hits N` — frames required to confirm
+- `--min-avg 0.75` — required average confidence
+- `--vote-conf 0.2` — per-frame cutoff for entering the vote
+- `--iou 0.35` — overlap needed to associate detections across frames
+- `--port 8080`, `--bitrate 2000000`, `--bbox-order xy|yx` — as in `mine_stream_test.py`
+
+This test does not connect to the drone, so there is no GPS projection — boxes
+stay in image pixels.
+
+## Testing off the Pi
+
+Both of these run anywhere, no camera or model needed:
+
+```bash
+uv run vision/tests/mine_voting_test.py
+```
+
+covers the vote itself — hit counts, averaging, IoU association, and the drift
+edges described above.
+
+```bash
+uv run vision/tests/scan_trigger_logic_test.py
+```
+
+covers `scan_trigger_test.py` against a scripted fake camera: the guard that
+stops a held-down Enter key from starting overlapping scans, the JSON the page
+polls, the saved scan record, and the overlay draw path. Timing is not covered
+there — use `scan_timing_test.py` on the Pi for that.
+
 ## Trouble Shooting
 
 If you're still getting issues running the code, try the following:
