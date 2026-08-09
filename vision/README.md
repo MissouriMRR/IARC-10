@@ -98,6 +98,29 @@ imx500-package -i packerOut.zip -o .
 uv run tests/\[test\]RPICamera.py
 ```
 
+## 10. Watch the live feed with detection boxes (headless)
+
+`tests/mine_stream_test.py` runs the same `RPICamera` detection path and serves
+the annotated camera feed over HTTP, so you can watch it from a browser on
+another computer. Pi OS Lite needs OpenCV for the overlay drawing:
+
+```bash
+sudo apt install -y python3-opencv
+```
+
+Then, from the repo root with the venv active:
+
+```bash
+uv run vision/tests/mine_stream_test.py
+```
+
+It prints the URLs to open, e.g. `http://192.168.1.42:8000/`. Useful flags:
+
+- `--port 8080` — change the HTTP port
+- `--conf 0.4` — lower the confidence threshold to see more boxes
+- `--config <path>` — use a different vision config JSON
+- `--bitrate 2000000` — lower stream bitrate on a weak WiFi link
+
 ## Trouble Shooting
 
 If you're still getting issues running the code, try the following:

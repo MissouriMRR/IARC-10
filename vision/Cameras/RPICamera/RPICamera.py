@@ -1,7 +1,10 @@
 import os
 import time
 import numpy as np
-from dt_apriltags import Detector
+try:
+   from dt_apriltags import Detector
+except ImportError:  # mine detection works without the apriltag library
+   Detector = None
 from picamera2 import Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
@@ -59,13 +62,17 @@ class RPICamera(BaseCamera):
 
 
       # Detect tags
-      self.apriltagDetector = Detector(
-         families="tag36h11",
-         nthreads=4,
-         quad_decimate=2.0,
-         refine_edges=1,
-         debug=0
-      )
+      if Detector is None:
+         print("WARNING: dt_apriltags not installed, apriltag detection disabled.")
+         self.apriltagDetector = None
+      else:
+         self.apriltagDetector = Detector(
+            families="tag36h11",
+            nthreads=4,
+            quad_decimate=2.0,
+            refine_edges=1,
+            debug=0
+         )
       
 
    def capture_and_detect_mines(self) -> list[Detection]:
@@ -117,6 +124,9 @@ class RPICamera(BaseCamera):
    def capture_and_detect_apriltags(self) -> list[Detection]:
       if(self.input_w == -1 or self.input_h == -1):
          print("Camera not initialized, call initialize_camera(")
+         return []
+      if self.apriltagDetector is None:
+         print("dt_apriltags not installed, cannot detect apriltags")
          return []
       PILImage=self.capture_image(only_metadata = False)
       grayscale_Image = PILImage.image.convert("L") # convert to grayscale for apriltag
