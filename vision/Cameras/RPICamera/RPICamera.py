@@ -38,9 +38,14 @@ class RPICamera(BaseCamera):
       # floor every average at confThreshold and make the vote's own confidence
       # gate a no-op. "voteThreshold" is that looser gate; without it set, the
       # camera behaves exactly as it did before.
-      self.detect_threshold = self.config.get(
-         "voteThreshold", self.config["confThreshold"]
-      )
+      # With voting turned off ("useVoting": false) there is no average to
+      # protect, so the strict single-shot gate is the right one.
+      if self.config.get("useVoting", True):
+         self.detect_threshold = self.config.get(
+            "voteThreshold", self.config["confThreshold"]
+         )
+      else:
+         self.detect_threshold = self.config["confThreshold"]
 
 
 

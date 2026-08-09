@@ -158,6 +158,7 @@ Config keys (in `config.json` / `tests/mine_detection_config.json`):
 
 | key | default | meaning |
 | --- | --- | --- |
+| `useVoting` | true | vote across a burst; `false` scans with a single frame |
 | `scanFrames` | 5 | frames captured per scan |
 | `minFrameHits` | 3 | frames a candidate must appear in to be confirmed |
 | `minAverageConfidence` | 0.70 | mean score across those frames, inclusive |
@@ -172,6 +173,17 @@ back to `confThreshold` and behaves exactly as it did before.
 
 The confirmed `Detection.score` is the **burst average**, not any single frame's
 score, and its box is taken from the highest-scoring frame.
+
+### Turning the vote off
+
+Set `"useVoting": false` to go back to single-shot scanning: `Vision.scan()`
+captures one frame and keeps whatever clears `confThreshold`, and the other vote
+keys (`scanFrames`, `minFrameHits`, `minAverageConfidence`, `voteIoU`,
+`voteThreshold`) are ignored. The camera's per-frame gate follows the same
+switch — it drops to `voteThreshold` only while voting is on, since with no
+average to protect the loose gate would just let weak boxes through. Useful for
+timing comparisons and for debugging whether the vote or the model is what is
+dropping a mine; keep it on in flight.
 
 ### Cost
 

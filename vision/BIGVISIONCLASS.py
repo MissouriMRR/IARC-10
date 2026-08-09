@@ -155,20 +155,31 @@ class Vision:
         drone_position = DronePose(location[0], location[1], location[2], yaw, pitch, roll)
 
         if targetDetectionType == DetectionType.MINE:
-            # Take a burst of frames and only keep detections that survive the
-            # vote. Inference runs on the IMX500 itself, so each extra frame
-            # costs one camera frame interval (~33 ms at 30 fps) rather than a
-            # full model run on the Pi.
-            frames = [
-                self.camera.capture_and_detect_mines()
-                for _ in range(self.visionConfig["scanFrames"])
-            ]
-            detections = vote_on_frames(
-                frames,
-                iou_threshold=self.visionConfig["voteIoU"],
-                min_hits=self.visionConfig["minFrameHits"],
-                min_average_score=self.visionConfig["minAverageConfidence"],
-            )
+            if self.visionConfig.get("useVoting", True):
+                # Take a burst of frames and only keep detections that survive
+                # the vote. Inference runs on the IMX500 itself, so each extra
+                # frame costs one camera frame interval (~33 ms at 30 fps)
+                # rather than a full model run on the Pi.
+                frames = [
+                    self.camera.capture_and_detect_mines()
+                    for _ in range(self.visionConfig["scanFrames"])
+                ]
+                detections = vote_on_frames(
+                    frames,
+                    iou_threshold=self.visionConfig["voteIoU"],
+                    min_hits=self.visionConfig["minFrameHits"],
+                    min_average_score=self.visionConfig["minAverageConfidence"],
+                )
+            else:
+                # Single-shot scan: one frame, judged only by its own score.
+                # Cameras that gate at the looser voteThreshold can still hand
+                # back sub-confThreshold boxes, so re-apply the strict cutoff
+                # here -- with no average to defend, it is the only filter left.
+                detections = [
+                    detection
+                    for detection in self.camera.capture_and_detect_mines()
+                    if detection.score >= self.visionConfig["confThreshold"]
+                ]
         else:
             detections: list[Detection] = (
                 self.camera.capture_and_detect_apriltags()
@@ -181,7 +192,8 @@ class Vision:
                 drone_position, mine
             )  # get world coordinates of mine (for now just do this for the first mine detected)
 
-            # mine.score is the burst-averaged confidence, not a single frame's
+            # With voting on, mine.score is the burst-averaged confidence rather
+            # than a single frame's; with it off, it is that one frame's score.
             new_mines.append(Mine(mine.score, location))
             # self._cluster(mine) # cluster mine list
 
