@@ -734,7 +734,7 @@ class Interdrone:
 
         return
 
-    async def send_mission_end_ack(self, drones_to_send_data: tuple[int, ...]) -> None:
+    async def send_mission_end_ack(self, drones_to_send_data: tuple[int, ...],) -> None:
         """
         Message ID = 586
         Sends mission_end_ack message to the drone that sent the original message
@@ -748,6 +748,44 @@ class Interdrone:
         )
 
         self.send(mission_end_ack_message)
+
+        return
+
+    async def send_seen(self, seen: bytes) -> None:
+        """
+        Message ID = 590
+        Sends send_seen message to all other drones
+        seen is currently seen data
+        """
+        send_seen_message: Message = Message.create(
+            id=MessageType.SEND_SEEN,
+            drones_to_send_data=tuple(
+                self.flight_settings.other_drones_in_mission,
+            ),
+            sender_id=self.flight_settings.current_drone_ID,
+            data={
+                "seen": seen,
+            },
+        )
+
+        self.send(send_seen_message)
+
+        return
+
+    async def send_seen_ack(self, drones_to_send_data: tuple[int, ...]) -> None:
+        """
+        Message ID = 591
+        Sends send_seen_ack back to the drone that sent the original message.
+        drones_to_send_data should just be one drone.
+        """
+        send_seen_ack_message: Message = Message.create(
+            id=MessageType.SEND_SEEN_ACK,
+            drones_to_send_data=drones_to_send_data,
+            sender_id=self.flight_settings.current_drone_ID,
+            data={},
+        )
+
+        self.send(send_seen_ack_message)
 
         return
 
