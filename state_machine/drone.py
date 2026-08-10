@@ -356,6 +356,9 @@ class Drone:
         # SITL_MAVLINK_PORT when running the SITL without MAVProxy (--no-mavproxy), where
         # 5760 is free and is the right choice.
         port = int(os.environ.get("SITL_MAVLINK_PORT", "5762"))
+        # In AIRSIM mode the SITL is not necessarily on this machine. When the flight code
+        # runs on a Pi and the sim runs on a desktop, this is the sim host's LAN address.
+        host = os.environ.get("SITL_MAVLINK_HOST", "127.0.0.1")
 
         match sim_mode:
             case SimMode.REAL:
@@ -370,8 +373,8 @@ class Drone:
                 port += (
                     self.id - 1
                 ) * 10  # IDs are assigned sequentially starting at 5762 and increasing by 10 for each drone.
-                logging.info(f"Using AIRSIM mode settings with port {port}")
-                self.address = "tcp:127.0.0.1:" + str(port)
+                logging.info(f"Using AIRSIM mode settings with host {host} port {port}")
+                self.address = f"tcp:{host}:{port}"
                 self.baud = None
             case _:
                 raise ValueError("invalid sim mode")
