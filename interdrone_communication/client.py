@@ -287,7 +287,7 @@ class Client:
         try:
             conn.writer.close()
             await asyncio.wait_for(conn.writer.wait_closed(), timeout=1.0)
-        except OSError, asyncio.TimeoutError:
+        except (OSError, asyncio.TimeoutError):
             pass
 
     # Drops connections that are closing or have been idle > 30s
