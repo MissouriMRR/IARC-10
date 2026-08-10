@@ -1,11 +1,11 @@
 [Unit]
 Description=IARC-10 Drone Flight
-After=batman-net.service
-Requires=batman-net.service
+After=batman-mesh.service
+Requires=batman-mesh.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/mrrdt-1/IARC-10
+WorkingDirectory=/home/mrrdt-1/IARC-10 # Make sure to edit this
 ExecStartPre=/bin/bash -c 'until [ -e /dev/ttyS0 ]; do sleep 1; done'
 ExecStart=/usr/local/bin/uv run run.py -i 1
 Restart=on-failure
