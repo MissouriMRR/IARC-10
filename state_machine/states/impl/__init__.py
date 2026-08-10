@@ -1,5 +1,6 @@
 """Implements the run_callable class attributes of the state classes."""
 
+from state_machine.states.impl.emergency_land_impl import EmergencyLand
 from state_machine.states.impl.land_impl import Land
 from state_machine.states.impl.start_impl import Start
 from state_machine.states.impl.takeoff_impl import Takeoff
