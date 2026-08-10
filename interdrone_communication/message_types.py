@@ -71,6 +71,14 @@ class MessageType(Enum):
     FIELD_CHECKSUM = 580
     MISSION_END = 585
     MISSION_END_ACK = 586
+    SEND_SEEN = 590
+    SEND_SEEN_ACK = 591
+
+    # Placeholder messages
+    MISC1 = 595
+    MISC2 = 596
+    MISC3 = 597
+    MISC4 = 598
 
 
 SchemaFieldType: TypeAlias = (
@@ -440,6 +448,37 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     },
     MessageType.MISSION_END_ACK: {
         "id": MessageType.MISSION_END_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.SEND_SEEN: {
+        "id": MessageType.SEND_SEEN,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "seen": bytes,
+    },
+    MessageType.SEND_SEEN_ACK: {
+        "id": MessageType.SEND_SEEN_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.MISC1: {
+        "id": MessageType.MISC1, # Change name when implemented
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.MISC2: {
+        "id": MessageType.MISC2, # Change name when implemented
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.MISC3: {
+        "id": MessageType.MISC3, # Change name when implemented
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.MISC4: {
+        "id": MessageType.MISC4, # Change name when implemented
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
     },
