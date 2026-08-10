@@ -5,6 +5,7 @@ from typing import Any
 
 import asyncio
 import logging
+import time
 
 from state_machine.state_tracker import (
     update_drone,
@@ -51,8 +52,23 @@ async def run(self: Start) -> State:
         # costs a network round trip -- during the (much longer) wait for EKF/GPS
         # convergence there's no point putting ping traffic on the network at all.
         ping_ok: bool = False
+        ever_armable: bool = False
+        prev_armable: bool = False
+        wait_started: float = time.monotonic()
         while True:
             armable: bool = self.drone.vehicle.is_armable
+            if armable and not ever_armable:
+                ever_armable = True
+                logging.info(
+                    "Drone %s became armable after %.1fs -- starting pings",
+                    self.drone.id,
+                    time.monotonic() - wait_started,
+                )
+            elif prev_armable and not armable:
+                # EKF/GPS can fall back out of a converged state. Without this the
+                # regression is indistinguishable from a ping failure in the log.
+                logging.warning("Drone %s is no longer armable", self.drone.id)
+            prev_armable = armable
             if armable:
                 ping_ok = await self.interdrone.ping_drones()
                 if ping_ok:

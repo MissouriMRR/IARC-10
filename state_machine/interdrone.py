@@ -947,7 +947,22 @@ class Interdrone:
                                     await self.send_arm_ack()
                             # Send ARM_NACK if drone can't arm
                             else:
-                                await self.send_arm_nack()
+                                # Drone 1 is the drone that *collects* NACKs, so it has
+                                # nobody to send one to. send_arm_nack() addresses drone 1
+                                # unconditionally, which the client's send-to-self path
+                                # loops straight back into this branch -- an unthrottled
+                                # ARM/ARM_NACK storm. Log and drop instead.
+                                if self.flight_settings.current_drone_ID == 1:
+                                    logging.warning(
+                                        "Drone 1 cannot arm: no ping response yet from %s. Ignoring ARM.",
+                                        [
+                                            s.drone_id
+                                            for s in self.drone_states
+                                            if s.ping_response is not True
+                                        ],
+                                    )
+                                else:
+                                    await self.send_arm_nack()
 
                         case MessageType.ARM_ACK:
                             # When drone 1 receives an ACK, set others drone arm state to true
@@ -963,9 +978,18 @@ class Interdrone:
                                     f"No DroneState found for drone_id={message.sender_id}. Something is ary!"
                                 )
                         case MessageType.ARM_NACK:
-                            # Try and resend ARM to drone that sent NACK
-                            print(f"Drone {message.sender_id} failed to arm. Resending message.")
-                            await self.send_ARM(drones_to_send_data=(message.sender_id,))
+                            # A NACK from ourselves can only have come from the client's
+                            # send-to-self path; resending ARM to ourselves would spin.
+                            if message.sender_id == self.flight_settings.current_drone_ID:
+                                logging.warning(
+                                    "Ignoring ARM_NACK from self (drone %s)", message.sender_id
+                                )
+                            else:
+                                # Try and resend ARM to drone that sent NACK
+                                print(
+                                    f"Drone {message.sender_id} failed to arm. Resending message."
+                                )
+                                await self.send_ARM(drones_to_send_data=(message.sender_id,))
                         case MessageType.DISARM:
                             self.cmd_msg = CMD_MSG.DISARM
                             if self.flight_settings.current_drone_ID == 1:
