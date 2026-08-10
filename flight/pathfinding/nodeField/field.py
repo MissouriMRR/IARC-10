@@ -314,6 +314,8 @@ class Field:
         wrapped = True
 
         newObstacle = unionObstacle(polygonObstacleList, nodes, wrapped)
+        for i in polygonObstacleList:
+            i.mergedInto = newObstacle
         # self.unionObstacles.append(newObstacle)
         return newObstacle, wrapped
 
@@ -607,16 +609,89 @@ class Field:
             self.polygonObstacles.append(newObstacle)
 
         self._selfConnect(newObstacle, isWrapping, wasMerged)
-        return newObstacle
+        return newObstacle, wasMerged
 
     # Preserves the exact original combined behavior (merge + self-connect,
     # then connect to every other obstacle) for every caller that doesn't
     # need to control the two phases independently.
     def addObstacle(
         self, newObstacle: PolygonObstacle, isWrapping: bool = False, isMine: bool = False
-    ):
-        newObstacle = self._mergeAndSelfConnect(newObstacle, isWrapping, isMine)
+    ) -> bool:
+        newObstacle, wasMerged = self._mergeAndSelfConnect(newObstacle, isWrapping, isMine)
         self.connectPolygon(newObstacle)
+        # Re-verify newObstacle's own freshly created connections (from
+        # _addOwnConnections, just above) against EVERY current obstacle --
+        # not just the ones _addOwnConnections' own near/far "group"
+        # heuristic happened to chain-overlap into the same processing
+        # batch. That heuristic can legitimately exclude a real blocker
+        # sitting between the two tangent points if its own distance
+        # range doesn't overlap into the group being processed -- and a
+        # freshly merged union's own brand-new nodes additionally start
+        # with zero occlusion-arc history (crossGroupOccluded's cache,
+        # which normally catches some of what a group missed, has nothing
+        # to fall back on for them). Confirmed empirically on both counts:
+        # traced a real bad edge in the two-pair sweep to exactly this
+        # gap, blocked by an ordinary standalone mine well outside the
+        # processing group -- not a union or a merge at all.
+        #
+        # Checks the segment's MIDPOINT for containment, not
+        # find_crossed_edges' crosses()/contains() (tried first, and
+        # didn't catch the traced case -- a shallow, sub-1ft sliver
+        # apparently classifies as "touches" rather than a clean
+        # topological "crosses" for shapely's predicate here, the same
+        # distinction find_crossed_edges' own docstring leans on to avoid
+        # flagging a legitimate tangent connection that merely touches an
+        # obstacle's boundary at its own endpoint). Midpoint containment
+        # is the exact "is this edge bad" definition this session's own
+        # verification sweeps have used throughout, so it's what's
+        # actually being guaranteed here, and a real tangent connection's
+        # midpoint is never inside the obstacle it touches only at an
+        # endpoint. Bounded to newObstacle's own edges (the only ones
+        # that just changed), not a full graph audit.
+        own_edges = [
+            (node, neighbor)
+            for node in newObstacle.nodes
+            for neighbor in self.fieldConnection.nodeGraph.get(node, {})
+        ]
+        if own_edges:
+            obstacles = [
+                o for o in self.polygonObstacles + self.mines + self.unionObstacles if o is not newObstacle
+            ]
+            to_remove = []
+            for n1, n2 in own_edges:
+                mx, my = (n1.x + n2.x) / 2.0, (n1.y + n2.y) / 2.0
+                for o in obstacles:
+                    if o.contains_point((mx, my)):
+                        to_remove.append((n1, n2))
+                        break
+            for n1, n2 in to_remove:
+                self.fieldConnection.deleteConnection(n1, n2)
+
+        # The reverse direction of the same gap: does newObstacle (as the
+        # newly added mine/union) retroactively invalidate a PRE-EXISTING
+        # edge elsewhere in the graph that doesn't touch its own nodes at
+        # all? _cleanupInvalidatedConnections (inside connectPolygon,
+        # above) already does a whole-graph scan for this via
+        # find_crossed_edges, but that predicate can miss the same kind of
+        # shallow sub-1ft sliver the own_edges check above was built for
+        # -- same midpoint-containment definition, applied the other way.
+        # O(all edges) but against a single polygon (newObstacle), so
+        # comparable cost to _cleanupInvalidatedConnections' own existing
+        # whole-graph scan, not an additional order of magnitude.
+        own_node_set = set(newObstacle.nodes)
+        other_edges = [
+            (n1, n2)
+            for n1, neighbors in self.fieldConnection.nodeGraph.items()
+            for n2 in neighbors
+            if id(n1) < id(n2) and n1 not in own_node_set and n2 not in own_node_set
+        ]
+        to_remove2 = []
+        for n1, n2 in other_edges:
+            mx, my = (n1.x + n2.x) / 2.0, (n1.y + n2.y) / 2.0
+            if newObstacle.contains_point((mx, my)):
+                to_remove2.append((n1, n2))
+        for n1, n2 in to_remove2:
+            self.fieldConnection.deleteConnection(n1, n2)
         # Mirror image of the connect-to-existing-obstacles loop in
         # addFloatingNode: a floating node (e.g. a start/end node) placed
         # BEFORE this obstacle existed never had a chance to connect to it --
@@ -625,12 +700,13 @@ class Field:
         # back out to every already-placed floating node itself.
         for fNode in self.floatingNodes:
             self._connectFloatingNodeToObstacle(newObstacle, fNode)
+        return wasMerged
 
-    def addFromProtoMine(self, protoMine: protoMine):
+    def addFromProtoMine(self, protoMine: protoMine) -> bool:
         if len(protoMine.nodeVertices) == 0:
-            return
+            return False
         newMine = BlockMine(protoMine.nodeVertices, origin=tuple(protoMine.mineLocation))
-        self.addObstacle(newMine, isWrapping=True, isMine=True)
+        return self.addObstacle(newMine, isWrapping=True, isMine=True)
 
     # Recursively finds every live BlockMine within a list of obstacles,
     # descending into any nested unionObstacle's own obstacleList (a union
@@ -1257,6 +1333,16 @@ class FieldConnections:
         for i in connections:
             self.deleteConnection(node1, i)
 
+    def removeNode(self, node) -> None:
+        """Fully removes node from the graph: purges every edge it has
+        (same as purgeConnections), then deletes its own key from
+        nodeGraph so it doesn't linger as a permanent 0-edge orphan.
+        purgeConnections alone never does this (its purgeNodes branches
+        in deleteConnection are dead -- purgeNodes is hard-coded False at
+        both call sites); nothing else in this codebase does either."""
+        self.purgeConnections(node)
+        self.nodeGraph.pop(node, None)
+
     def deleteConnection(self, node1, node2):
         purgeNodes = False
 
@@ -1675,7 +1761,10 @@ def find_crossed_edges(edges, obstacle):
     Returns
     -------
     list of (node_a, node_b) tuples (a subset of `edges`) whose connecting
-    segment crosses the obstacle.
+    segment crosses the obstacle's boundary OR lies entirely inside it
+    (a segment can end up wholly interior with no boundary crossing at
+    all when a merge grows the obstacle around an edge that already
+    existed -- crosses() alone would silently miss that case).
     """
     if not edges:
         return []
@@ -1702,6 +1791,11 @@ def find_crossed_edges(edges, obstacle):
         if seg_max_y < obs_min_y or seg_min_y > obs_max_y:
             continue
         seg = LineString(((node_a.x, node_a.y), (node_b.x, node_b.y)))
-        if prepared.crosses(seg):
+        # crosses() alone misses an edge that already lies entirely inside
+        # obstacle without ever touching its boundary -- exactly the case a
+        # merge produces when it grows a polygon around an existing,
+        # already-connected edge (see PolygonObstacle.intersects, which
+        # documents and fixes the identical gap for a different caller).
+        if prepared.crosses(seg) or prepared.contains(seg):
             results.append((node_a, node_b))
     return results

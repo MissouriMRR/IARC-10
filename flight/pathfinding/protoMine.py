@@ -150,6 +150,13 @@ class protoMine:
         return self.nodeVertices
 
     def visualize(self):
+        # blockMatrix's own cells are laid out starting at centerGridOffset
+        # (see centerOfBlock/build_mine_cell_field's min_corner), not at
+        # (0,0) -- nodeVertices/mineLocation already include that offset,
+        # so the imshow extent and grid-line overlay below need it too, or
+        # they render half a cell off from where the mine/nodes actually
+        # are.
+        offX, offY = self.centerGridOffset
         fig, ax = plt.subplots()
         # self.blockMatrix[6][3]=1
         plt.imshow(
@@ -157,10 +164,10 @@ class protoMine:
             cmap="gray",
             origin="lower",
             extent=[
-                0,
-                self.placeholderGridSideLength * SQUARE_SIDE_LENGTH_FT,
-                0,
-                self.placeholderGridSideLength * SQUARE_SIDE_LENGTH_FT,
+                offX,
+                offX + self.placeholderGridSideLength * SQUARE_SIDE_LENGTH_FT,
+                offY,
+                offY + self.placeholderGridSideLength * SQUARE_SIDE_LENGTH_FT,
             ],
         )
         ax.add_patch(

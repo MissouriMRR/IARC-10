@@ -36,6 +36,18 @@ class Graph:
         # initialize the vals of all nodes with infinity
         distances = {node: float("inf") for node in self.graph}
         distances[source] = 0  # set the source value to 0
+        # Assigned inline during relaxation below (the one edge that actually
+        # produced each node's current-best distance), not recomputed
+        # afterward by scanning for distances[neighbor] == distance + weight
+        # ties -- on a genuine tie (two equal-length routes into the same
+        # node) that equality scan can assign predecessors both ways
+        # (A's predecessor becomes B and B's becomes A), which turns the
+        # walk-back in shortest_path/pathfinder.py's own path
+        # reconstruction into an infinite loop. A wide, well-spread target
+        # set rarely ties exactly; a single retargeted point (see
+        # Pathfinder.retarget_approach_target) does much more easily, which
+        # is what surfaced this.
+        predecessors = {node: None for node in self.graph}
 
         # Initialize a priporty queue
         pq = [(0, source)]
@@ -62,15 +74,9 @@ class Graph:
                 tentative_distance = current_distance + weight
                 if tentative_distance < distances[neighbor]:
                     distances[neighbor] = tentative_distance
+                    predecessors[neighbor] = current_node
 
                     heapq.heappush(pq, (tentative_distance, neighbor))
-
-            predecessors = {node: None for node in self.graph}
-
-            for node, distance in distances.items():
-                for neighbor, weight in self.graph[node].items():
-                    if distances[neighbor] == distance + weight:
-                        predecessors[neighbor] = node
 
         return distances, predecessors
 

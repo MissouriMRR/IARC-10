@@ -9,6 +9,7 @@ from typing import Final
 from state_machine import mission_config
 from state_machine.mission_config import MissionConfig, SimModeConfig
 
+
 DEFAULT_RUN_TITLE: Final[str] = "IARC Test Flight"
 DEFAULT_RUN_DESCRIPTION: Final[str] = "Test flight for IARC 2026"
 DEFAULT_CONFIG_PATH: Final[str] = "mission_config.json"
@@ -22,6 +23,32 @@ class SimMode(Enum):
     REAL = "real"
     SIM = "sim"
     AIRSIM = "airsim"
+
+
+class Side(Enum):
+    """
+    Distinguishes which field edge a drone's pathfinding graph starts from.
+
+    Passed to Pathfinder.buildNodeField as startEdge: START -> "bottom",
+    END -> "top" (mirrored, for the other pair in two-pair mode).
+    """
+
+    START = "start"
+    END = "end"
+
+
+class Role(Enum):
+    """
+    Distinguishes a drone's role in the two-pair pathfinding scheme.
+
+    - GAMBLER: paired with an ASSISTANT; plans/flies the scored path.
+    - ASSISTANT: paired with a GAMBLER; supports that gambler.
+    - SOLOGAMBLER: unpaired gambler with no assistant.
+    """
+
+    SOLOGAMBLER = "solo_gambler"
+    GAMBLER = "gambler"
+    ASSISTANT = "assistant"
 
 
 # pylint: disable=too-many-instance-attributes
@@ -159,6 +186,51 @@ class FlightSettings:
         self.__mission_data_path: str = mission_data_path
         self.__mission_type: str = mission_type
         self.__yolo_status: Event = Event()
+
+        self.__start_side: Side = Side.START
+        self.__role: Role = Role.SOLOGAMBLER
+        self.__paired_drone: int | None = None
+
+        if len(self.__drones_in_mission) == 2:
+            # drone1/drone2 form a single GAMBLER/ASSISTANT pair, mirroring
+            # the len==3/4 blocks below (paired role, non-None pairedDrone).
+            if drone_ID == 1:
+                self.__role = Role.GAMBLER
+                self.__paired_drone = 2
+            if drone_ID == 2:
+                self.__role = Role.ASSISTANT
+                self.__paired_drone = 1
+        if len(self.__drones_in_mission) == 3:
+            if drone_ID == 1:
+                self.__role = Role.GAMBLER
+                self.__paired_drone = 2
+                self.__start_side = Side.START
+            if drone_ID == 2:
+                self.__role = Role.ASSISTANT
+                self.__paired_drone = 1
+                self.__start_side = Side.START
+            if drone_ID == 3:
+                self.__role = Role.SOLOGAMBLER
+                self.__paired_drone = None
+                self.__start_side = Side.END
+
+        if len(self.__drones_in_mission) == 4:
+            if drone_ID == 1:
+                self.__role = Role.GAMBLER
+                self.__paired_drone = 2
+                self.__start_side = Side.START
+            if drone_ID == 2:
+                self.__role = Role.ASSISTANT
+                self.__paired_drone = 1
+                self.__start_side = Side.START
+            if drone_ID == 3:
+                self.__role = Role.GAMBLER
+                self.__paired_drone = 4
+                self.__start_side = Side.END
+            if drone_ID == 4:
+                self.__role = Role.ASSISTANT
+                self.__paired_drone = 3
+                self.__start_side = Side.END
 
     @staticmethod
     def add_flight_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -437,6 +509,78 @@ class FlightSettings:
             New ID for the current drone
         """
         self.__current_drone_ID = drone_ID
+
+    @property
+    def role(self) -> Role:
+        """
+        Returns this drone's role in the two-pair pathfinding scheme.
+
+        Returns
+        -------
+        role : Role
+            GAMBLER, ASSISTANT, or SOLOGAMBLER.
+        """
+        return self.__role
+
+    @role.setter
+    def role(self, role: Role) -> None:
+        """
+        Sets this drone's role in the two-pair pathfinding scheme.
+
+        Parameters
+        ----------
+        role : Role
+            GAMBLER, ASSISTANT, or SOLOGAMBLER.
+        """
+        self.__role = role
+
+    @property
+    def paired_drone(self) -> int | None:
+        """
+        Returns the 1-indexed drone ID this drone is paired with.
+
+        Returns
+        -------
+        paired_drone : int | None
+            The paired drone's ID, or None if this drone has no partner.
+        """
+        return self.__paired_drone
+
+    @paired_drone.setter
+    def paired_drone(self, paired_drone: int | None) -> None:
+        """
+        Sets the 1-indexed drone ID this drone is paired with.
+
+        Parameters
+        ----------
+        paired_drone : int | None
+            The paired drone's ID, or None if this drone has no partner.
+        """
+        self.__paired_drone = paired_drone
+
+    @property
+    def start_side(self) -> Side:
+        """
+        Returns which field edge this drone's pathfinding graph starts from.
+
+        Returns
+        -------
+        start_side : Side
+            START or END; maps to Pathfinder.buildNodeField's startEdge.
+        """
+        return self.__start_side
+
+    @start_side.setter
+    def start_side(self, start_side: Side) -> None:
+        """
+        Sets which field edge this drone's pathfinding graph starts from.
+
+        Parameters
+        ----------
+        start_side : Side
+            START or END; maps to Pathfinder.buildNodeField's startEdge.
+        """
+        self.__start_side = start_side
 
     # Other drones in mission_is_used to get other drones ids
     @property

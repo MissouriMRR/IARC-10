@@ -65,7 +65,8 @@ def _field_corners():
 
 def build_pathfinder():
     pf = Pathfinder(_field_corners(), altitude=20.0, fov_deg=60.0, droneID=1, numOfDrones=1)
-    pf.buildNodeField()
+    start_latlon = pf.coord_converter.local_to_latlon(WIDTHOFFIELD / 2, -1)
+    pf.buildNodeField(start_latlon)
     return pf
 
 
@@ -200,7 +201,7 @@ def _shapes_to_visit_cellgrid(pf, path):
     method="cellgrid" computes internally (ourPortion, matSizeCells,
     ShapesToVisit) without needing it to expose them -- used by both the
     coverage-correctness check and the diagram renderer below."""
-    best_path = pf.get_cell_path(path)
+    best_path = pf.rasterize_node_path(path)
     ourPortion = best_path.vertical_slice_index(pf.droneID - 1, pf.numOfDrones)
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     shapesToVisit = ourPortion.cover_with_shape((matSizeCells, matSizeCells))
@@ -498,8 +499,18 @@ def test_get_places_to_check_respects_seen_cells(pf):
     after = pf.getPlacesToCheck(method="path")
 
     def in_seen_band(latlon):
+        # Cell-based, not a raw y_lo<=y<=y_hi compare: a placement sitting
+        # in a cell that straddles the band boundary is legitimately still
+        # unseen (fill_polygon_covered only marks a cell seen when the
+        # WHOLE cell is inside the photographed rectangle, the same rule
+        # every other "seen" check in this codebase uses) even though its
+        # exact (x, y) can land a hair inside [y_lo, y_hi] numerically --
+        # a real path vertex right at the boundary is exactly this case.
         x, y = pf.coord_converter.latlon_to_local(*latlon)
-        return y_lo <= y <= y_hi
+        col, row = pf.seen_tracker.real_to_cell(x, y)
+        if not (0 <= col < pf.seen_tracker.width and 0 <= row < pf.seen_tracker.height):
+            return False
+        return pf.seen_tracker.get(col, row)
 
     none_in_seen_band = all(not in_seen_band(p) for p in after)
     ok = len(after) < len(baseline) and none_in_seen_band and pf.seen_tracker.count() > 0
@@ -533,7 +544,7 @@ def render_combined_image(pf, save_path):
 
     # Background rasterization purely for the visual -- not part of the
     # method="path" computation itself, which never touches a cell grid.
-    background = pf.get_cell_path(path).vertical_slice_index(pf.droneID - 1, pf.numOfDrones)
+    background = pf.rasterize_node_path(path).vertical_slice_index(pf.droneID - 1, pf.numOfDrones)
     width_cells, height_cells = background.width, background.height
     arr = np.zeros((height_cells, width_cells), dtype=np.uint8)
     for x, y in background.on_cells():

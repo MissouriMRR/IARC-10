@@ -187,7 +187,7 @@ class _PathMixin:
         # inside 2 of them (the two NOT on whichever single-axis route gets
         # picked) -- _mark_segment (used for CellField.mark_path, the
         # "ground truth" path footprint drawn everywhere else in this
-        # codebase, e.g. get_cell_path) marks all 4 of those cells
+        # codebase, e.g. rasterize_node_path) marks all 4 of those cells
         # unconditionally, since it isn't constrained to a walkable single-
         # file route. That means the default (include_tie_neighbors=False)
         # output here can legitimately disagree with mark_path's -- a cell

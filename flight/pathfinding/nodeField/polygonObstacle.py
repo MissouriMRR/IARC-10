@@ -203,6 +203,13 @@ class PolygonObstacle:
     ):  # Assumes nodes are already connected
         self.isWrapping = True
         self.vertices = vertices
+        # Set by Field.mergePolygons on every obstacle it consumes into a
+        # new unionObstacle -- lets a stale reference to this obstacle
+        # (e.g. Pathfinder.promoted_helper_nodes' recorded "obstacle") be
+        # resolved forward to whatever it's actually part of now, possibly
+        # through more than one merge (a union can itself later merge into
+        # a bigger one). None means never merged away.
+        self.mergedInto = None
 
         if len(self.vertices) < 2:
             return
@@ -279,8 +286,24 @@ class PolygonObstacle:
         return self.polygon.contains(Point(point))
 
     def intersects(self, line):
+        p1, p2 = line
         line = LineString(line)
         # crosses() alone misses a segment that lies entirely inside this
         # obstacle without touching its boundary (both endpoints inside a
         # dense/concave obstacle after a batch expand+merge, in particular).
-        return self.polygon.crosses(line) or self.polygon.contains(line)
+        # Neither crosses() nor contains() alone catches a shallow sliver
+        # intrusion that only "touches" the boundary in shapely's strict
+        # topological sense rather than cleanly crossing through it or
+        # being fully contained -- confirmed directly: a mine relayed
+        # between two pairs sharing a field can graze an already-confirmed
+        # edge by a fraction of a foot and neither predicate fires,
+        # leaving a real (if shallow) unsafe edge in frozen history that
+        # nothing ever goes back to repair. Midpoint containment is the
+        # same fallback field.py's own addObstacle uses for the identical
+        # blind spot on freshly-created edges (see its docstring) -- a
+        # legitimate tangent line only ever touches this polygon at an
+        # endpoint, so its midpoint is never inside it, making this safe
+        # to add unconditionally alongside crosses()/contains() rather
+        # than only at this one call site.
+        mx, my = (p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0
+        return self.polygon.crosses(line) or self.polygon.contains(line) or self.contains_point((mx, my))

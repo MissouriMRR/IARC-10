@@ -15,6 +15,7 @@ from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
+from state_machine.flight_settings import Side
 from flight.pathfinder import Pathfinder
 
 
@@ -71,7 +72,7 @@ async def run(self: Takeoff) -> State:
                 return POIF(self.drone, self.flight_settings, self.interdrone)
 
             if self.interdrone.get_cmd_msg() == CMD_MSG.MISSION or action_type.lower() == "mission":
-
+                configureField(self)
                 if self.drone.id == 1:
 
                     await self.interdrone.send_start_mission(
@@ -117,3 +118,33 @@ async def run(self: Takeoff) -> State:
 
 # Setting the run_callable attribute of the Takeoff class to the run function
 Takeoff.run_callable = run
+
+
+def configureField(state: Takeoff) -> None:
+    """
+    Builds this drone's Pathfinder and node field from the mission config.
+
+    Parameters
+    ----------
+    state : Takeoff
+        The running Takeoff state, whose flight_settings carry the mission
+        field corners, altitude, and this drone's ID/pairing info.
+    """
+    missionFieldCorners = []
+    for corner in state.flight_settings.mission_field_corners:
+        missionFieldCorners.append((corner["lat"], corner["lon"]))
+
+    startEdge = "bottom" if state.flight_settings.start_side == Side.START else "top"
+
+    pathfinder = Pathfinder(
+        missionFieldCorners,
+        state.flight_settings.max_flight_height,
+        90,
+        state.flight_settings.current_drone_ID,
+        len(state.flight_settings.drones_in_mission),
+    )
+    # Pathfinder.__init__ already sets Pathfinder.instance to this object.
+    pathfinder.buildNodeField(
+        (state.flight_settings.start_coord["lat"], state.flight_settings.start_coord["lon"]),
+        startEdge=startEdge,
+    )
