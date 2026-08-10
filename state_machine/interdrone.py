@@ -13,13 +13,18 @@ from typing import Any
 from flight.waypoint import Waypoint
 import flight.flight_log as flight_log
 import queue
+import sys
 import threading
 import time
 
 # IARC Imports
 from interdrone_communication.networking_interface import NetworkingInterface
 from state_machine.flight_settings import FlightSettings
+
+# state_machine.drone patches the collections aliases dronekit needs on
+# import, so it must come before dronekit.
 from state_machine.drone import Drone
+import dronekit
 from interdrone_communication.message_types import Message, MessageType
 from state_machine.drone_state import DroneState
 from enum import Enum
@@ -30,9 +35,98 @@ if TYPE_CHECKING:
     from state_machine.states.state import State
 
 
+# Console input is read by one daemon thread per process rather than by
+# run_in_executor(input): a blocking input() call cannot be abandoned, so a state
+# that also wants to react to a command from the app would be stuck in the
+# executor until somebody typed a line. The thread parks on stdin forever and the
+# queue below is polled, which makes "typed a command" and "the app sent one"
+# two conditions that can be waited on together.
+_stdin_lines: "queue.Queue[str]" = queue.Queue()
+_stdin_thread: threading.Thread | None = None
+_stdin_thread_lock = threading.Lock()
+
+
+def _pump_stdin() -> None:
+    """Feed every line typed on the console into _stdin_lines until EOF."""
+    while True:
+        try:
+            line = sys.stdin.readline()
+        except (ValueError, OSError):
+            # stdin closed underneath us (common when run as a service).
+            return
+        if not line:
+            return
+        _stdin_lines.put(line.strip())
+
+
+def _start_stdin_reader() -> None:
+    global _stdin_thread
+    with _stdin_thread_lock:
+        if _stdin_thread is None:
+            _stdin_thread = threading.Thread(target=_pump_stdin, daemon=True)
+            _stdin_thread.start()
+
+
+async def get_input_or(
+    prompt: str,
+    condition: Callable[[], bool],
+    poll_s: float = 0.05,
+) -> str | None:
+    """
+    Wait for a line typed on the console *or* for `condition()` to become true.
+
+    Returns the typed line, or None if the condition fired first. This is what
+    lets a prompted run be started either from the console or from the app: the
+    app's command only ever lands in `Interdrone.cmd_msg`, so anything that waits
+    on the console alone silently ignores it.
+    """
+    _start_stdin_reader()
+    print(prompt, end="", flush=True)
+    while True:
+        if condition():
+            # Newline so the abandoned prompt doesn't run into later output.
+            print()
+            return None
+        try:
+            return _stdin_lines.get_nowait()
+        except queue.Empty:
+            await asyncio.sleep(poll_s)
+
+
 async def get_input(prompt: str) -> str:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, input, prompt)
+    """Wait for a line typed on the console."""
+    return await get_input_or(prompt, lambda: False) or ""
+
+
+# How long an interrupt waits for the state it asked for to actually start
+# before deciding the state machine isn't going to get there and commanding the
+# vehicle itself. Longer than StateMachine.RESTART_WAIT_S would make the
+# fallback unreachable; shorter leaves a healthy restart no room.
+RESTART_CONFIRM_S: float = 6.0
+
+
+def _log_restart_failure(task: Task) -> None:
+    """Surface an exception from a fire-and-forget state machine restart."""
+    if task.cancelled():
+        return
+    exception = task.exception()
+    if exception is not None:
+        logging.critical("State machine restart failed", exc_info=exception)
+
+
+def _log_task_failure(task: Task) -> None:
+    """
+    Surface an exception from any fire-and-forget task.
+
+    A task nobody awaits swallows its exception until the interpreter exits, which
+    on a long-running drone means never. Attach this to every `ensure_future` whose
+    result is dropped.
+    """
+    if task.cancelled():
+        return
+    exception = task.exception()
+    if exception is not None:
+        logging.error("Background task %s failed", task.get_name(), exc_info=exception)
 
 
 class CMD_MSG(Enum):
@@ -88,6 +182,15 @@ class Interdrone:
 
         self.drone_states: list[DroneState] = drone_states
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
+
+        # Most of the interdrone loop's message handling has no await in it, so the
+        # loop only yields when it stops draining. This bounds how long it can hold
+        # the event loop before the sleep at the bottom of the loop runs.
+        self.max_messages_per_tick: int = 25
+        # Set while a gather_swarm_status() task is in flight. Two of them share one
+        # SEND_DRONE_STATUS queue, so each would eat responses meant for the other and
+        # report drones as unavailable that had in fact answered.
+        self._swarm_status_in_progress: bool = False
 
         # Store messages that each function may need
         self.interdrone_messages = {
@@ -759,7 +862,38 @@ class Interdrone:
         reported with drone_available = False.
         Run as a background task (see REQUEST_SWARM_STATUS case) since it can block for
         up to drone_status_timeout_sec waiting on responses.
+
+        The app has no other way to learn this failed: it shows a spinner from the moment
+        it sends the request until a SEND_SWARM_STATUS arrives. So every path out of here
+        sends one, including the error path -- a status saying every drone is unavailable
+        is far more useful than a spinner that never stops.
         """
+        if self._swarm_status_in_progress:
+            logging.warning("Swarm status already being gathered; ignoring duplicate request")
+            return
+
+        self._swarm_status_in_progress = True
+        try:
+            await self._gather_swarm_status()
+        except Exception:  # pylint: disable=broad-except
+            # Nothing awaits this task, so without this the app just waits forever and
+            # the only trace is an "exception was never retrieved" at interpreter exit.
+            logging.exception("Failed to gather swarm status; reporting the swarm as unavailable")
+            self._send_swarm_status(
+                [
+                    {
+                        "drone_id": drone_id,
+                        "drone_available": False,
+                        "drone_cmd_msg": CMD_MSG.NONE.value,
+                    }
+                    for drone_id in self.flight_settings.drones_in_mission
+                ]
+            )
+        finally:
+            self._swarm_status_in_progress = False
+
+    async def _gather_swarm_status(self) -> None:
+        """Body of gather_swarm_status(); see there for what this does and why."""
         drone_status_timeout_sec = 2.0
 
         other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
@@ -792,7 +926,13 @@ class Interdrone:
                 try:
                     response: Message = status_queue.get_nowait()
                     if response.sender_id in cmd_msg_by_id:
-                        cmd_msg_by_id[response.sender_id] = response.data["drone_cmd_msg"]
+                        # A response that failed schema validation arrives with data
+                        # emptied. Treating that as "answered, cmd message unknown" keeps
+                        # the drone marked available (it clearly is -- it replied) instead
+                        # of raising KeyError and killing this whole poll.
+                        cmd_msg_by_id[response.sender_id] = response.data.get(
+                            "drone_cmd_msg", CMD_MSG.NONE.value
+                        )
                 except queue.Empty:
                     await asyncio.sleep(0.05)
 
@@ -816,7 +956,17 @@ class Interdrone:
                 }
             )
 
-        print(drone_status)
+        logging.info("Swarm status: %s", drone_status)
+        self._send_swarm_status(drone_status)
+
+        return
+
+    def _send_swarm_status(self, drone_status: list[dict[str, Any]]) -> None:
+        """
+        Message ID = 426
+        Report the swarm's status to the app. Split out from gather_swarm_status() so
+        its error path can answer the app too rather than leaving it waiting.
+        """
         swarm_status_message: Message = Message.create(
             id=MessageType.SEND_SWARM_STATUS,
             drones_to_send_data=(0,),  # 0 addresses the app
@@ -827,8 +977,6 @@ class Interdrone:
             },
         )
         self.send(swarm_status_message)
-
-        return
 
     async def cancel_state(self) -> None:
         """
@@ -883,7 +1031,143 @@ class Interdrone:
             raise RuntimeError("Cannot restart state machine without a registered callback")
 
         # Start the restart callback as a separate task but do not wait for it
-        asyncio.ensure_future(self._restart_callback(state))
+        restart_task: Task = asyncio.ensure_future(self._restart_callback(state))
+        # Nothing awaits that task, so without this a failure to restart is
+        # visible only as the state machine mysteriously not running.
+        restart_task.add_done_callback(_log_restart_failure)
+
+    async def interrupt_into(
+        self,
+        state_factory: Callable[[], "State"],
+        label: str,
+        fallback_mode: str,
+    ) -> None:
+        """
+        Cancel whatever state is running and restart the state machine into a new one.
+
+        This is how a command that has to take effect *now* — landing, above all
+        — reaches a state machine that is busy flying something else. Cancelling
+        goes through `cancel_state`, so a state inside its `atomic` section
+        finishes that section first.
+
+        Must not be awaited from the interdrone loop: `cancel_state` blocks on
+        the running state's atomic lock, and the loop it would block is the one
+        feeding position reports to the rest of the swarm. Launch it with
+        `asyncio.ensure_future`.
+
+        Parameters
+        ----------
+        state_factory : Callable[[], State]
+            Builds the state to restart into. Called only once the running state
+            has actually been cancelled.
+        label : str
+            What this interrupt is, for the logs.
+        fallback_mode : str
+            Flight mode to command directly if the state machine can't be
+            interrupted. The command still has to reach the vehicle even when
+            there is no state machine left to route it through.
+        """
+        try:
+            if not self._current_state or not self._current_task:
+                # No state machine to interrupt: the command arrived before the
+                # machine started, or after it finished. Neither is a reason to
+                # drop a land command on the floor.
+                logging.critical(
+                    "%s commanded with no state running -- commanding %s directly",
+                    label,
+                    fallback_mode,
+                )
+                self.command_vehicle_mode(fallback_mode)
+                return
+
+            logging.critical("%s commanded -- cancelling %s", label, self._current_state.name)
+            await self.cancel_state()
+
+            new_state: "State" = state_factory()
+            await self.restart_state_machine(new_state)
+
+            # restart_state_machine only schedules the restart, so confirm the
+            # new state actually started rather than assuming it. Everything
+            # between here and the vehicle is asynchronous, and a land command
+            # that quietly failed to take is the worst outcome available.
+            deadline: float = time.monotonic() + RESTART_CONFIRM_S
+            while self._current_state is not new_state and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+
+            if self._current_state is not new_state:
+                logging.critical(
+                    "%s state did not start within %.1fs -- commanding %s directly",
+                    label,
+                    RESTART_CONFIRM_S,
+                    fallback_mode,
+                )
+                self.command_vehicle_mode(fallback_mode)
+        except Exception:  # pylint: disable=broad-except
+            # An exception escaping here would be raised inside the interdrone
+            # loop's task and take the whole comms layer down with it, on a
+            # drone that is both airborne and no longer being flown.
+            logging.exception(
+                "Failed to interrupt into %s -- falling back to %s", label, fallback_mode
+            )
+            self.command_vehicle_mode(fallback_mode)
+
+    def command_vehicle_mode(self, mode_name: str) -> None:
+        """
+        Put the vehicle into a flight mode directly, bypassing the state machine.
+
+        Last resort for the interrupt paths above. Does nothing if the vehicle
+        isn't connected or is already disarmed — there is nothing to command,
+        and forcing a mode onto a parked vehicle only confuses the next start.
+        """
+        try:
+            vehicle = self.drone.vehicle
+        except RuntimeError:
+            logging.error("Cannot command %s: no vehicle connection", mode_name)
+            return
+
+        if not vehicle.armed:
+            logging.info("Not commanding %s: vehicle is already disarmed", mode_name)
+            return
+
+        if vehicle.mode.name != mode_name:
+            logging.critical("Commanding %s directly (was %s)", mode_name, vehicle.mode.name)
+            vehicle.mode = dronekit.VehicleMode(mode_name)
+
+    def start_emergency_land(self) -> Task:
+        """
+        Take the drone out of whatever it is doing and land it where it stands.
+
+        Returns the task doing the interrupting so callers (and tests) can wait
+        on it. The interdrone loop must not: see `interrupt_into`.
+        """
+        # Imported here rather than at module scope: the state implementations
+        # import this module, so a top-level import is circular.
+        from state_machine.states.impl import EmergencyLand
+
+        return asyncio.ensure_future(
+            self.interrupt_into(
+                lambda: EmergencyLand(self.drone, self.flight_settings, self),
+                label="EMERGENCY_LAND",
+                fallback_mode="LAND",
+            )
+        )
+
+    def start_land(self) -> Task:
+        """
+        Take the drone out of whatever it is doing and return it to launch.
+
+        The orderly counterpart to `start_emergency_land`: the Land state flies
+        home before descending, so it needs the drone to still be flyable.
+        """
+        from state_machine.states.impl import Land
+
+        return asyncio.ensure_future(
+            self.interrupt_into(
+                lambda: Land(self.drone, self.flight_settings, self),
+                label="LAND",
+                fallback_mode="RTL",
+            )
+        )
 
     def read(self) -> Message | None:
         """
@@ -913,11 +1197,21 @@ class Interdrone:
         startTime = time.time()
         try:
             while True:
-                # Check for server messages, draining everything already queued this
-                # tick. Handling only one per iteration caps throughput at ~10 msg/sec
-                # (one per sleep below), which lets bursts of traffic build a backlog
-                # and add latency to every other message type.
-                while (message := self.networking.try_get_server_message(timeout=0.02)) is not None:
+                # Check for server messages, draining what is already queued this tick.
+                # Handling only one per iteration caps throughput at ~10 msg/sec (one per
+                # sleep below), which lets bursts of traffic build a backlog. Draining
+                # without a cap is the opposite failure: under a sustained stream -- three
+                # peers broadcasting POSITION_REPORT during POIF is enough -- this loop
+                # never reaches the sleep, and most cases below contain no await at all, so
+                # nothing else on the event loop gets to run. That includes the background
+                # tasks started from inside this very loop, so a REQUEST_SWARM_STATUS could
+                # be handled here and gather_swarm_status() still never execute, leaving the
+                # app waiting on a response that was never going to be sent.
+                messages_this_tick: int = 0
+                while messages_this_tick < self.max_messages_per_tick and (
+                    message := self.networking.try_get_server_message(timeout=0.02)
+                ) is not None:
+                    messages_this_tick += 1
                     # Adds the new message to its respective message queue
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
@@ -947,7 +1241,22 @@ class Interdrone:
                                     await self.send_arm_ack()
                             # Send ARM_NACK if drone can't arm
                             else:
-                                await self.send_arm_nack()
+                                # Drone 1 is the drone that *collects* NACKs, so it has
+                                # nobody to send one to. send_arm_nack() addresses drone 1
+                                # unconditionally, which the client's send-to-self path
+                                # loops straight back into this branch -- an unthrottled
+                                # ARM/ARM_NACK storm. Log and drop instead.
+                                if self.flight_settings.current_drone_ID == 1:
+                                    logging.warning(
+                                        "Drone 1 cannot arm: no ping response yet from %s. Ignoring ARM.",
+                                        [
+                                            s.drone_id
+                                            for s in self.drone_states
+                                            if s.ping_response is not True
+                                        ],
+                                    )
+                                else:
+                                    await self.send_arm_nack()
 
                         case MessageType.ARM_ACK:
                             # When drone 1 receives an ACK, set others drone arm state to true
@@ -963,9 +1272,18 @@ class Interdrone:
                                     f"No DroneState found for drone_id={message.sender_id}. Something is ary!"
                                 )
                         case MessageType.ARM_NACK:
-                            # Try and resend ARM to drone that sent NACK
-                            print(f"Drone {message.sender_id} failed to arm. Resending message.")
-                            await self.send_ARM(drones_to_send_data=(message.sender_id,))
+                            # A NACK from ourselves can only have come from the client's
+                            # send-to-self path; resending ARM to ourselves would spin.
+                            if message.sender_id == self.flight_settings.current_drone_ID:
+                                logging.warning(
+                                    "Ignoring ARM_NACK from self (drone %s)", message.sender_id
+                                )
+                            else:
+                                # Try and resend ARM to drone that sent NACK
+                                print(
+                                    f"Drone {message.sender_id} failed to arm. Resending message."
+                                )
+                                await self.send_ARM(drones_to_send_data=(message.sender_id,))
                         case MessageType.DISARM:
                             self.cmd_msg = CMD_MSG.DISARM
                             if self.flight_settings.current_drone_ID == 1:
@@ -1199,29 +1517,57 @@ class Interdrone:
                                     )
                                     self.send(reconfirm_waypoints_message_response)
                         case MessageType.EMERGENCY_LAND:
-                            self.cmd_msg = CMD_MSG.EMERGENCY_LAND
-                            if self.flight_settings.current_drone_ID == 1:
-                                emergency_land_message: Message = Message.create(
-                                    id=MessageType.EMERGENCY_LAND,
-                                    drones_to_send_data=tuple(
-                                        self.flight_settings.other_drones_in_mission,
-                                    ),
-                                    sender_id=self.flight_settings.current_drone_ID,
-                                    data={},
+                            # Duplicates are expected, not exceptional: drone 1
+                            # fans the command out, the client loops
+                            # sends-to-self back in, and EMERGENCY_LAND is in
+                            # the resend-on-failure set. Acting on every copy
+                            # would cancel the EmergencyLand state mid-descent
+                            # and re-broadcast on every arrival.
+                            if self.cmd_msg == CMD_MSG.EMERGENCY_LAND:
+                                logging.debug(
+                                    "Ignoring duplicate EMERGENCY_LAND from drone %s",
+                                    message.sender_id,
                                 )
-                                self.send(emergency_land_message)
+                            else:
+                                self.cmd_msg = CMD_MSG.EMERGENCY_LAND
+                                if self.flight_settings.current_drone_ID == 1:
+                                    emergency_land_message: Message = Message.create(
+                                        id=MessageType.EMERGENCY_LAND,
+                                        drones_to_send_data=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        ),
+                                        sender_id=self.flight_settings.current_drone_ID,
+                                        data={},
+                                    )
+                                    self.send(emergency_land_message)
+                                self.start_emergency_land()
                         case MessageType.LAND:
-                            self.cmd_msg = CMD_MSG.LAND
-                            if self.flight_settings.current_drone_ID == 1:
-                                land_message: Message = Message.create(
-                                    id=MessageType.LAND,
-                                    drones_to_send_data=tuple(
-                                        self.flight_settings.other_drones_in_mission,
-                                    ),
-                                    sender_id=self.flight_settings.current_drone_ID,
-                                    data={},
+                            if self.cmd_msg == CMD_MSG.EMERGENCY_LAND:
+                                # An emergency land outranks an orderly one.
+                                # Pulling a descending drone back up into a
+                                # return-to-launch transit is the opposite of
+                                # what was asked for.
+                                logging.warning(
+                                    "Ignoring LAND from drone %s: emergency land in progress",
+                                    message.sender_id,
                                 )
-                                self.send(land_message)
+                            elif self.cmd_msg == CMD_MSG.LAND:
+                                logging.debug(
+                                    "Ignoring duplicate LAND from drone %s", message.sender_id
+                                )
+                            else:
+                                self.cmd_msg = CMD_MSG.LAND
+                                if self.flight_settings.current_drone_ID == 1:
+                                    land_message: Message = Message.create(
+                                        id=MessageType.LAND,
+                                        drones_to_send_data=tuple(
+                                            self.flight_settings.other_drones_in_mission,
+                                        ),
+                                        sender_id=self.flight_settings.current_drone_ID,
+                                        data={},
+                                    )
+                                    self.send(land_message)
+                                self.start_land()
                         case MessageType.SEND_APP_COORDS:
                             # TODO droneState stuff?
                             if self.flight_settings.current_drone_ID == 1:
@@ -1324,7 +1670,12 @@ class Interdrone:
                             if self.flight_settings.current_drone_ID == 1:
                                 # Runs as a background task since it waits on
                                 # SEND_DRONE_STATUS responses and shouldn't block this loop.
-                                asyncio.ensure_future(self.gather_swarm_status())
+                                swarm_status_task: Task = asyncio.ensure_future(
+                                    self.gather_swarm_status()
+                                )
+                                # Nothing awaits this, so an exception escaping it would
+                                # otherwise be invisible -- the app would just spin.
+                                swarm_status_task.add_done_callback(_log_task_failure)
                         case MessageType.REQUEST_DRONE_STATUS:
                             # Respond to whichever drone asked (drone 1) with our cmd message
                             await self.send_drone_status(drones_to_send_data=(message.sender_id,))

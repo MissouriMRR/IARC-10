@@ -21,7 +21,7 @@ from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
-import flight.pathfinding.node_generation as nodeGen
+import flight.pathfinding.nodeField as nodeGen
 from state_machine.flight_settings import SimMode
 from flight.waypoint import (
     COLLISION_RADIUS,
@@ -52,9 +52,11 @@ HOLD_ABORT_S: float = 15.0
 # POIF requirement: 20 ft.
 LEG_ALTITUDE_M: float = 6.0
 
-# Airspeed bounds how far two drones can drift apart in waypoint index during a
-# leg, so flying the 1.31 m legs faster only widens that window.
-LEG_AIRSPEED_M_S: float = 2.0
+# Speed bounds how far two drones can drift apart in waypoint index between
+# lockstep checks, so this is a formation parameter as much as a pace one.
+# Groundspeed, not airspeed: a copter navigates in groundspeed, and DroneKit will
+# happily send either.
+LEG_GROUNDSPEED_M_S: float = 2.0
 
 # The vehicle flies to LEG_TOLERANCE_M whenever it can
 LEG_TOLERANCE_M: float = 0.35
@@ -143,7 +145,7 @@ class Drone:
         For use with airsim.
     return_to_launch(self) -> Awaitable[none]
         Method to move vehicle above home location, then descend vertically.
-    takeoff(self, takeoff_alt: float) -> Awaitable[None]
+    takeoff(self, takeoff_alt: float, margin: float = 1.5) -> Awaitable[None]
         Takeoff vertically to the passed altitude.
     use_settings(self, sim_mode: SimMode) -> None
         Modify the connection settings based on the given simulation mode.
@@ -179,6 +181,8 @@ class Drone:
         self.end_nodes = []
         self.waypoints = []
         self.formation_abort: str | None = None
+        # Last speed sent to the autopilot, so commandPoint can skip re-sending it.
+        self._commanded_groundspeed: float | None = None
         # TODO: add reference to mine and path data classes
 
     @property
@@ -275,7 +279,7 @@ class Drone:
         while not self.vehicle.armed or self.vehicle.mode.name != "GUIDED":
             await asyncio.sleep(0.5)
 
-    async def takeoff(self, takeoff_alt: float) -> None:
+    async def takeoff(self, takeoff_alt: float, margin: float = 1.5) -> None:
         """
         Takeoff vertically to the passed altitude.
 
@@ -283,11 +287,14 @@ class Drone:
         ----------
         takeoff_alt: float
             Altitude to reach in meters
+        margin: float, default 1.5
+            Extra altitude, in meters, to command above `takeoff_alt` so the
+            climb overshoots rather than undershoots. Pass 0 when the drone must
+            end up at a specific altitude — a mission whose legs command
+            `takeoff_alt` spends the first leg descending back out of the margin.
         """
-        logging.info("Using takeoff altitude of %f m", takeoff_alt)
-        self.vehicle.simple_takeoff(
-            takeoff_alt + 1.5
-        )  # Add 5ft for margin of error (Alt is measured in meters by drone kit tho?)
+        logging.info("Using takeoff altitude of %f m (+%f m margin)", takeoff_alt, margin)
+        self.vehicle.simple_takeoff(takeoff_alt + margin)
 
         # Verify vehicle reaches target altitude
         while self.vehicle.location.global_relative_frame.alt < takeoff_alt:
@@ -349,6 +356,9 @@ class Drone:
         # SITL_MAVLINK_PORT when running the SITL without MAVProxy (--no-mavproxy), where
         # 5760 is free and is the right choice.
         port = int(os.environ.get("SITL_MAVLINK_PORT", "5762"))
+        # In AIRSIM mode the SITL is not necessarily on this machine. When the flight code
+        # runs on a Pi and the sim runs on a desktop, this is the sim host's LAN address.
+        host = os.environ.get("SITL_MAVLINK_HOST", "127.0.0.1")
 
         match sim_mode:
             case SimMode.REAL:
@@ -363,8 +373,8 @@ class Drone:
                 port += (
                     self.id - 1
                 ) * 10  # IDs are assigned sequentially starting at 5762 and increasing by 10 for each drone.
-                logging.info(f"Using AIRSIM mode settings with port {port}")
-                self.address = "tcp:127.0.0.1:" + str(port)
+                logging.info(f"Using AIRSIM mode settings with host {host} port {port}")
+                self.address = f"tcp:{host}:{port}"
                 self.baud = None
             case _:
                 raise ValueError("invalid sim mode")
@@ -637,6 +647,39 @@ class Drone:
 
         return closest
 
+    def commandPoint(
+        self,
+        lat: float,
+        long: float,
+        altitude: float,
+        groundspeed: float | None = None,
+        force: bool = False,
+    ) -> None:
+        """Point the vehicle at a location and return immediately.
+
+        `move_to` commands a target and then blocks until the drone arrives,
+        which is the right shape for a leg flown one waypoint at a time and the
+        wrong one for a target that moves every tick. This is the non-blocking
+        half: the caller owns the loop, decides when the target has been passed,
+        and re-commands as often as it likes.
+
+        The speed is only re-sent when it changes. DroneKit turns the keyword
+        into a separate DO_CHANGE_SPEED message, and repeating that at the
+        controller's tick rate is a message per tick spent restating something
+        the autopilot already knows. Pass `force` to re-send it anyway, for the
+        case where the vehicle appears to have missed the command entirely.
+        """
+        if force:
+            self._commanded_groundspeed = None
+        if groundspeed is not None and groundspeed != self._commanded_groundspeed:
+            self._commanded_groundspeed = groundspeed
+            self.vehicle.simple_goto(
+                dronekit.LocationGlobalRelative(lat, long, altitude),
+                groundspeed=groundspeed,
+            )
+            return
+        self.vehicle.simple_goto(dronekit.LocationGlobalRelative(lat, long, altitude))
+
     async def gotoWaypoint(
         self,
         peer_states: Iterable[Any] = (),
@@ -785,7 +828,7 @@ class Drone:
             curWaypoint.lat,
             curWaypoint.long,
             LEG_ALTITUDE_M,
-            airspeed=LEG_AIRSPEED_M_S,
+            groundspeed=LEG_GROUNDSPEED_M_S,
             tolerance=LEG_TOLERANCE_M,
             max_tolerance=LEG_MAX_TOLERANCE_M,
             abort_check=leg_guard,

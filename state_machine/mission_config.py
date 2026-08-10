@@ -1,7 +1,7 @@
 """Gets the mission configuration."""
 
 import json
-from typing import TextIO, TypedDict
+from typing import NotRequired, TextIO, TypedDict
 
 
 class SimModeConfig(TypedDict):
@@ -66,6 +66,10 @@ class MissionConfig(TypedDict):
         Starting GPS coordinate (lat/lon).
     max_flight_height : float
         Maximum flight altitude in metres.
+    carrot_arc_m : float, optional
+        How far ahead of itself a drone aims while flying the POIF circles, in
+        metres of arc. This is the pace control for that demo: larger is faster
+        but cuts the corners harder. Omit to use the built-in default.
     """
 
     run_title: str
@@ -85,6 +89,7 @@ class MissionConfig(TypedDict):
     start_coord: dict[str, float]
     mission_type: str
     max_flight_height: float
+    carrot_arc_m: NotRequired[float]
 
 
 def get_mission_config(config_path: str) -> MissionConfig:

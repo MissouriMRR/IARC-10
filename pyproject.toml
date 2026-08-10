@@ -3,8 +3,9 @@ name = "iarc_10"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13.5"
 dependencies = [
+    "datetime>=6.0",
     "dronekit>=2.9.2",
     "future>=1.0.0",
     "utm>=0.7.0",
@@ -15,5 +16,11 @@ dependencies = [
     "mavproxy>=1.8.74",
     "quads>=1.1.0",
     "scipy>=1.18.0",
+    "pathlib>=1.0.1",
+    "ultralytics>=8.4.14",
     "shapely>=2.1.2",
+    "pandas>=3.0.5",
 ]
+
+[tool.uv.sources]
+dronekit = { url = "https://github.com/MissouriMRR/docs/raw/refs/heads/main/subteams/flight/installation_guide/dronekit-2.9.2-py310-none-any.whl" }

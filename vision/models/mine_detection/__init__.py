@@ -1,0 +1,1 @@
+from vision.mine_detection.detect_mines import detect_mines

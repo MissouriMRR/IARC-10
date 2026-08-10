@@ -57,3 +57,35 @@ def calculate_distance(
         northing_1 - northing_2,
         altitude_m_1 - altitude_m_2,
     )
+
+
+def horizontal_distance(
+    lat_deg_1: float,
+    lon_deg_1: float,
+    lat_deg_2: float,
+    lon_deg_2: float,
+) -> float:
+    """
+    Calculate the ground distance, in meters, between two coordinates.
+
+    Same as `calculate_distance` with the altitude term dropped. Use this when
+    altitude is held by a separate loop and folding its error into the distance
+    would make a horizontal tolerance unreachable.
+
+    Parameters
+    ----------
+    lat_deg_1 : float
+        The latitude, in degrees, of the first coordinate.
+    lon_deg_1 : float
+        The longitude, in degrees, of the first coordinate.
+    lat_deg_2 : float
+        The latitude, in degrees, of the second coordinate.
+    lon_deg_2 : float
+        The longitude, in degrees, of the second coordinate.
+
+    Returns
+    -------
+    float
+        The ground distance between the two coordinates.
+    """
+    return calculate_distance(lat_deg_1, lon_deg_1, 0.0, lat_deg_2, lon_deg_2, 0.0)

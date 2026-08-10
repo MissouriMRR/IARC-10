@@ -12,6 +12,11 @@ from state_machine.states import Start
 from state_machine.flight_settings import FlightSettings, SimMode
 from state_machine.interdrone import Interdrone
 
+# How long run_manager waits, after the state machine goes idle, for a
+# cancel-and-restart to bring it back before treating the flight as finished.
+# A restart takes a couple of event loop passes; this is generous.
+RESTART_GRACE_S: float = 2.0
+
 
 class FlightManager:
     """
@@ -64,14 +69,13 @@ class FlightManager:
         interdrone_state: Interdrone = Interdrone(flight_settings, self.drone)
 
         logging.info("Starting processes")
-        state_machine_task: asyncio.Task[None] = asyncio.ensure_future(
-            StateMachine(
-                Start(self.drone, flight_settings, interdrone_state),
-                self.drone,
-                flight_settings,
-                interdrone_state,
-            ).run()
+        state_machine: StateMachine = StateMachine(
+            Start(self.drone, flight_settings, interdrone_state),
+            self.drone,
+            flight_settings,
+            interdrone_state,
         )
+        state_machine_task: asyncio.Task[None] = asyncio.ensure_future(state_machine.run())
         interdrone_state_task: asyncio.Task[None] = asyncio.ensure_future(
             interdrone_state.start_interdrone()
         )
@@ -79,8 +83,19 @@ class FlightManager:
         asyncio.ensure_future(self.kill_switch(state_machine_task))
 
         try:
-            while not state_machine_task.done():
-                await asyncio.sleep(0.25)
+            while True:
+                if state_machine.run_task is not None or not state_machine_task.done():
+                    await asyncio.sleep(0.25)
+                    continue
+
+                # The original task being done no longer means the flight is
+                # over: an EMERGENCY_LAND cancels that task and restarts the
+                # machine into a new one. Exiting on the first task to finish
+                # would tear the process down while the drone is still
+                # descending, so give a restart a moment to take hold.
+                await asyncio.sleep(RESTART_GRACE_S)
+                if state_machine.run_task is None and state_machine_task.done():
+                    break
 
             logging.info("State machine task has completed. Exiting...")
             return
@@ -89,6 +104,8 @@ class FlightManager:
                 "Keyboard interrupt detected. Killing state machine and landing drone."
             )
             state_machine_task.cancel()
+            if state_machine.run_task is not None:
+                state_machine.run_task.cancel()
             await self._graceful_exit()
 
     async def kill_switch(self, state_machine_process: asyncio.Task[None]) -> None:

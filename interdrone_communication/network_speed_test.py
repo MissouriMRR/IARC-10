@@ -59,10 +59,7 @@ async def main():
         try:
             # Check for client responses
             server_msg = networking.try_get_server_message(timeout=0.02)
-            if (
-                server_msg is not None
-                and server_msg.id == MessageType.SPEED_TEST_RESPONSE
-            ):
+            if server_msg is not None and server_msg.id == MessageType.SPEED_TEST_RESPONSE:
                 # Print speed test results
                 try:  # Append client Message to dict list
                     target_id: int = server_msg.data["target_id"]
@@ -119,9 +116,7 @@ async def main():
             break
 
 
-def log_data(
-    speed_results: list[Message], flight_settings: FlightSettings, test_number: int
-):
+def log_data(speed_results: list[Message], flight_settings: FlightSettings, test_number: int):
     # Print results summary
     # Sanitize directory name (remove >) and create path structure
     folder_name = f"logs/Speed_Test/From_{flight_settings.current_drone_ID}_To_{speed_results[0].data['target_id']}"
@@ -142,9 +137,7 @@ def log_data(
         log_print("=" * 70)
 
         if speed_results:
-            upload_throughputs = [
-                float(r.data["upload_throughput_kbps"]) for r in speed_results
-            ]
+            upload_throughputs = [float(r.data["upload_throughput_kbps"]) for r in speed_results]
             upload_rttms = [float(r.data["upload_rtt_ms"]) for r in speed_results]
             download_throughputs = [
                 float(r.data["download_throughput_kbps"]) for r in speed_results

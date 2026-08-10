@@ -11,9 +11,10 @@ from state_machine.state_tracker import (
 )
 from state_machine.states.land import Land
 from state_machine.states.state import State
+from state_machine.drone import LEG_ALTITUDE_M
 from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
-from state_machine.interdrone import CMD_MSG, get_input
+from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
 from state_machine.flight_settings import Side
 from flight.pathfinder import Pathfinder
@@ -47,11 +48,30 @@ async def run(self: Takeoff) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Takeoff state running")
         action_type = ""
+        # Commands from the app arrive as cmd_msg, commands from the operator as
+        # typed lines. In prompted mode both are live at once, so the prompt has
+        # to be abandonable -- see get_input_or.
+        app_commands: tuple[CMD_MSG, ...] = (CMD_MSG.TAKEOFF, CMD_MSG.DEMO, CMD_MSG.MISSION)
+
+        def commanded_by_app() -> bool:
+            return self.interdrone.get_cmd_msg() in app_commands
+
         while True:
-            print("waiting")
-            print(f"cmd msg: {self.interdrone.get_cmd_msg()}")
+            logging.debug("Takeoff waiting -- cmd msg: %s", self.interdrone.get_cmd_msg())
             if self.flight_settings.mission_type == "Prompted":
-                action_type = await get_input("Enter action command (takeoff, demo, or mission): ")
+                typed: str | None = await get_input_or(
+                    "Enter action command (takeoff, demo, or mission): ", commanded_by_app
+                )
+                action_type = typed.strip() if typed is not None else ""
+                # Mirror a console command into cmd_msg so the rest of the swarm
+                # logic and the app's status view agree on what this drone is doing.
+                match action_type.lower():
+                    case "demo":
+                        self.interdrone.set_cmd_msg(CMD_MSG.DEMO)
+                    case "mission":
+                        self.interdrone.set_cmd_msg(CMD_MSG.MISSION)
+                    case "takeoff":
+                        self.interdrone.set_cmd_msg(CMD_MSG.TAKEOFF)
 
             if self.interdrone.get_cmd_msg() == CMD_MSG.DEMO or action_type.lower() == "demo":
                 if self.drone.id == 1:
@@ -66,7 +86,10 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
                 else:
                     await self.interdrone.send_start_demo(tuple([1]))
-                await self.drone.takeoff(5)  # Fix altitude later lol
+                # Take off to exactly the altitude the POIF legs command, with no
+                # overshoot margin: every leg holds LEG_ALTITUDE_M, so climbing
+                # past it just means descending back down on the first leg.
+                await self.drone.takeoff(LEG_ALTITUDE_M, margin=0.0)
                 await asyncio.sleep(5)
 
                 return POIF(self.drone, self.flight_settings, self.interdrone)
@@ -102,7 +125,7 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
 
                 else:
-                    await self.interdrone.send_start_takeoff(tuple([1]))
+                    await self.interdrone.send_takeoff_ack()
                 await self.drone.takeoff(5)  # Fix altitude later lol
                 await asyncio.sleep(5)
 

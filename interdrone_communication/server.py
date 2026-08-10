@@ -163,7 +163,7 @@ class Server:
             print("Client timeout - no data received")
         except asyncio.IncompleteReadError:
             print("Client disconnected before sending complete message")
-        except ConnectionResetError, BrokenPipeError:
+        except (ConnectionResetError, BrokenPipeError):
             # TODO verify this works on the drones
             # Normal when a drone is powered off/killed while holding a connection open.
             # On Windows this surfaces as ConnectionResetError with [WinError 64].
@@ -177,7 +177,7 @@ class Server:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except OSError, asyncio.TimeoutError:
+            except (OSError, asyncio.TimeoutError):
                 # Closing a socket whose peer already vanished raises here; nothing left to do.
                 pass
 

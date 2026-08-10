@@ -63,9 +63,7 @@ def parse_batman_location(value: str) -> int:
         ) from exc
 
     if parsed not in (1, 2):
-        raise argparse.ArgumentTypeError(
-            "Expected 1 (pi network card) or 2 (wifi adapter)"
-        )
+        raise argparse.ArgumentTypeError("Expected 1 (pi network card) or 2 (wifi adapter)")
     return parsed
 
 
@@ -131,17 +129,13 @@ async def main():
     if args.targets is not None:
         drones_to_send_data = args.targets
         if args.numDrones is not None and len(drones_to_send_data) != args.numDrones:
-            parser.error(
-                "--numDrones must match the number of values passed to --targets"
-            )
+            parser.error("--numDrones must match the number of values passed to --targets")
         num_drones = len(drones_to_send_data)
     elif args.numDrones is not None:
         num_drones = args.numDrones
         drones_to_send_data = []
         for i in range(num_drones):
-            drone_id_input = int(
-                input(f"Input ID of drone {i + 1} you are talking to in test: ")
-            )
+            drone_id_input = int(input(f"Input ID of drone {i + 1} you are talking to in test: "))
             drones_to_send_data.append(drone_id_input)
     else:
         drones_to_send_data = []
@@ -155,9 +149,7 @@ async def main():
         batman_location = args.batmanLocation
     else:
         batman_location = parse_batman_location(
-            input(
-                "Is batman running on the pi's network card or the wifi adapter (1 or 2): "
-            )
+            input("Is batman running on the pi's network card or the wifi adapter (1 or 2): ")
         )
 
     # Setup JSON logging file
@@ -167,9 +159,7 @@ async def main():
     else:
         batman_location_str = "Wifi Adapter"
     log_title = f"Range Test from {drone_id} to {drones_to_send_data} on {batman_location_str}. GetPerf: {get_perf}, UWB: {uwb_enabled} "
-    file_name = (
-        f"RT_{drone_id}_{str(drones_to_send_data)}_Perf({get_perf})_UWB({uwb_enabled}))"
-    )
+    file_name = f"RT_{drone_id}_{str(drones_to_send_data)}_Perf({get_perf})_UWB({uwb_enabled}))"
 
     # Start networking thread
     networking_thread_obj: NetworkingThread = NetworkingThread()
@@ -189,9 +179,7 @@ async def main():
 
     speed_test_message: Message = Message.create(
         id=MessageType.SPEED_TEST_REQUEST,
-        drones_to_send_data=tuple(
-            drones_to_send_data
-        ),  # Modify this for selective speed test
+        drones_to_send_data=tuple(drones_to_send_data),  # Modify this for selective speed test
         sender_id=drone_id,
         data={
             "initial_upload_time": 0.0,  # Set when queued to send
@@ -272,9 +260,7 @@ async def main():
                 # Wait for logging tasks to finish
                 while len(background_tasks) != 0:
                     await asyncio.sleep(0.05)
-                _ = (
-                    networking.empty_queues()
-                )  # flush out old data to ensure next test is clean
+                _ = networking.empty_queues()  # flush out old data to ensure next test is clean
                 if not continuous_testing:
                     print("Individual test finished and data has been logged.")
                     _ = input(
@@ -328,9 +314,7 @@ def log_data(
                 "memoryUsage": [],
             },
         }  # Leave unused keys blank and filter out later
-        json_path.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # safe if parent folder already exists
+        json_path.parent.mkdir(parents=True, exist_ok=True)  # safe if parent folder already exists
         json_path.write_text(json.dumps(initial_data, indent=2), encoding="utf-8")
 
     # If json file does not exist, set it up then append
@@ -344,13 +328,9 @@ def log_data(
 
     if speed_results:
         target_drone = speed_results[0].data["target_id"]
-        upload_throughputs = [
-            float(r.data["upload_throughput_kbps"]) for r in speed_results
-        ]
+        upload_throughputs = [float(r.data["upload_throughput_kbps"]) for r in speed_results]
         upload_rttms = [float(r.data["upload_rtt_ms"]) for r in speed_results]
-        download_throughputs = [
-            float(r.data["download_throughput_kbps"]) for r in speed_results
-        ]
+        download_throughputs = [float(r.data["download_throughput_kbps"]) for r in speed_results]
         download_rtt_ms = [float(r.data["download_rtt_ms"]) for r in speed_results]
         for i in range(len(download_rtt_ms)):
             if download_rtt_ms[i] > 1:
@@ -386,9 +366,7 @@ def log_data(
         memory_usage = 0
         if get_perf:
             try:
-                result = subprocess.run(
-                    ["free", "-m"], capture_output=True, text=True, check=True
-                )
+                result = subprocess.run(["free", "-m"], capture_output=True, text=True, check=True)
 
                 for line in result.stdout.splitlines():
                     if line.startswith("Mem:"):
@@ -408,7 +386,9 @@ def log_data(
                     if line.startswith("%Cpu(s):"):
                         parts = line.split()
                         cpu_load = parts[1]
-            except Exception as e:  # Exceptions are likely due to code running powershell and not a linux based cli
+            except (
+                Exception
+            ) as e:  # Exceptions are likely due to code running powershell and not a linux based cli
                 print(e)
 
         # log_print(f"Target: {speed_results[0].data['target']}")

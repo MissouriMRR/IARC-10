@@ -2,12 +2,18 @@
 
 import asyncio
 import logging
+import time
 from asyncio import Task
 
 from state_machine.drone import Drone
 from state_machine.flight_settings import FlightSettings
 from state_machine.interdrone import Interdrone
 from state_machine.states import State
+
+# How long `run()` will wait for a previous run to finish tearing down before
+# giving up on starting a new one. Only ever nonzero on a cancel-and-restart,
+# where the wait is a couple of event loop passes.
+RESTART_WAIT_S: float = 5.0
 
 
 class StateMachine:
@@ -79,9 +85,29 @@ class StateMachine:
         initial_state : State | None
             If provided, sets the state machine's current state. This must
             share the same drone and flight settings as this state machine.
+
+        Raises
+        ------
+        RuntimeError
+            If a previous run is still running after RESTART_WAIT_S.
         """
         if self.run_task is not None:
-            return
+            # A previous run is usually just finishing its teardown. This is the
+            # normal case on a cancel-and-restart: cancel_state() awaits the
+            # cancelled inner task, but the run() that owns it only clears
+            # run_task on its own next pass through the event loop. Returning
+            # early here instead of waiting drops the restart with no error at
+            # all -- and the restart that matters most is the one landing the
+            # drone.
+            deadline: float = time.monotonic() + RESTART_WAIT_S
+            while self.run_task is not None and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+
+            if self.run_task is not None:
+                raise RuntimeError(
+                    f"cannot start state machine: a previous run is still active after"
+                    f" {RESTART_WAIT_S:.0f}s"
+                )
 
         if initial_state is not None:
             self.current_state = initial_state

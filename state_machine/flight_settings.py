@@ -149,6 +149,7 @@ class FlightSettings:
         mission_type: str = "",
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
+        carrot_arc_m: float | None = None,
     ) -> None:
         """
         Default Constructor for flight settings
@@ -165,6 +166,9 @@ class FlightSettings:
             Whether the drone is real, running in the ardupilot sim, or running in airsim.
         mission_data_path : str, default "flight/data/golf_data.json"
             The path to the JSON file containing the boundary data.
+        carrot_arc_m : float | None, default None
+            How far ahead of itself a drone aims while flying the POIF circles,
+            in metres of arc, or None to use that state's built-in default.
         """
         self.__simple_takeoff: bool = simple_takeoff
         self.__run_title: str = title
@@ -185,6 +189,7 @@ class FlightSettings:
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
         self.__mission_type: str = mission_type
+        self.__carrot_arc_m: float | None = carrot_arc_m
         self.__yolo_status: Event = Event()
 
         self.__start_side: Side = Side.START
@@ -358,8 +363,24 @@ class FlightSettings:
             mission_type=config["mission_type"],
             sim_mode=sim_mode,
             mission_data_path=sim_mode_config["mission_data_path"],
+            # Optional: configs written before the POIF pursuit controller
+            # existed do not have it, and the built-in default is correct.
+            carrot_arc_m=config.get("carrot_arc_m"),
         )
         return config_settings
+
+    @property
+    def carrot_arc_m(self) -> float | None:
+        """
+        How far ahead of itself a drone aims while flying the POIF circles, in
+        metres of arc, or None to use that state's built-in default.
+
+        Returns
+        -------
+        float | None
+            The configured carrot arc length, or None if unset.
+        """
+        return self.__carrot_arc_m
 
     @property
     def mission_type(self) -> str:
