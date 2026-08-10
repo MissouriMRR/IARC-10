@@ -2,6 +2,7 @@
 from asyncio.queues import Queue
 from asyncio import StreamReader, StreamWriter
 from dataclasses import dataclass
+import logging
 import time
 import asyncio
 
@@ -236,10 +237,26 @@ class Client:
                         )
                     )
                 case _ if message.id in messages_that_need_resend:
-                    print(
-                        f"Failed to send message. message_id = {message.id}. drones_to_send_data = {message.drones_to_send_data}"
+                    logging.debug(
+                        "Failed to send %s to %s; requeueing",
+                        message.id.name,
+                        message.drones_to_send_data,
                     )
                     await self.client_in_data.put(message)
+                case _:
+                    # Everything else is dropped here. That is fine for a stream like
+                    # POSITION_REPORT, but an app-bound reply is the only thing the app
+                    # is waiting on, and dropping it silently is indistinguishable from
+                    # the drone never having been asked. Say so.
+                    if message.drones_to_send_data == (0,):
+                        logging.warning(
+                            "Could not deliver %s to the app at %s:%s -- dropping it. "
+                            "Check the app's reported IP/port (sent via APP_CONFIG) is "
+                            "reachable from this drone.",
+                            message.id.name,
+                            server_ip,
+                            server_port,
+                        )
             if self.range_test_enabled:
                 print(
                     f"Timeout error sending data from drone #{self.flight_settings.current_drone_ID} to #{server_port - 5000}"

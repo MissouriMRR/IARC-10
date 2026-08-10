@@ -114,6 +114,21 @@ def _log_restart_failure(task: Task) -> None:
         logging.critical("State machine restart failed", exc_info=exception)
 
 
+def _log_task_failure(task: Task) -> None:
+    """
+    Surface an exception from any fire-and-forget task.
+
+    A task nobody awaits swallows its exception until the interpreter exits, which
+    on a long-running drone means never. Attach this to every `ensure_future` whose
+    result is dropped.
+    """
+    if task.cancelled():
+        return
+    exception = task.exception()
+    if exception is not None:
+        logging.error("Background task %s failed", task.get_name(), exc_info=exception)
+
+
 class CMD_MSG(Enum):
     NONE = 0
     ARM = 1
@@ -167,6 +182,15 @@ class Interdrone:
 
         self.drone_states: list[DroneState] = drone_states
         self.cmd_msg: CMD_MSG = CMD_MSG.NONE
+
+        # Most of the interdrone loop's message handling has no await in it, so the
+        # loop only yields when it stops draining. This bounds how long it can hold
+        # the event loop before the sleep at the bottom of the loop runs.
+        self.max_messages_per_tick: int = 25
+        # Set while a gather_swarm_status() task is in flight. Two of them share one
+        # SEND_DRONE_STATUS queue, so each would eat responses meant for the other and
+        # report drones as unavailable that had in fact answered.
+        self._swarm_status_in_progress: bool = False
 
         # Store messages that each function may need
         self.interdrone_messages = {
@@ -838,7 +862,38 @@ class Interdrone:
         reported with drone_available = False.
         Run as a background task (see REQUEST_SWARM_STATUS case) since it can block for
         up to drone_status_timeout_sec waiting on responses.
+
+        The app has no other way to learn this failed: it shows a spinner from the moment
+        it sends the request until a SEND_SWARM_STATUS arrives. So every path out of here
+        sends one, including the error path -- a status saying every drone is unavailable
+        is far more useful than a spinner that never stops.
         """
+        if self._swarm_status_in_progress:
+            logging.warning("Swarm status already being gathered; ignoring duplicate request")
+            return
+
+        self._swarm_status_in_progress = True
+        try:
+            await self._gather_swarm_status()
+        except Exception:  # pylint: disable=broad-except
+            # Nothing awaits this task, so without this the app just waits forever and
+            # the only trace is an "exception was never retrieved" at interpreter exit.
+            logging.exception("Failed to gather swarm status; reporting the swarm as unavailable")
+            self._send_swarm_status(
+                [
+                    {
+                        "drone_id": drone_id,
+                        "drone_available": False,
+                        "drone_cmd_msg": CMD_MSG.NONE.value,
+                    }
+                    for drone_id in self.flight_settings.drones_in_mission
+                ]
+            )
+        finally:
+            self._swarm_status_in_progress = False
+
+    async def _gather_swarm_status(self) -> None:
+        """Body of gather_swarm_status(); see there for what this does and why."""
         drone_status_timeout_sec = 2.0
 
         other_drone_ids: tuple[int, ...] = tuple(self.flight_settings.other_drones_in_mission)
@@ -871,7 +926,13 @@ class Interdrone:
                 try:
                     response: Message = status_queue.get_nowait()
                     if response.sender_id in cmd_msg_by_id:
-                        cmd_msg_by_id[response.sender_id] = response.data["drone_cmd_msg"]
+                        # A response that failed schema validation arrives with data
+                        # emptied. Treating that as "answered, cmd message unknown" keeps
+                        # the drone marked available (it clearly is -- it replied) instead
+                        # of raising KeyError and killing this whole poll.
+                        cmd_msg_by_id[response.sender_id] = response.data.get(
+                            "drone_cmd_msg", CMD_MSG.NONE.value
+                        )
                 except queue.Empty:
                     await asyncio.sleep(0.05)
 
@@ -895,7 +956,17 @@ class Interdrone:
                 }
             )
 
-        print(drone_status)
+        logging.info("Swarm status: %s", drone_status)
+        self._send_swarm_status(drone_status)
+
+        return
+
+    def _send_swarm_status(self, drone_status: list[dict[str, Any]]) -> None:
+        """
+        Message ID = 426
+        Report the swarm's status to the app. Split out from gather_swarm_status() so
+        its error path can answer the app too rather than leaving it waiting.
+        """
         swarm_status_message: Message = Message.create(
             id=MessageType.SEND_SWARM_STATUS,
             drones_to_send_data=(0,),  # 0 addresses the app
@@ -906,8 +977,6 @@ class Interdrone:
             },
         )
         self.send(swarm_status_message)
-
-        return
 
     async def cancel_state(self) -> None:
         """
@@ -1128,11 +1197,21 @@ class Interdrone:
         startTime = time.time()
         try:
             while True:
-                # Check for server messages, draining everything already queued this
-                # tick. Handling only one per iteration caps throughput at ~10 msg/sec
-                # (one per sleep below), which lets bursts of traffic build a backlog
-                # and add latency to every other message type.
-                while (message := self.networking.try_get_server_message(timeout=0.02)) is not None:
+                # Check for server messages, draining what is already queued this tick.
+                # Handling only one per iteration caps throughput at ~10 msg/sec (one per
+                # sleep below), which lets bursts of traffic build a backlog. Draining
+                # without a cap is the opposite failure: under a sustained stream -- three
+                # peers broadcasting POSITION_REPORT during POIF is enough -- this loop
+                # never reaches the sleep, and most cases below contain no await at all, so
+                # nothing else on the event loop gets to run. That includes the background
+                # tasks started from inside this very loop, so a REQUEST_SWARM_STATUS could
+                # be handled here and gather_swarm_status() still never execute, leaving the
+                # app waiting on a response that was never going to be sent.
+                messages_this_tick: int = 0
+                while messages_this_tick < self.max_messages_per_tick and (
+                    message := self.networking.try_get_server_message(timeout=0.02)
+                ) is not None:
+                    messages_this_tick += 1
                     # Adds the new message to its respective message queue
                     self.interdrone_messages.setdefault(message.id, queue.Queue()).put(
                         message
@@ -1591,7 +1670,12 @@ class Interdrone:
                             if self.flight_settings.current_drone_ID == 1:
                                 # Runs as a background task since it waits on
                                 # SEND_DRONE_STATUS responses and shouldn't block this loop.
-                                asyncio.ensure_future(self.gather_swarm_status())
+                                swarm_status_task: Task = asyncio.ensure_future(
+                                    self.gather_swarm_status()
+                                )
+                                # Nothing awaits this, so an exception escaping it would
+                                # otherwise be invisible -- the app would just spin.
+                                swarm_status_task.add_done_callback(_log_task_failure)
                         case MessageType.REQUEST_DRONE_STATUS:
                             # Respond to whichever drone asked (drone 1) with our cmd message
                             await self.send_drone_status(drones_to_send_data=(message.sender_id,))
