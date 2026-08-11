@@ -5,6 +5,8 @@ After=network.target
 [Service]
 # MAVProxy owns the FC serial port now, so the wait-for-serial guard belongs here rather
 # than in drone-flight.service. If it never appears, TimeoutStartSec kills us and we retry.
+# MAKE SURE THIS AND DRONE-FLIGHT DON't RUN AT THE SAME TIME
+WorkingDirectory=/home/mrrdt-1/mav
 ExecStartPre=/bin/bash -c 'until [ -e /dev/serial0 ]; do sleep 1; done'
 ExecStart=/usr/local/bin/mavproxy_start.sh
 Restart=on-failure

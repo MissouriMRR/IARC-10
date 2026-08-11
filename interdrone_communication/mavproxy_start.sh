@@ -17,6 +17,7 @@ echo "[INFO] GS:      $GS_IP:$GS_PORT"
 echo "[INFO] Local:   127.0.0.1:$LOCAL_PORT"
 
 # Check if MAVProxy is installed
+cd /home/mrrdt-1/mav
 if ! command -v mavproxy.py &> /dev/null; then
     echo "[ERROR] mavproxy.py not found. Install with: pip install MAVProxy"
     exit 1
