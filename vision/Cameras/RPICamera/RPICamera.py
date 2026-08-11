@@ -12,14 +12,26 @@ from picamera2.devices.imx500 import NetworkIntrinsics
 
 from vision.common.detection import Detection
 from vision.common.image import Image
+from vision.common.drone_coordinates import GimbalPose
 from Cameras.baseCamera import BaseCamera
 
 
 class RPICamera(BaseCamera):
+    piCam=None #Singleton Access
     def __init__(self, visionConfig):
-        super().__init__()
+        mount_rotation_deg = visionConfig.get("cameraMountRotationDeg", {})
+        super().__init__(
+            h_fov_deg=visionConfig.get("hFovDeg", 0.0),
+            v_fov_deg=visionConfig.get("vFovDeg", 0.0),
+            offset=tuple(visionConfig.get("cameraOffsetM", (0.0, 0.0, 0.0))),
+            mount_rotation=GimbalPose(
+                yaw=mount_rotation_deg.get("yaw", 0.0),
+                pitch=mount_rotation_deg.get("pitch", 0.0),
+                roll=mount_rotation_deg.get("roll", 0.0),
+            ),
+        )
         self.config = visionConfig
-
+        RPICamera.piCam = self
         self.input_h = -1
         self.input_w = -1
         self.labels = []

@@ -195,6 +195,7 @@ class FlightSettings:
         self.__start_side: Side = Side.START
         self.__role: Role = Role.SOLOGAMBLER
         self.__paired_drone: int | None = None
+        self.max_flight_time= 60*7
 
         if len(self.__drones_in_mission) == 2:
             # drone1/drone2 form a single GAMBLER/ASSISTANT pair, mirroring

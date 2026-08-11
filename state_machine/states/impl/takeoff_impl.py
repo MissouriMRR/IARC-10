@@ -1,6 +1,7 @@
 """Implements the behavior of the Takeoff state."""
 
 import asyncio
+import json
 import logging
 
 from flight.extract_gps import extract_gps
@@ -15,9 +16,16 @@ from state_machine.drone import LEG_ALTITUDE_M
 from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
-from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
+from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.flight_settings import Role, Side
 from flight.pathfinder import Pathfinder
+from time import time
+
+from vision.Cameras.RPICamera.RPICamera import RPICamera
+
+# vision/config.json's own keys (hFovDeg, cameraOffsetM, modelPath, ...) --
+# see RPICamera.__init__/initialize_camera for what each is read for.
+VISION_CONFIG_PATH = "./vision/config.json"
 
 
 async def run(self: Takeoff) -> State:
@@ -90,12 +98,23 @@ async def run(self: Takeoff) -> State:
                 # overshoot margin: every leg holds LEG_ALTITUDE_M, so climbing
                 # past it just means descending back down on the first leg.
                 await self.drone.takeoff(LEG_ALTITUDE_M, margin=0.0)
+                self.drone.startTime=time()
                 await asyncio.sleep(5)
 
                 return POIF(self.drone, self.flight_settings, self.interdrone)
 
             if self.interdrone.get_cmd_msg() == CMD_MSG.MISSION or action_type.lower() == "mission":
                 configureField(self)
+                # RPICamera.__init__ reads its config as a dict, not a path --
+                # parse the file first. initialize_camera() actually opens the
+                # camera/model (RPICamera.piCam is a class-level singleton, but
+                # scan_impl.py reads it off self.drone.camera, set here, so the
+                # camera survives even if something else touches the singleton).
+                with open(VISION_CONFIG_PATH) as vision_config_file:
+                    vision_config = json.load(vision_config_file)
+                camera = RPICamera(vision_config)
+                camera.initialize_camera()
+                self.drone.camera = camera
                 if self.drone.id == 1:
 
                     await self.interdrone.send_start_mission(
@@ -110,9 +129,16 @@ async def run(self: Takeoff) -> State:
                 else:
                     await self.interdrone.send_start_mission(tuple([1]))
                 await self.drone.takeoff(5)  # Fix altitude later lol
+                self.drone.startTime = time()
                 await asyncio.sleep(5)
 
-                return InitialCalcScanPath(self.drone, self.flight_settings, self.interdrone)
+                # CalcScanPath's own _maze_started check calls
+                # start_maze_navigation() the first time it sees a fresh
+                # Pathfinder -- no separate "initial" state is needed, and
+                # InitialCalcScanPath's old logic predates Pathfinder
+                # entirely (raw Graph/nodeGraph slicing by drone ID, none
+                # of which the maze-style A/B/C design still uses).
+                return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
             if self.interdrone.get_cmd_msg() == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
                 if self.drone.id == 1:
 

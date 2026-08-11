@@ -42,7 +42,7 @@ async def run(self: Recall) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("Recall state running")
 
-        self.drone.recall()
+        await self.drone.recall()
 
         return Land(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
