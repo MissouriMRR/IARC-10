@@ -1,7 +1,7 @@
 [Unit]
 Description=IARC-10 Drone Flight
-After=batman-mesh.service
-Requires=batman-mesh.service
+After=batman-mesh.service mavproxy-forward.service
+Requires=batman-mesh.service mavproxy-forward.service
 
 [Service]
 Type=simple
