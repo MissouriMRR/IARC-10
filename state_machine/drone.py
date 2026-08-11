@@ -6,6 +6,7 @@ import collections.abc
 import json
 import logging
 import os
+import sys
 import time
 from typing import Any, Awaitable, Callable, Iterable, NamedTuple
 
@@ -37,6 +38,14 @@ from flight.pathfinding.utils.goto import FlightInterrupted, move_to
 # Separate logger so collision avoidance can be tuned on its own:
 #   logging.getLogger("collision").setLevel(logging.DEBUG)
 collision_log = logging.getLogger("collision")
+
+# Off by default so a real-mode run never blocks on a console that isn't there.
+WAIT_FOR_USER_INPUT: bool = os.environ.get("WAIT_FOR_USER_INPUT", "0") not in (
+    "0",
+    "false",
+    "False",
+    "",
+)
 
 HOLD_POLL_INTERVAL_S: float = 0.1  # how often a held drone re-checks the leg
 HOLD_HEARTBEAT_S: float = 5.0  # how often a continuing hold is logged
@@ -301,7 +310,15 @@ class Drone:
         logging.info("Drone discovered!")
         self._vehicle.add_message_listener("DISTANCE_SENSOR", self._on_distance_sensor)
 
-        if self._sim_mode is not SimMode.REAL:
+        if self._sim_mode is not SimMode.REAL or not WAIT_FOR_USER_INPUT:
+            return
+
+        # Opt-in only: the flight code normally starts as a systemd service with
+        # no console attached, so a blocking prompt would hang the boot. Set
+        # WAIT_FOR_USER_INPUT=1 for a hand-launched run where you want the
+        # pre-arm messages on screen before the drone does anything.
+        if not sys.stdin.isatty():
+            logging.warning("WAIT_FOR_USER_INPUT is set but stdin is not a terminal; continuing.")
             return
 
         message_1: str = "Waiting for user input to continue... "
