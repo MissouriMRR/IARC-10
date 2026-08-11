@@ -5,8 +5,9 @@ Requires=batman-mesh.service mavproxy-forward.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/mrrdt-1/IARC-10 # Make sure to edit this
-ExecStartPre=/bin/bash -c 'until [ -e /dev/ttyS0 ]; do sleep 1; done'
+# Edit the repo path and the -i drone index per Pi. systemd does not strip inline
+# comments, so keep them on their own lines -- a trailing comment becomes part of the value.
+WorkingDirectory=/home/mrrdt-1/IARC-10
 ExecStart=/usr/local/bin/uv run run.py -i 1
 Restart=on-failure
 RestartSec=15
