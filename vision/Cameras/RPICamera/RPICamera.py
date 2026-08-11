@@ -13,7 +13,7 @@ from picamera2.devices.imx500 import NetworkIntrinsics
 from vision.common.detection import Detection
 from vision.common.image import Image
 from vision.common.drone_coordinates import GimbalPose
-from Cameras.baseCamera import BaseCamera
+from vision.Cameras.baseCamera import BaseCamera
 
 
 class RPICamera(BaseCamera):

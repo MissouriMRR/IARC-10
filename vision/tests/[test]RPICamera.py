@@ -16,7 +16,7 @@ for _p in (_IARC_DIR, _VISION_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from Cameras.RPICamera.RPICamera import RPICamera  # noqa: E402
+from vision.Cameras.RPICamera.RPICamera import RPICamera  # noqa: E402
 
 CONFIG_PATH = os.path.join(_TESTS_DIR, "mine_detection_config.json")
 

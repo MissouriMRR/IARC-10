@@ -21,10 +21,14 @@ from state_machine.flight_settings import Role, Side
 from flight.pathfinder import Pathfinder
 from time import time
 
-from vision.Cameras.RPICamera.RPICamera import RPICamera
+# RPICamera is imported inside the MISSION branch below, not here: importing it
+# pulls in picamera2, which only exists on a Pi with the camera stack installed.
+# At module level that would make run.py unimportable on a dev laptop or on any
+# sim node without a camera, even for flights that never open one.
 
 # vision/config.json's own keys (hFovDeg, cameraOffsetM, modelPath, ...) --
-# see RPICamera.__init__/initialize_camera for what each is read for.
+# see RPICamera.__init__/initialize_camera for what each is read for. Paths in
+# it are relative to the repo root, since that is the service WorkingDirectory.
 VISION_CONFIG_PATH = "./vision/config.json"
 
 
@@ -110,6 +114,8 @@ async def run(self: Takeoff) -> State:
                 # camera/model (RPICamera.piCam is a class-level singleton, but
                 # scan_impl.py reads it off self.drone.camera, set here, so the
                 # camera survives even if something else touches the singleton).
+                from vision.Cameras.RPICamera.RPICamera import RPICamera
+
                 with open(VISION_CONFIG_PATH) as vision_config_file:
                     vision_config = json.load(vision_config_file)
                 camera = RPICamera(vision_config)
