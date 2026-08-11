@@ -1583,8 +1583,20 @@ class Interdrone:
                             # photo in message.data["photos"], call
                             # accept_image_corner_coord for the image's corner
                             # coords (coverage), then add_discovered_mine for
-                            # any mine coordinates reported in it. Left
-                            # deliberately unimplemented for now.
+                            # any mine coordinates reported in it. If a mine
+                            # IS reported, this drone's own Scan loop needs to
+                            # know its currently-queued waypoints may no
+                            # longer be safe/optimal -- set
+                            # self.drone.replan_needed to a reason string
+                            # (mirrors formation_abort's own pattern on
+                            # Drone) so Scan breaks out to CalcScanPath on
+                            # its next entry instead of blindly continuing
+                            # the old queue; CalcScanPath itself clears the
+                            # flag once it's recomputed in response. The same
+                            # flag is what a future cross-pair mine-relay
+                            # message (see the mission-flow diagram -- no
+                            # message type exists for that yet) would set
+                            # too. Left deliberately unimplemented for now.
                             pass
                         case MessageType.FIELD_CHECKSUM:
                             # PLACEHOLDER -- send_checksum (see above) has no

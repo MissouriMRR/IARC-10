@@ -19,11 +19,11 @@ async def run(self: AppShare) -> State:
     """
     Implements the run method for the AppShare state.
 
-    This method initiates the app share process and transitions to the Scan or Recall state.
+    This method initiates the app share process and transitions to the Recall state.
 
     Returns
     -------
-    Scan/Recall : State
+    Recall : State
         The next state after a successful App share.
 
     Raises
@@ -33,9 +33,12 @@ async def run(self: AppShare) -> State:
 
     Notes
     -----
-    This method is responsible for sharing data with the app and transitioning it to the
-    scan state or the recall state, which represent the phase to scan for mines and the state to move the drone to the landing coordinates respectively.
-
+    Only ever reached from EndRun now (mission genuinely over -- either
+    the scan finished and ExpandNodes hardened its route, or the flight
+    time budget ran out), so unlike this state's own older docstring,
+    there's no longer a "go back to Scan" branch to be conditional
+    about -- Recall (fly to the landing coordinates) is the only next
+    state.
     """
     try:
         update_state("AppShare")
@@ -43,11 +46,14 @@ async def run(self: AppShare) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("AppShare state running")
 
-        # App share code here
+        # PLACEHOLDER: share this mission's final results (discovered
+        # mines, flown coverage) with the app here -- see
+        # MessageType.SEND_PATHS_TO_APP/SEND_GROUND_TRUTH_COORDS in
+        # interdrone_communication/message_types.py for the closest
+        # existing message shapes. Left deliberately unimplemented for
+        # now, same as the interdrone relay work elsewhere in this file.
 
-        # needs to be conditional, go to scan or recall
-        # return Scan(self.drone, self.flight_settings)
-
+        return Recall(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:
         logging.error("AppShare state canceled")
         raise ex

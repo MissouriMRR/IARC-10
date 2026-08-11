@@ -62,6 +62,23 @@ LEG_GROUNDSPEED_M_S: float = 2.0
 LEG_TOLERANCE_M: float = 0.35
 LEG_MAX_TOLERANCE_M: float = 0.6
 
+# ArduPilot's RNGFNDn parameter blocks are 1-indexed by name (RNGFND1..RNGFND10)
+# but MAVLink's DISTANCE_SENSOR.id field is 0-indexed on the wire, so
+# "rangefinder3" (RNGFND3) is expected to arrive as id == 2. This mapping is a
+# naming convention, not a MAVLink guarantee -- confirm against the real
+# RNGFND3_* parameters on actual hardware before trusting it.
+RANGEFINDER3_MAVLINK_ID: int = 2
+
+# DISTANCE_SENSOR.current_distance (and min/max_distance) are centimeters on
+# the wire; the rest of this codebase works in meters (LEG_ALTITUDE_M,
+# vision.common.drone_coordinates.DronePose.altitude, etc.).
+_RANGEFINDER_CM_PER_M: float = 100.0
+
+# A rangefinder reading older than this is treated as unusable by
+# rangefinder_altitude_agl_m -- stale enough that trusting it for an image's
+# footprint math would be worse than falling back to a known altitude.
+RANGEFINDER_STALE_S: float = 1.0
+
 
 class FormationLost(RuntimeError):
     """The swarm is no longer in the formation the avoidance strategy assumes.
@@ -181,8 +198,43 @@ class Drone:
         self.end_nodes = []
         self.waypoints = []
         self.formation_abort: str | None = None
+        # Set (to a reason string) by interdrone's own message handling when
+        # remote mine/image data arrives that could invalidate the currently
+        # queued waypoints -- same "async event sets a flag, the flight loop
+        # notices it" pattern as formation_abort above, just for the mission
+        # ("scan") loop rather than POIF's formation loop. Checked by Scan's
+        # goto loop between legs; cleared once CalcScanPath has actually
+        # recomputed the queue in response, so a discovery that arrives
+        # mid-leg is never silently dropped.
+        self.replan_needed: str | None = None
+        # The waypoint Scan most recently flew to, for DroneShare to
+        # process/share -- gotoWaypoint() pops it off self.waypoints and
+        # returns it, but each state's run() is a fresh call with no
+        # shared closure, so it has to live here to cross that boundary.
+        self.last_reached_waypoint: Waypoint | None = None
+        # How long an ASSISTANT's waypoint queue has sat empty -- see
+        # CalcScanPath's own ASSISTANT_IDLE_TIMEOUT_S for why this exists.
+        self.assistant_idle_since: float | None = None
+        self.startTime: float | None = None
         # Last speed sent to the autopilot, so commandPoint can skip re-sending it.
         self._commanded_groundspeed: float | None = None
+        # Most recent rangefinder3 (DISTANCE_SENSOR id=RANGEFINDER3_MAVLINK_ID)
+        # reading, in meters AGL, and when it arrived -- written by
+        # _on_distance_sensor, read through the rangefinder_altitude_agl_m
+        # property below. GPS/relative-frame altitude is not AGL (it drifts
+        # with terrain and takeoff-point error), so this is the only real AGL
+        # source available, and it is used exclusively for image-footprint
+        # math (see scan_impl.py) -- nothing about flight control depends on it.
+        self._rangefinder_altitude_agl_m: float | None = None
+        self._rangefinder_updated_at: float | None = None
+        # The RPICamera this drone was configured with at Takeoff (MISSION
+        # branch only -- see takeoff_impl.py). None until then, or if this
+        # Drone was never taken through Takeoff (e.g. a test harness).
+        self.camera: Any = None
+        # The last Image captured during Scan's photo/coverage-climb loop,
+        # for DroneShare's mine-detection placeholder to process without
+        # recapturing.
+        self.last_captured_image: Any = None
         # TODO: add reference to mine and path data classes
 
     @property
@@ -247,6 +299,7 @@ class Drone:
             else dronekit.connect(self.address, wait_ready=True, baud=self.baud, timeout=90)
         )
         logging.info("Drone discovered!")
+        self._vehicle.add_message_listener("DISTANCE_SENSOR", self._on_distance_sensor)
 
         if self._sim_mode is not SimMode.REAL:
             return
@@ -254,6 +307,38 @@ class Drone:
         message_1: str = "Waiting for user input to continue... "
         message_2: str = "(press enter when ready) "
         input(f"\x1b[38;2;255;255;0m{message_1}" f"\x1b[3m{message_2}" "\x1b[0m")
+
+    def _on_distance_sensor(self, _vehicle: dronekit.Vehicle, _name: str, message) -> None:
+        """dronekit message-listener callback for DISTANCE_SENSOR.
+
+        The (vehicle, name, message) signature is fixed by dronekit's
+        add_message_listener -- it is never bound to a caller-chosen object,
+        which is why this is a bound method (self comes from the normal
+        method-binding, not a closure) rather than a free function defined
+        inside connect_drone. Only rangefinder3 (RANGEFINDER3_MAVLINK_ID) is
+        used for anything here -- other DISTANCE_SENSOR instances (e.g. an
+        obstacle-avoidance rangefinder facing a different direction) are
+        ignored.
+        """
+        if message is None or message.id != RANGEFINDER3_MAVLINK_ID:
+            return
+        self._rangefinder_altitude_agl_m = message.current_distance / _RANGEFINDER_CM_PER_M
+        self._rangefinder_updated_at = time.time()
+
+    @property
+    def rangefinder_altitude_agl_m(self) -> float | None:
+        """Most recent rangefinder3 altitude reading, in meters AGL.
+
+        None if no reading has arrived yet, or the most recent one is older
+        than RANGEFINDER_STALE_S -- callers need a fresh number, not a stale
+        extrapolation, since this is the only AGL altitude source available
+        and it feeds directly into image-footprint math.
+        """
+        if self._rangefinder_altitude_agl_m is None or self._rangefinder_updated_at is None:
+            return None
+        if time.time() - self._rangefinder_updated_at > RANGEFINDER_STALE_S:
+            return None
+        return self._rangefinder_altitude_agl_m
 
     def remove_arming_check(self) -> None:
         """
@@ -448,6 +533,19 @@ class Drone:
         """This drone's live position as a (latitude, longitude) pair."""
         position = self.vehicle.location.global_relative_frame
         return (position.lat, position.lon)
+
+    def time_exceeded(self, max_flight_time: float) -> bool:
+        """Whether more than max_flight_time seconds have passed since
+        self.startTime (set once, in Takeoff's mission branch). False if
+        startTime is still None -- too early in the mission for "exceeded"
+        to mean anything -- rather than raising, so callers (CalcScanPath/
+        Scan's own time-exceeded check, ahead of every replan and every
+        flight leg) don't need their own None-guard. Uses time.time() to
+        match how startTime itself is set (epoch seconds, not
+        monotonic -- see takeoff_impl.py)."""
+        if self.startTime is None:
+            return False
+        return time.time() - self.startTime > max_flight_time
 
     def conflictsForLeg(
         self,

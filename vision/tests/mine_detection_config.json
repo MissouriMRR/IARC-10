@@ -14,5 +14,9 @@
   "printDetections": true,
   "pathToPics": "./captures",
   "pathToDetections": "./captures/detections",
-  "pathToMetadata": "./metadata"
+  "pathToMetadata": "./metadata",
+  "hFovDeg": 66.0,
+  "vFovDeg": 52.3,
+  "cameraOffsetM": [0.0, 0.0, 0.0],
+  "cameraMountRotationDeg": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
 }

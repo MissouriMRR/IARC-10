@@ -1,19 +1,22 @@
-"""Declares the InitialCalcScanPath state class."""
+"""Declares the EndRun state class."""
 
 from typing import Awaitable, Callable, ClassVar
 
 from state_machine.states.state import State
 
 
-class InitialCalcScanPath(State):
+class EndRun(State):
     """
-    The InitialCalcScanPath state of the state machine.
+    The EndRun state of the state machine.
 
-    This state represents the phase in which the drone is calculating the initial path to scan.
+    This state represents the phase where the mission is over -- either
+    the scan finished and its route was hardened by ExpandNodes, or the
+    flight time budget (FlightSettings.max_flight_time) ran out mid-scan
+    -- and this drone needs to wrap up and head home.
 
     Attributes
     ----------
-    run_callable : ClassVar[Callable[["InitialCalcScanPath"], Awaitable[State]]]
+    run_callable : ClassVar[Callable[["EndRun"], Awaitable[State]]]
         The callable object to call when this state is run. This object is
         shared between all instances of this class.
 
@@ -24,7 +27,7 @@ class InitialCalcScanPath(State):
         to transition to.
     """
 
-    run_callable: ClassVar[Callable[["InitialCalcScanPath"], Awaitable[State]]]
+    run_callable: ClassVar[Callable[["EndRun"], Awaitable[State]]]
 
     def run(self) -> Awaitable[State]:
         return self.run_callable()
