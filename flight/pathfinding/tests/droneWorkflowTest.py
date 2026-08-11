@@ -32,6 +32,8 @@ see the addFloatingNode fix in nodeField/field.py this test depends on.
 import math
 import random
 
+from shapely.geometry import Point
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -67,7 +69,7 @@ def build_empty_pathfinder(start_edge="bottom"):
     picks which field edge this drone launches from -- "bottom" (default,
     unchanged for every existing caller) or "top" (the second pair,
     working from the opposite end)."""
-    pf = Pathfinder(_field_corners(), altitude=20.0, fov_deg=60.0, droneID=1, numOfDrones=1)
+    pf = Pathfinder(_field_corners(), altitude=20.0, fov_deg=60.0, droneID=1)
     start_y = -1 if start_edge == "bottom" else HEIGHTOFFIELD + 1
     start_latlon = pf.coord_converter.local_to_latlon(WIDTHOFFIELD / 2, start_y)
     pf.buildNodeField(start_latlon, startEdge=start_edge)
@@ -697,6 +699,267 @@ def simulate_one_pair_maze(pf, true_mines, overlap=0.1, path_width=0.0, shape_si
     }
 
 
+def simulate_leader_follower_pair(pf, true_mines, overlap=0.1, path_width=0.0, shape_size_ft=None, max_steps=300, max_waypoints=3000, point_a_mode="pinned", granular_confirm=False, record_frames=False, use_helper_nodes=True):
+    """
+    Same GAMBLER/ASSISTANT pair, same round-robin approximation, same
+    return shape as simulate_one_pair_maze (existing render/test helpers
+    apply unchanged) -- but restructured so the ASSISTANT ("follower")
+    side of every round only ever touches `pf` through the two functions
+    marked LEADER<-FOLLOWER BOUNDARY below, instead of calling
+    pf.accept_image_corner_coord/pf.add_discovered_mine directly the way
+    simulate_one_pair_maze's shared-object version does.
+
+    This distinction matters for exactly one reason: simulate_one_pair_maze
+    is only valid when gambler and assistant are the SAME Python process
+    sharing one Pathfinder object, which is true in every test/sweep this
+    session but NOT true of two physical, WiFi-connected drones -- a real
+    ASSISTANT never builds a Pathfinder at all (see configureField's
+    Role.ASSISTANT check) and has no way to touch pf's internals. Only the
+    LEADER (the GAMBLER's device) runs a real Pathfinder here; the
+    follower's own "device" is modeled as nothing more than the plain
+    lat/lon waypoint list it was handed and the plain lat/lon reports it
+    sends back -- exactly the data that would have to cross the wire.
+
+    The two boundary functions are where a real implementation plugs in
+    actual interdrone messages -- deliberately left as descriptions, not
+    live Message/Interdrone calls (that wiring, and the leader/follower
+    vs. flat-broadcast questions it raises, is out of scope here; see the
+    coordinating-4-drones plan). What they doc says is the real contract:
+    what data has to cross the wire, and in which direction, for this
+    round-robin approximation to remain valid once it's actually split
+    across two devices.
+    """
+    if point_a_mode not in ("pinned", "floating", "same_mine"):
+        raise ValueError(f"point_a_mode must be 'pinned', 'floating', or 'same_mine', got {point_a_mode!r}")
+    if shape_size_ft is None:
+        square = max(1, round(pf.matSize / WIDTHOFSQUARE)) * WIDTHOFSQUARE
+        shape_along_ft, shape_across_ft = square, square
+    elif isinstance(shape_size_ft, tuple):
+        shape_along_ft, shape_across_ft = shape_size_ft
+    else:
+        shape_along_ft, shape_across_ft = shape_size_ft, shape_size_ft
+    half_along, half_across = shape_along_ft / 2.0, shape_across_ft / 2.0
+
+    pf.start_maze_navigation()
+
+    discovered = {}
+    visited = []
+    frames = []
+    rounds = 0
+    total_waypoints = 0
+    hit_cap = False
+    last_added_obstacle_a = None
+    last_rewound_a = False
+    last_rewound_b = False
+
+    def _leader_visit_a(lat, lon):
+        """LEADER side, segment A: the gambler is flying its own device's
+        Pathfinder-planned route, so this needs no relay at all -- same
+        body as simulate_one_pair_maze's visit_one(..., "A")."""
+        nonlocal total_waypoints, hit_cap, last_added_obstacle_a, last_rewound_a
+        if total_waypoints >= max_waypoints:
+            hit_cap = True
+            return None
+        total_waypoints += 1
+        x, y = pf.coord_converter.latlon_to_local(lat, lon)
+        visited.append((x, y, rounds, "A"))
+
+        llx, lly = x - half_across, y - half_along
+        corners_local = [
+            (llx, lly), (llx + shape_across_ft, lly),
+            (llx + shape_across_ft, lly + shape_along_ft), (llx, lly + shape_along_ft),
+        ]
+        corners_latlon = [pf.coord_converter.local_to_latlon(cx, cy) for cx, cy in corners_local]
+        pf.accept_image_corner_coord(corners_latlon)
+
+        if use_helper_nodes:
+            pf.record_helper_node_candidate(x, y)
+
+        newly_found = mines_under_footprint(true_mines, discovered, x, y, half_across, half_along)
+        if newly_found:
+            obstacle = rewound = None
+            for mx, my in newly_found:
+                discovered[(mx, my)] = rounds
+                mine_lat, mine_lon = pf.coord_converter.local_to_latlon(mx, my)
+                obstacle, _, rewound = pf.add_discovered_mine(mine_lat, mine_lon)
+            last_added_obstacle_a, last_rewound_a = obstacle, rewound
+            if record_frames:
+                frames.append(_snapshot_maze_frame(pf, rounds, discovered, visited))
+            return newly_found[0]
+        if record_frames:
+            frames.append(_snapshot_maze_frame(pf, rounds, discovered, visited))
+        return None
+
+    def _follower_visit_b(lat, lon):
+        """FOLLOWER side, segment B: models the assistant's OWN device
+        flying to (lat, lon) and taking a photo -- it has no Pathfinder,
+        so it can only report back what it physically observed, in plain
+        lat/lon: the photo's footprint corners (for coverage) and,
+        separately, any true mine physically under that footprint (for
+        the leader to add to its own graph).
+
+        Real wire equivalent (not implemented here -- see the module
+        docstring): the follower flies this waypoint like any other
+        (existing REACHED_WAYPOINT confirms arrival), then reports the
+        photo back via a message shaped like MessageType.SHARE_PHOTOS
+        (image corner coords + any mine coordinates found in it) --
+        NOT MessageType.NEW_WAYPOINTS, which only flows leader->follower.
+        Returns (photo_report, mine_reports): photo_report is the plain
+        (lat, lon) to report to _leader_apply_follower_report for coverage;
+        mine_reports is a list of (lat, lon) for every true mine physically
+        under this footprint (can be more than one, or empty -- mirrors
+        simulate_one_pair_maze's visit_one, which loops over every entry
+        mines_under_footprint returns, not just the first)."""
+        nonlocal total_waypoints, hit_cap
+        if total_waypoints >= max_waypoints:
+            hit_cap = True
+            return None, None
+        total_waypoints += 1
+        # The follower has no coord_converter of its own in a real
+        # deployment either -- lat/lon IS the shared coordinate frame
+        # both devices already agree on (mission_field_corners), so no
+        # conversion is needed to report a position back. Using pf's
+        # converter here only because this is one simulated process；in
+        # a real split the follower would report these exact lat/lon
+        # values without ever touching a Pathfinder.
+        x, y = pf.coord_converter.latlon_to_local(lat, lon)
+        visited.append((x, y, rounds, "B"))
+        newly_found = mines_under_footprint(true_mines, discovered, x, y, half_across, half_along)
+        photo_report = (lat, lon)  # -> SHARE_PHOTOS: this waypoint's corner coords
+        mine_reports = []
+        for mx, my in newly_found:
+            discovered[(mx, my)] = rounds
+            mine_reports.append(pf.coord_converter.local_to_latlon(mx, my))  # -> SHARE_PHOTOS: mines[]
+        return photo_report, mine_reports
+
+    def _leader_apply_follower_report(photo_lat, photo_lon, mine_reports):
+        """LEADER<-FOLLOWER BOUNDARY. Applies one follower photo report to
+        the leader's own Pathfinder -- the only place segment B's
+        coverage/discoveries ever touch `pf` in this design. Real wire
+        equivalent: the body of a SHARE_PHOTOS receive-side handler (see
+        state_machine/interdrone.py -- currently send-only, no case
+        MessageType.SHARE_PHOTOS in the receive dispatch yet; left as a
+        placeholder comment there deliberately, see this session's plan).
+        Returns the FIRST newly discovered mine's local (x, y) if
+        mine_reports is non-empty, else None -- same contract as
+        simulate_one_pair_maze's visit_one (return newly_found[0]) for the
+        caller's found_b tracking, even though every entry in mine_reports
+        gets added to the graph below, same as that function's own loop."""
+        nonlocal last_rewound_b
+        x, y = pf.coord_converter.latlon_to_local(photo_lat, photo_lon)
+        llx, lly = x - half_across, y - half_along
+        corners_local = [
+            (llx, lly), (llx + shape_across_ft, lly),
+            (llx + shape_across_ft, lly + shape_along_ft), (llx, lly + shape_along_ft),
+        ]
+        corners_latlon = [pf.coord_converter.local_to_latlon(cx, cy) for cx, cy in corners_local]
+        pf.accept_image_corner_coord(corners_latlon)
+        if not mine_reports:
+            if record_frames:
+                frames.append(_snapshot_maze_frame(pf, rounds, discovered, visited))
+            return None
+        rewound = None
+        for mine_lat, mine_lon in mine_reports:
+            _obstacle, _was_merged, rewound = pf.add_discovered_mine(mine_lat, mine_lon)
+        last_rewound_b = rewound
+        first_mx, first_my = pf.coord_converter.latlon_to_local(*mine_reports[0])
+        if record_frames:
+            frames.append(_snapshot_maze_frame(pf, rounds, discovered, visited))
+        return (first_mx, first_my)
+
+    while True:
+        rounds += 1
+        if rounds > max_steps:
+            hit_cap = True
+            break
+
+        # LEADER<-FOLLOWER BOUNDARY: places["b"] (plain lat/lon) is what a
+        # real deployment sends the follower this round via
+        # MessageType.NEW_WAYPOINTS -- everything from here down to the
+        # round-robin loop below is still leader-side planning, unchanged
+        # from simulate_one_pair_maze.
+        places = pf.get_places_to_check_maze(overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft)
+        a_places, b_places = places["a"], places["b"]
+        if not a_places and not b_places:
+            pf.confirm_b_into_c()  # no-op if b is already empty -- safety net
+            break
+
+        a_idx = b_idx = 0
+        a_stopped = b_stopped = False
+        found_a = found_b = None
+        while (a_idx < len(a_places) and not a_stopped) or (b_idx < len(b_places) and not b_stopped):
+            if a_idx < len(a_places) and not a_stopped:
+                lat, lon = a_places[a_idx]
+                a_idx += 1
+                mine = _leader_visit_a(lat, lon)
+                if hit_cap:
+                    break
+                if mine is not None:
+                    found_a = mine
+                    a_stopped = True
+            if b_idx < len(b_places) and not b_stopped:
+                lat, lon = b_places[b_idx]
+                b_idx += 1
+                photo_report, mine_reports = _follower_visit_b(lat, lon)
+                if hit_cap:
+                    break
+                mine = _leader_apply_follower_report(photo_report[0], photo_report[1], mine_reports)
+                if mine is not None:
+                    found_b = mine
+                    b_stopped = True
+        if hit_cap:
+            break
+
+        if found_a is not None:
+            if last_rewound_a:
+                pass
+            elif use_helper_nodes and last_added_obstacle_a is not None:
+                if not pf.start_helper_node_detour(last_added_obstacle_a):
+                    pf.on_forward_mine_discovered()
+            else:
+                pf.on_forward_mine_discovered()
+
+        current_b_places = b_places if found_a is None else pf.get_places_to_check_maze(
+            overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+        )["b"]
+        if not current_b_places:
+            pf.confirm_b_into_c()
+        else:
+            if granular_confirm:
+                pf.advance_b_prefix_into_c()
+            if found_b is not None:
+                if last_rewound_b:
+                    pass
+                elif point_a_mode == "pinned":
+                    pf.reroute_b_segment()
+                elif point_a_mode == "floating":
+                    pf.on_forward_mine_discovered()
+                else:
+                    pf.reroute_b_segment_same_mine()
+
+        if record_frames:
+            frames.append(_snapshot_maze_frame(pf, rounds, discovered, visited))
+
+    gambler_distance = path_length([(x, y) for x, y, _r, label in visited if label == "A"])
+    assistant_distance = path_length([(x, y) for x, y, _r, label in visited if label == "B"])
+    gambler_waypoints = sum(1 for _x, _y, _r, label in visited if label == "A")
+    assistant_waypoints = sum(1 for _x, _y, _r, label in visited if label == "B")
+
+    return {
+        "discovered": discovered,
+        "visited": visited,
+        "steps": rounds,
+        "total_waypoints": total_waypoints,
+        "gambler_waypoints": gambler_waypoints,
+        "assistant_waypoints": assistant_waypoints,
+        "gambler_distance": gambler_distance,
+        "assistant_distance": assistant_distance,
+        "total_distance": gambler_distance + assistant_distance,
+        "hit_cap": hit_cap,
+        "frames": frames,
+    }
+
+
 def _snapshot_two_pair_frame(pf1, pf2, step, discovered, visited):
     """Same idea as _snapshot_maze_frame, but captures BOTH pairs' C/B/A
     segments and helper-node state in one frame -- pf1/pf2 share
@@ -798,42 +1061,22 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
 
     def _sync_approach_target(pf_self, pf_other):
         """If pf_self's own point_A has moved since pf_other was last
-        aimed at it, retargets pf_other's segment-A search onto the new
-        position. No-ops if nothing moved (avoids forcing a full
-        recompute + floating-node churn on pf_other every round when
-        nothing changed -- point_A only actually moves on a mine-driven
-        reroute, not on ordinary flight progress).
+        aimed at it, relays that position to pf_other via
+        retarget_approach_target -- which (see its own docstring) no
+        longer walks the whole way there in one hop; it only advances
+        pf_other's point_A to the HALFWAY point along pf_other's own
+        real path toward pf_self's position, so pf_other's gambler can
+        never chain its way across the frontier into pf_self's
+        still-unexplored territory before the two pairs actually meet
+        there.
 
-        Also no-ops while pf_self's own point_A is still literally its
-        un-advanced starting position -- with an empty field (nothing
-        discovered yet), the direct start->target line is unobstructed,
-        so maze_a_path collapses to just [start, target] and point_A IS
-        the starting node, not something "near the far edge." Relaying
-        that tells pf_other nothing new ("the other pair hasn't moved
-        yet" is already true before either pair does anything), but DOES
-        force pf_other into an immediate, full-field-spanning commitment
-        before pf_self has done any real work of its own -- observed to
-        produce a lopsided, visually-overlapping result (one pair's
-        gambler ends up scouting deep in the other's territory while
-        that pair's assistant inherits almost the entire remaining
-        distance as one giant unverified bridge). Waiting for pf_self's
-        point_A to reflect genuine progress (moved via a real reroute)
-        removes that specific degenerate trigger -- it doesn't guarantee
-        perfectly balanced convergence in every case (a pair's first real
-        reroute can itself still land close to its own start), but it
-        removes the clearest, structurally pointless source of it.
-
-        (A midpoint-of-both-frontiers variant was tried here instead of
-        a raw copy, to also fix the remaining lopsided cases -- reverted:
-        the midpoint recomputes every time EITHER side's point_A moves
-        even slightly, and retargeting itself moves point_A, so the two
-        pairs kept nudging each other's target back and forth without
-        ever settling, which surfaced as a real coverage gap on seed 36
-        (1 unseen cell) and a run that hit the round cap. A raw copy has
-        a stable fixed point -- once both sides' point_A converge close
-        to the same real position, further syncs become no-ops -- which
-        is why this reverted version doesn't thrash even though it's
-        occasionally lopsided.)"""
+        No-ops if nothing moved (avoids forcing a recompute + floating-
+        node churn on pf_other every round when nothing changed -- point_A
+        only actually moves on a mine-driven reroute or a prior retarget,
+        not on ordinary flight progress). Also no-ops while pf_self's own
+        point_A is still literally its un-advanced starting position --
+        see retarget_approach_target's own docstring for why relaying a
+        still-degenerate position is worse than useless."""
         if not pf_self.maze_a_path:
             return
         a0 = pf_self.maze_a_path[0]
@@ -942,11 +1185,57 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
         a_places = places["a"]
         b_places = patch_places + places["b"]
         if not a_places and not b_places:
+            # confirm_b_into_c/advance_b_prefix_into_c only retry a
+            # queued cross-pair retarget (_try_apply_pending_approach_target)
+            # as part of actually confirming/advancing something -- if
+            # THIS pair's own queue is already empty, neither ever runs,
+            # so a still-pending retarget (halved short of the
+            # CLOSE_ENOUGH_TO_STOP_HALVING_FT threshold, re-queued rather
+            # than dropped -- see retarget_approach_target) would never
+            # get another chance once this pair marks itself done and
+            # stops being ticked at all. Retry explicitly here, before
+            # declaring done, so a genuinely unfinished convergence keeps
+            # being worked on instead of silently stalling.
+            if pf_self._pending_approach_target is not None:
+                pf_self._try_apply_pending_approach_target()
+                places = pf_self.get_places_to_check_maze(
+                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                )
+                patch_places = pf_self.get_cross_pair_patch_places_to_check(
+                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                ) if pf_self.cross_pair_patches else []
+                a_places = places["a"]
+                b_places = patch_places + places["b"]
+        if not a_places and not b_places:
             pf_self.confirm_b_into_c()
             if pf_self.cross_pair_patches and not patch_places:
                 pf_self.cross_pair_patches.pop(0)
-            st["done"] = True
-            return
+            # confirm_b_into_c's own trailing _try_apply_pending_approach_
+            # target call (see its docstring) can ITSELF revive
+            # maze_a_path/maze_b_path: draining maze_b_path here can free
+            # up a cross_pair_target_chain slot that was still blocking
+            # the pre-check retry above (chain pruning only happens
+            # inside _try_apply_pending_approach_target itself, so it
+            # can't have taken effect until this exact confirm_b_into_c
+            # call actually cleared maze_b_path). Re-derive places one
+            # more time before committing to "done", or the pair can end
+            # up permanently marked done in the very round
+            # confirm_b_into_c quietly recreated a fresh, non-empty
+            # approach segment for it -- confirmed directly as a real
+            # 1-3 cell coverage gap on the two-pair round-robin safety
+            # sweep, always immediately following the pair's own final
+            # confirm_b_into_c call.
+            places = pf_self.get_places_to_check_maze(
+                overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+            )
+            patch_places = pf_self.get_cross_pair_patch_places_to_check(
+                overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+            ) if pf_self.cross_pair_patches else []
+            a_places = places["a"]
+            b_places = patch_places + places["b"]
+            if not a_places and not b_places:
+                st["done"] = True
+                return
 
         a_idx = b_idx = 0
         a_stopped = b_stopped = False
@@ -1234,9 +1523,53 @@ def simulate_two_pairs_maze_round_robin(
             b_places = patch_places + places["b"]
             b_path_snapshot[pair_id] = pf_self.maze_b_path
             if not a_places and not b_places:
+                # See the matching comment in simulate_two_pairs_maze's
+                # step_pair: a still-queued cross-pair retarget only ever
+                # gets retried inside confirm_b_into_c/advance_b_prefix_into_c,
+                # both of which no-op when this pair's own queue is already
+                # empty -- so retry it explicitly before declaring done, or
+                # a genuinely unfinished convergence goes permanently idle.
+                if pf_self._pending_approach_target is not None:
+                    pf_self._try_apply_pending_approach_target()
+                    places = pf_self.get_places_to_check_maze(
+                        overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                    )
+                    patch_places = pf_self.get_cross_pair_patch_places_to_check(
+                        overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                    ) if pf_self.cross_pair_patches else []
+                    a_places = places["a"]
+                    b_places = patch_places + places["b"]
+                    b_path_snapshot[pair_id] = pf_self.maze_b_path
+            if not a_places and not b_places:
                 pf_self.confirm_b_into_c()
                 if pf_self.cross_pair_patches and not patch_places:
                     pf_self.cross_pair_patches.pop(0)
+                # confirm_b_into_c's own trailing _try_apply_pending_
+                # approach_target call (see its docstring) can ITSELF
+                # revive maze_a_path/maze_b_path: draining maze_b_path
+                # here can free up a cross_pair_target_chain slot that
+                # was still blocking the pre-check retry above (chain
+                # pruning only happens inside
+                # _try_apply_pending_approach_target itself, so it can't
+                # have taken effect until THIS confirm_b_into_c call
+                # actually cleared maze_b_path). Re-derive places one
+                # more time before committing to "done", or the pair
+                # ends up permanently marked done in the very round
+                # confirm_b_into_c quietly recreated a fresh, non-empty
+                # approach segment for it -- confirmed directly as a
+                # real 1-3 cell coverage gap on the two-pair round-robin
+                # safety sweep, always immediately following the pair's
+                # own final confirm_b_into_c call.
+                places = pf_self.get_places_to_check_maze(
+                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                )
+                patch_places = pf_self.get_cross_pair_patch_places_to_check(
+                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
+                ) if pf_self.cross_pair_patches else []
+                a_places = places["a"]
+                b_places = patch_places + places["b"]
+                b_path_snapshot[pair_id] = pf_self.maze_b_path
+            if not a_places and not b_places:
                 pair_state[pair_id]["done"] = True
                 queues[(pair_id, "A")] = []
                 queues[(pair_id, "B")] = []
@@ -1502,6 +1835,75 @@ def test_pair_seen_covers_final_path(pf):
         f"unseen_on_path={unseen_on_path.count()} -> {'PASS' if ok else 'FAIL'}"
     )
     return ok
+
+
+# 1e-6: skip a midpoint sitting exactly ON an obstacle's own boundary --
+# floating-point noise from the geometry pipeline, not a real crossing.
+_BAD_EDGE_BOUNDARY_ARTIFACT_DIST = 1e-6
+
+
+def _bad_edge_count(pf, path):
+    """How many consecutive-node edges in `path` have their midpoint
+    genuinely inside a live obstacle's safety polygon -- the actual safety
+    invariant maze-mode planning must never violate (a drone flying that
+    edge would cross into a mine's own danger radius), independent of
+    which specific driver produced `path`. Used by both
+    test_pair_flown_path_is_safe and test_leader_follower_flown_path_is_safe
+    so a real bad edge can never slip through un-caught the way it did
+    earlier this session (see pathfinder.py's check_path_envelopment /
+    _prepend_seam_if_needed docstrings for the bugs this exact check
+    caught)."""
+    obstacles = list(pf.nodeField.mines) + list(pf.nodeField.unionObstacles)
+    bad = 0
+    for i in range(len(path) - 1):
+        p1, p2 = path[i], path[i + 1]
+        mx, my = (p1.x + p2.x) / 2.0, (p1.y + p2.y) / 2.0
+        for o in obstacles:
+            if not o.contains_point((mx, my)):
+                continue
+            dist = o.polygon.boundary.distance(Point(mx, my))
+            if dist < _BAD_EDGE_BOUNDARY_ARTIFACT_DIST:
+                continue
+            bad += 1
+            break
+    return bad
+
+
+def test_pair_flown_path_is_safe(pf):
+    """The actually-flown route (pf.get_maze_path()) never cuts through a
+    live obstacle's safety polygon -- the concrete form of "a drone
+    following this exact route never enters a mine's danger radius".
+    Works for any single-Pathfinder maze-mode driver's result (both
+    simulate_one_pair_maze and simulate_leader_follower_pair use it)."""
+    path = pf.get_maze_path()
+    bad = _bad_edge_count(pf, path)
+    ok = bad == 0
+    print(f"test_pair_flown_path_is_safe: path_edges={len(path)-1} bad_edges={bad} -> {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
+def test_leader_follower_terminates_cleanly(shape_size_ft=None, record_frames=False, **kwargs):
+    """Same idea as test_pair_terminates_cleanly, but for
+    simulate_leader_follower_pair -- the leader/follower device-boundary
+    restructuring (see that function's own docstring) should terminate
+    with the exact same round/waypoint/discovery behavior as the
+    shared-object version, since it calls the same underlying Pathfinder
+    methods on the same sequence of positions; this and
+    test_pair_terminates_cleanly are expected to report identical numbers
+    for the same true_mines/seed."""
+    pf = build_empty_pathfinder()
+    true_mines = generate_true_minefield()
+    result = simulate_leader_follower_pair(
+        pf, true_mines, shape_size_ft=shape_size_ft, record_frames=record_frames, **kwargs
+    )
+    max_cleanup_rounds = max(2, round(result["total_waypoints"] / 25))
+    ok = (not result["hit_cap"]) and result["steps"] <= len(result["discovered"]) + max_cleanup_rounds
+    print(
+        f"test_leader_follower_terminates_cleanly: rounds={result['steps']} "
+        f"discovered={len(result['discovered'])} waypoints={result['total_waypoints']} "
+        f"hit_cap={result['hit_cap']} -> {'PASS' if ok else 'FAIL'}"
+    )
+    return ok, pf, true_mines, result
 
 
 def render_workflow_diagram(pf, true_mines, result, save_path):

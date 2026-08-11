@@ -1,6 +1,6 @@
 """
 End-to-end test for Pathfinder.getPlacesToCheck: builds an 80ft x 300ft
-field for a single drone (droneID=1, numOfDrones=1), builds the node field,
+field for a single drone (droneID=1), builds the node field,
 adds discovered mines, then runs getPlacesToCheck (both its default
 method="path", which walks the shortest path's own geometry via
 path_cover.py, and method="cellgrid", the original cover_with_shape-based
@@ -64,7 +64,7 @@ def _field_corners():
 
 
 def build_pathfinder():
-    pf = Pathfinder(_field_corners(), altitude=20.0, fov_deg=60.0, droneID=1, numOfDrones=1)
+    pf = Pathfinder(_field_corners(), altitude=20.0, fov_deg=60.0, droneID=1)
     start_latlon = pf.coord_converter.local_to_latlon(WIDTHOFFIELD / 2, -1)
     pf.buildNodeField(start_latlon)
     return pf
@@ -171,10 +171,6 @@ def test_get_places_to_check_matches_expected_local_points(pf):
         path_points,
         pf.seen_tracker,
         shape_size_ft,
-        (0.0, 0.0),
-        (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID,
-        pf.numOfDrones,
     )
     # getPlacesToCheck anchors the tour to whatever it left as
     # nextPlaceToCheckLocal on its own PREVIOUS call -- must pass that same
@@ -201,8 +197,7 @@ def _shapes_to_visit_cellgrid(pf, path):
     method="cellgrid" computes internally (ourPortion, matSizeCells,
     ShapesToVisit) without needing it to expose them -- used by both the
     coverage-correctness check and the diagram renderer below."""
-    best_path = pf.rasterize_node_path(path)
-    ourPortion = best_path.vertical_slice_index(pf.droneID - 1, pf.numOfDrones)
+    ourPortion = pf.rasterize_node_path(path)
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     shapesToVisit = ourPortion.cover_with_shape((matSizeCells, matSizeCells))
     return ourPortion, matSizeCells, shapesToVisit
@@ -220,10 +215,6 @@ def _shapes_to_visit_path(pf, path):
         path_points,
         pf.seen_tracker,
         shape_size_ft,
-        (0.0, 0.0),
-        (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID,
-        pf.numOfDrones,
     )
     return shape_size_ft, shapesToVisit
 
@@ -347,12 +338,9 @@ def test_path_cover_overlap_tightens_spacing(pf):
     path_points = [(n.x, n.y) for n in path]
     matSizeCells = max(1, round(pf.matSize / WIDTHOFSQUARE))
     shape_size_ft = matSizeCells * WIDTHOFSQUARE
-    bounds = ((0.0, 0.0), (WIDTHOFFIELD, HEIGHTOFFIELD))
 
-    baseline = path_cover(path_points, shape_size_ft, *bounds, pf.droneID, pf.numOfDrones)
-    overlapped = path_cover(
-        path_points, shape_size_ft, *bounds, pf.droneID, pf.numOfDrones, overlap=0.3
-    )
+    baseline = path_cover(path_points, shape_size_ft)
+    overlapped = path_cover(path_points, shape_size_ft, overlap=0.3)
 
     half = shape_size_ft / 2.0
 
@@ -398,10 +386,6 @@ def test_path_cover_wide_path_uses_multiple_rows(pf):
     centers = path_cover(
         path_points,
         shape_size_ft,
-        (0.0, 0.0),
-        (WIDTHOFFIELD, HEIGHTOFFIELD),
-        pf.droneID,
-        pf.numOfDrones,
         overlap=0.15,
         path_width=path_width,
     )
@@ -438,10 +422,6 @@ def test_path_cover_wide_path_uses_multiple_rows(pf):
         path_cover(
             path_points,
             shape_size_ft,
-            (0.0, 0.0),
-            (WIDTHOFFIELD, HEIGHTOFFIELD),
-            pf.droneID,
-            pf.numOfDrones,
             overlap=0.15,
         )
     )
@@ -544,7 +524,7 @@ def render_combined_image(pf, save_path):
 
     # Background rasterization purely for the visual -- not part of the
     # method="path" computation itself, which never touches a cell grid.
-    background = pf.rasterize_node_path(path).vertical_slice_index(pf.droneID - 1, pf.numOfDrones)
+    background = pf.rasterize_node_path(path)
     width_cells, height_cells = background.width, background.height
     arr = np.zeros((height_cells, width_cells), dtype=np.uint8)
     for x, y in background.on_cells():
@@ -625,7 +605,7 @@ def render_combined_image(pf, save_path):
     ax.set_ylim(0, HEIGHTOFFIELD)
     ax.set_aspect("equal")
     ax.set_title(
-        f'getPlacesToCheck method="path" (droneID=1, numOfDrones=1)\n'
+        f'getPlacesToCheck method="path" (droneID=1)\n'
         f"{len(shapesToVisit)} shapes to check, {shape_side_ft:.1f}ft square each",
         fontsize=11,
     )

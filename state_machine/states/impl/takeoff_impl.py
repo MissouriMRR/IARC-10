@@ -16,7 +16,7 @@ from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.initial_calc_scan_path import InitialCalcScanPath
-from state_machine.flight_settings import Side
+from state_machine.flight_settings import Role, Side
 from flight.pathfinder import Pathfinder
 
 
@@ -145,14 +145,23 @@ Takeoff.run_callable = run
 
 def configureField(state: Takeoff) -> None:
     """
-    Builds this drone's Pathfinder and node field from the mission config.
+    Builds this drone's Pathfinder and node field from the mission config --
+    GAMBLER/SOLOGAMBLER only. An ASSISTANT never plans its own route (see
+    the leader/follower design in flight/pathfinding/tests/droneWorkflowTest.py's
+    simulate_leader_follower_pair): it flies whatever segment-B waypoints its
+    paired GAMBLER hands it over interdrone comms, so building a second,
+    unused Pathfinder for it would be dead weight at best and a second
+    source of truth to keep in sync at worst.
 
     Parameters
     ----------
     state : Takeoff
         The running Takeoff state, whose flight_settings carry the mission
-        field corners, altitude, and this drone's ID/pairing info.
+        field corners, altitude, and this drone's ID/pairing/role info.
     """
+    if state.flight_settings.role == Role.ASSISTANT:
+        return
+
     missionFieldCorners = []
     for corner in state.flight_settings.mission_field_corners:
         missionFieldCorners.append((corner["lat"], corner["lon"]))
@@ -164,7 +173,6 @@ def configureField(state: Takeoff) -> None:
         state.flight_settings.max_flight_height,
         90,
         state.flight_settings.current_drone_ID,
-        len(state.flight_settings.drones_in_mission),
     )
     # Pathfinder.__init__ already sets Pathfinder.instance to this object.
     pathfinder.buildNodeField(

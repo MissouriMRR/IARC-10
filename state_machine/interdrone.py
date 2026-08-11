@@ -1435,7 +1435,17 @@ class Interdrone:
                                     )
                                     self.send(reconfirm_waypoints_message)
                                 self.drone.checkForCollision(state.list_of_waypoints)
-                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF?
+                            # PLACEHOLDER -- not implemented yet (see the
+                            # coordinating-4-drones plan's leader/follower
+                            # design, flight/pathfinding/tests/droneWorkflowTest.py's
+                            # simulate_leader_follower_pair): for an ASSISTANT
+                            # receiving its paired GAMBLER's segment-B waypoints,
+                            # this is where they'd need to actually reach flight
+                            # logic -- e.g. handing state.list_of_waypoints to
+                            # this drone's own goto/waypoint-queue state (see
+                            # Drone.gotoWaypoint) so the assistant starts flying
+                            # them, not just holding them in DroneState. Left
+                            # deliberately unimplemented for now.
 
                         case MessageType.NEW_WAYPOINTS_ACK:
                             state = self.get_drone_state_from_id(message.sender_id)
@@ -1480,7 +1490,14 @@ class Interdrone:
                                     data={},
                                 )
                                 self.send(reached_waypoint_ack_message)
-                            # TODO HARPER CALL STATE MACHINE WAYPOINT STUFF
+                            # PLACEHOLDER -- not implemented yet: this only
+                            # updates the SENDER's bookkeeping (state.
+                            # list_of_waypoints/last_reached_waypoint, used
+                            # for collision avoidance) -- it doesn't yet
+                            # trigger anything on THIS drone's own flight
+                            # logic in response (e.g. a GAMBLER reacting to
+                            # its paired ASSISTANT finishing a leg). Left
+                            # deliberately unimplemented for now.
                         case MessageType.POSITION_REPORT:
                             state = self.get_drone_state_from_id(message.sender_id)
                             if state is not None:
@@ -1516,6 +1533,33 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message_response)
+                        case MessageType.SHARE_PHOTOS:
+                            # PLACEHOLDER -- send-only today (see share_photos
+                            # above); this receive-side case doesn't exist
+                            # yet. Per the leader/follower design (see the
+                            # coordinating-4-drones plan and
+                            # simulate_leader_follower_pair's
+                            # _leader_apply_follower_report), this is where an
+                            # ASSISTANT's photo reports would need to reach
+                            # its paired GAMBLER's own Pathfinder: for each
+                            # photo in message.data["photos"], call
+                            # accept_image_corner_coord for the image's corner
+                            # coords (coverage), then add_discovered_mine for
+                            # any mine coordinates reported in it. Left
+                            # deliberately unimplemented for now.
+                            pass
+                        case MessageType.FIELD_CHECKSUM:
+                            # PLACEHOLDER -- send_checksum (see above) has no
+                            # caller anywhere yet either, so this case has
+                            # nothing to receive today. Intended purpose (see
+                            # the coordinating-4-drones plan): verify every
+                            # drone agrees on mission_field_corners before
+                            # relying on lat/lon as a shared coordinate frame
+                            # -- reusing NEW_WAYPOINTS' own checksum +
+                            # RECONFIRM_WAYPOINTS resync pattern above is the
+                            # identified but not-yet-built approach. Left
+                            # deliberately unimplemented for now.
+                            pass
                         case MessageType.EMERGENCY_LAND:
                             # Duplicates are expected, not exceptional: drone 1
                             # fans the command out, the client loops

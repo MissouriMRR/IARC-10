@@ -5,11 +5,10 @@ polyline (the flight path), not an arbitrary 2D blob. cover_with_shape
 rasterizes that path to cells and greedy-covers the cells -- O(remaining^2 *
 shape_area), and it doesn't know the target came from a path at all.
 
-This instead walks the path's own geometry directly: clips it to a
-drone's real-world y-slice (matching vertical_slice_index's semantics
-without ever touching a cell grid), then places a shape center every
-`spacing = shape_size * (1 - overlap)` along the clipped polyline's arc
-length. With overlap=0 that spacing is exact, not a heuristic: for an
+This instead walks the path's own geometry directly, without ever
+touching a cell grid: it places a shape center every
+`spacing = shape_size * (1 - overlap)` along the polyline's arc length.
+With overlap=0 that spacing is exact, not a heuristic: for an
 axis-aligned S x S square centered on a straight path segment, the segment
 length actually inside the square is AT LEAST S (exactly S when the
 segment is axis-aligned, up to S*sqrt(2) at 45 degrees) -- so consecutive
@@ -86,57 +85,6 @@ exactly 0% overlap either.
 """
 
 import math
-
-
-def _clip_polyline_to_y_range(points, y_lo, y_hi):
-    """Splits `points` (a polyline) into however many contiguous runs stay
-    within [y_lo, y_hi], clipping segments that cross a boundary. Mirrors
-    what vertical_slice_index does to a rasterized path, but on the
-    original geometry -- no cell grid involved."""
-
-    def in_range(y):
-        return y_lo <= y <= y_hi
-
-    def x_at_y(p0, p1, y_target):
-        if p1[1] == p0[1]:
-            return p0[0]
-        t = (y_target - p0[1]) / (p1[1] - p0[1])
-        return p0[0] + t * (p1[0] - p0[0])
-
-    # A single-point "run" (e.g. one isolated still-unseen cell from
-    # unseen_path_runs, with seen neighbors on both sides) has no segments
-    # to walk below -- range(len(points)-1) would silently iterate zero
-    # times and drop it entirely, in-range or not.
-    if len(points) == 1:
-        return [[points[0]]] if in_range(points[0][1]) else []
-
-    runs = []
-    current = []
-    for i in range(len(points) - 1):
-        p0, p1 = points[i], points[i + 1]
-        p0_in, p1_in = in_range(p0[1]), in_range(p1[1])
-        if p0_in and not current:
-            current.append(p0)
-        if p0_in and p1_in:
-            current.append(p1)
-        elif p0_in and not p1_in:
-            y_cross = y_hi if p1[1] > y_hi else y_lo
-            current.append((x_at_y(p0, p1, y_cross), y_cross))
-            runs.append(current)
-            current = []
-        elif not p0_in and p1_in:
-            y_cross = y_hi if p0[1] > y_hi else y_lo
-            current = [(x_at_y(p0, p1, y_cross), y_cross), p1]
-        else:
-            # both endpoints outside -- may still clip through if they
-            # straddle the range on opposite sides
-            if (p0[1] < y_lo and p1[1] > y_hi) or (p0[1] > y_hi and p1[1] < y_lo):
-                y_a = y_lo if p0[1] < y_lo else y_hi
-                y_b = y_hi if p0[1] < y_lo else y_lo
-                runs.append([(x_at_y(p0, p1, y_a), y_a), (x_at_y(p0, p1, y_b), y_b)])
-    if current:
-        runs.append(current)
-    return runs
 
 
 def _clip_segment_to_bbox(p0, p1, min_corner, max_corner):
@@ -285,7 +233,7 @@ def _place_along_polyline(points, spacing, guarantee_vertices=True):
     pinning a redundant placement roughly every cell instead of every
     `spacing`, nearly doubling placement counts for no coverage benefit
     (verified: 95 -> 189 placements on one real 10-node path). Callers
-    with genuine sparse vertices (e.g. path_cover's y-sliced-only runs)
+    with genuine sparse vertices (e.g. path_cover's own path_points)
     should still guarantee them here; callers fragmenting by seen/unseen
     cells (path_cover_unseen) instead guarantee coverage at the ORIGINAL
     path's real vertices themselves, filtered to unseen ones, separately.
@@ -347,11 +295,11 @@ def place_along_runs(runs, shape_size, overlap: float = 0.0, path_width: float =
     """
     Shared placement core for both path_cover and path_cover_unseen: `runs`
     is already a list of independent, possibly-disconnected polylines (each
-    its own list of (x, y) points) -- no y-slicing or seen/unseen logic
-    happens here, each run is just covered on its own, so this works
-    identically whether the runs came from a single continuous path, a
-    drone's y-sliced portion of one, or a path fragmented into disconnected
-    stretches by excluding already-seen cells (see unseen_path_runs).
+    its own list of (x, y) points) -- no seen/unseen logic happens here,
+    each run is just covered on its own, so this works identically whether
+    the runs came from a single continuous path or one fragmented into
+    disconnected stretches by excluding already-seen cells (see
+    unseen_path_runs).
 
     `shape_size` -- see _normalize_shape_size: a plain number for a square
     footprint, or an (along, across) pair for a rectangular one.
@@ -383,21 +331,9 @@ def place_along_runs(runs, shape_size, overlap: float = 0.0, path_width: float =
     return centers
 
 
-def _y_slice_bounds(min_corner, max_corner, drone_id, num_drones):
-    frac_lo = (drone_id - 1) / num_drones
-    frac_hi = drone_id / num_drones
-    y_lo = min_corner[1] + frac_lo * (max_corner[1] - min_corner[1])
-    y_hi = min_corner[1] + frac_hi * (max_corner[1] - min_corner[1])
-    return y_lo, y_hi
-
-
 def path_cover(
     path_points,
     shape_size,
-    min_corner,
-    max_corner,
-    drone_id,
-    num_drones,
     overlap: float = 0.0,
     path_width: float = 0.0,
 ):
@@ -409,11 +345,6 @@ def path_cover(
     shape_size: side length (real-world units) of the square shape to place,
         or an (along, across) pair for a rectangular footprint -- see
         _normalize_shape_size.
-    min_corner/max_corner: the field's real-world bounds (same as the
-        CellField vertical_slice_index would've sliced against).
-    drone_id: 1-indexed drone number (matches Pathfinder.droneID's
-        convention -- see getPlacesToCheck's droneID-1 usage).
-    num_drones: total drone count.
     overlap: fraction in [0, 1) of `shape_size` that consecutive placements
         should overlap by, both along the path and (when path_width calls
         for more than one row) across it. 0.0 (default) reproduces the
@@ -424,12 +355,14 @@ def path_cover(
         reaches the corridor's edges, so multiple parallel rows are placed
         instead (see _row_offsets).
 
-    Returns a list of (x, y) shape-center placements covering this drone's
-    slice of the path -- same shape as cover_with_shape's return value.
+    Returns a list of (x, y) shape-center placements covering the whole
+    path -- same shape as cover_with_shape's return value. Used to cover
+    the whole path in one pass -- no per-drone slicing (that was an
+    artifact of an old multi-drone-field-division strategy since replaced
+    by Side/pairing + retarget_approach_target's convergence -- see
+    Pathfinder.__init__'s droneID/former numOfDrones).
     """
-    y_lo, y_hi = _y_slice_bounds(min_corner, max_corner, drone_id, num_drones)
-    runs = _clip_polyline_to_y_range(path_points, y_lo, y_hi)
-    return place_along_runs(runs, shape_size, overlap=overlap, path_width=path_width)
+    return place_along_runs([path_points], shape_size, overlap=overlap, path_width=path_width)
 
 
 def unseen_path_runs(path_points, seen_field):
@@ -505,46 +438,33 @@ def path_cover_unseen(
     path_points,
     seen_field,
     shape_size,
-    min_corner,
-    max_corner,
-    drone_id,
-    num_drones,
     overlap: float = 0.0,
     path_width: float = 0.0,
 ):
     """
     Same as path_cover, but only covers the portions of the path that
     `seen_field` doesn't already mark as seen (see unseen_path_runs) --
-    "only checking areas we haven't already checked". Splits into
-    disconnected runs from BOTH sources (already-seen cells and the
-    per-drone y-slice) before ever placing a shape; place_along_runs treats
-    every run independently regardless of which of those produced the
-    break, so no shape ever spans across a seen stretch or a slice
-    boundary.
+    "only checking areas we haven't already checked". unseen_path_runs
+    already splits the path into disconnected runs wherever a stretch is
+    already seen; place_along_runs treats every run independently, so no
+    shape ever spans across a seen stretch.
 
     unseen_runs' points are one per ~2ft cell (see unseen_path_runs), NOT
     real path vertices -- place_along_runs is told guarantee_vertices=False
     so it doesn't mistake every cell sample for its own corner (that
     inflated placement counts ~2x with no coverage benefit when tried).
     The corner guarantee instead runs here, directly against path_points'
-    own real interior vertices, kept only where still unseen and in this
-    drone's y-slice -- same guarantee, applied to the geometry it actually
-    means something for.
+    own real interior vertices, kept only where still unseen -- same
+    guarantee, applied to the geometry it actually means something for.
     """
-    y_lo, y_hi = _y_slice_bounds(min_corner, max_corner, drone_id, num_drones)
     unseen_runs = unseen_path_runs(path_points, seen_field)
-    sliced_runs = []
-    for run in unseen_runs:
-        sliced_runs.extend(_clip_polyline_to_y_range(run, y_lo, y_hi))
     centers = place_along_runs(
-        sliced_runs, shape_size, overlap=overlap, path_width=path_width, guarantee_vertices=False
+        unseen_runs, shape_size, overlap=overlap, path_width=path_width, guarantee_vertices=False
     )
 
     along, across = _normalize_shape_size(shape_size)
     dedup_dist = min(along, across) * (1.0 - overlap) / 4.0
     for x, y in path_points[1:-1]:
-        if not (y_lo <= y <= y_hi):
-            continue
         col, row = seen_field.real_to_cell(x, y)
         if not (0 <= col < seen_field.width and 0 <= row < seen_field.height):
             continue
