@@ -447,14 +447,16 @@ class Drone:
 
         match sim_mode:
             case SimMode.REAL:
-                # MAVProxy (mavproxy-forward.service) owns /dev/serial0 exclusively so it can
-                # fan the FC stream out to both Mission Planner and us. We take its loopback
-                # --out. Set REAL_MAVLINK_ADDRESS=/dev/serial0 to bypass MAVProxy and talk to
-                # the FC directly, which requires mavproxy-forward to be stopped.
+                # Talk to the FC directly. MAVProxy is not installed on every Pi, and when it
+                # is missing this is the only address that works -- a udpin default fails as a
+                # 30s heartbeat timeout with nothing in the log to say why, because binding a
+                # socket nobody dials looks identical to a healthy one.
+                # On a Pi, /dev/serial0 is the symlink to whichever UART is wired to the FC.
+                # Where MAVProxy *is* running it owns the port exclusively, so it must be
+                # stopped -- or set REAL_MAVLINK_ADDRESS=udpin:127.0.0.1:14551 to take its
+                # loopback --out and let it keep fanning the stream out to Mission Planner.
                 # udpin, not udp: MAVProxy's --out is the sender, so we bind and it dials us.
-                # Bare "udp:" would work (pymavlink defaults input=True) but is direction-
-                # ambiguous and depends on a dronekit default we don't control.
-                self.address = os.environ.get("REAL_MAVLINK_ADDRESS", "udpin:127.0.0.1:14551")
+                self.address = os.environ.get("REAL_MAVLINK_ADDRESS", "/dev/serial0")
                 self.baud = 115200 if self.address.startswith("/dev/") else None
             case SimMode.SIM:
                 logging.info(f"Using SIM mode settings with port {port}")
