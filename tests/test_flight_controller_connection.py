@@ -188,8 +188,8 @@ class TestConnection:
         assert drone.vehicle is not None
 
         if _sim_mode() is SimMode.REAL and "FC_ADDRESS" not in os.environ:
-            assert drone.address == "/dev/ttyS0"
-            assert drone.baud == 57600
+            assert drone.address == "/dev/serial0"
+            assert drone.baud == 115200
 
         _report("address", drone.address)
         _report("autopilot", drone.vehicle.version)
