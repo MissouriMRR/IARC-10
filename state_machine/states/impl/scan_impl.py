@@ -41,6 +41,71 @@ MAX_CAMERA_CLIMB_ATTEMPTS: int = 8
 _CLIMB_ALTITUDE_TOLERANCE_M: float = 0.15
 
 
+async def _capture_for_assistant(self: Scan, waypoint) -> None:
+    """ASSISTANT: captures one photo at this waypoint and stores its TRUE
+    ground footprint corners (self.drone.last_photo_corners_latlon) for
+    DroneShare to report back to the paired GAMBLER via SHARE_PHOTOS.
+
+    No seen_tracker/climb-retry loop here, unlike _capture_and_mark_seen
+    -- an ASSISTANT has no Pathfinder (see configureField) to check
+    coverage against; the GAMBLER applies coverage to ITS OWN
+    seen_tracker once the report arrives (see interdrone.py's own
+    SHARE_PHOTOS receive case)."""
+    camera = self.drone.camera
+    if camera is None:
+        logging.warning("drone %d has no camera configured -- skipping photo capture", self.drone.id)
+        return
+
+    image = camera.capture_image(only_metadata=False)
+    if image is None or image.image is None:
+        logging.warning("drone %d: camera capture failed -- skipping photo", self.drone.id)
+        return
+    self.drone.last_captured_image = image
+
+    vehicle = self.drone.vehicle
+    location = vehicle.location.global_relative_frame
+    attitude = vehicle.attitude
+    altitude_agl_m = self.drone.rangefinder_altitude_agl_m
+    if altitude_agl_m is None:
+        logging.warning(
+            "drone %d: no fresh rangefinder3 reading -- falling back to %.1fm for"
+            " this photo's footprint math",
+            self.drone.id,
+            LEG_ALTITUDE_M,
+        )
+        altitude_agl_m = LEG_ALTITUDE_M
+
+    drone_pose = DronePose(
+        lat=location.lat,
+        lon=location.lon,
+        altitude=altitude_agl_m,
+        # dronekit's Attitude is in radians; DronePose expects degrees.
+        yaw=math.degrees(attitude.yaw),
+        pitch=math.degrees(attitude.pitch),
+        roll=math.degrees(attitude.roll),
+    )
+
+    width, height = image.image.size
+    top_left, top_right, bottom_left, bottom_right = camera.get_image_corner_coordinates(
+        width, height, drone_pose
+    )
+    if None in (top_left, top_right, bottom_left, bottom_right):
+        logging.warning(
+            "drone %d: a corner ray never reached the ground -- skipping photo report",
+            self.drone.id,
+        )
+        self.drone.last_photo_corners_latlon = None
+        return
+
+    # Reordered to a perimeter walk (top_left, top_right, bottom_right,
+    # bottom_left) -- get_image_corner_coordinates returns a diagonal-
+    # crossing order, same reason _capture_and_mark_seen reorders before
+    # calling accept_image_corner_coord. The GAMBLER does that reordered
+    # call itself once this report arrives; ASSISTANT has no Pathfinder to
+    # call it on.
+    self.drone.last_photo_corners_latlon = [top_left, top_right, bottom_right, bottom_left]
+
+
 async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
     """Captures a photo at the drone's current position, computes its TRUE
     ground footprint from the camera's real FOV/mount geometry (BaseCamera.
@@ -239,11 +304,14 @@ async def run(self: Scan) -> State:
         flight_log.event("scan_waypoint_reached", waypoint=flight_log.waypoint_brief(reached))
 
         # An ASSISTANT has no Pathfinder (see configureField), and therefore
-        # no seen_tracker to check photo coverage against -- see
-        # drone_share_impl.py's matching role check for why that state skips
-        # the same way.
+        # no seen_tracker to check photo coverage against -- it still takes
+        # the photo (_capture_for_assistant), just without the climb-retry
+        # coverage loop; DroneShare reports the result back to its paired
+        # GAMBLER via SHARE_PHOTOS instead of applying it locally.
         if self.flight_settings.role != Role.ASSISTANT:
             await _capture_and_mark_seen(self, Pathfinder.instance, reached)
+        else:
+            await _capture_for_assistant(self, reached)
 
         return DroneShare(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:

@@ -41,7 +41,7 @@ from picamera2 import MappedArray  # noqa: E402
 from picamera2.encoders import MJPEGEncoder  # noqa: E402
 from picamera2.outputs import FileOutput  # noqa: E402
 
-from Cameras.RPICamera.RPICamera import RPICamera  # noqa: E402
+from vision.Cameras.RPICamera.RPICamera import RPICamera  # noqa: E402
 
 DEFAULT_CONFIG_PATH = os.path.join(_TESTS_DIR, "mine_detection_config.json")
 

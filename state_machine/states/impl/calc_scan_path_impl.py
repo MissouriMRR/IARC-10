@@ -115,6 +115,62 @@ async def _drain_cross_pair_mines(self: CalcScanPath, pf: Pathfinder) -> None:
             )
 
 
+async def _drain_photo_reports(self: CalcScanPath, pf: Pathfinder) -> None:
+    """Applies every staged SHARE_PHOTOS report (see Drone.
+    pending_photo_reports's own docstring) to this Pathfinder: marks
+    coverage for the photo's footprint (pf.accept_image_corner_coord),
+    then folds in any mine physically under it the same way DroneShare's
+    own _apply_local_mine does for a segment-B find (pf.add_discovered_
+    mine + pf.reroute_b_segment, skipped if check_merge_rewind already
+    fully re-routed things) -- every SHARE_PHOTOS waypoint is necessarily
+    segment B, since that's the whole reason the paired ASSISTANT was
+    flying it instead of this drone."""
+    reports = self.drone.pending_photo_reports
+    self.drone.pending_photo_reports = []
+    for report in reports:
+        pf.accept_image_corner_coord(report.corner_coordinates)
+        for mine_lat, mine_lon in report.mines:
+            _obstacle, _was_merged, rewound = pf.add_discovered_mine(mine_lat, mine_lon)
+            if not rewound:
+                pf.reroute_b_segment()
+
+
+def _apply_point_a_sync(self: CalcScanPath, pf: Pathfinder) -> None:
+    """Applies a staged CROSS_PAIR_POINT_A_SYNC (see Drone.
+    pending_point_a_sync's own docstring), retargeting this pair's
+    segment-A search onto the other pair's current point_A instead of
+    the field's fixed far edge -- see Pathfinder.retarget_approach_
+    target's own docstring for the mechanism, and
+    flight/pathfinding/tests/droneWorkflowTest.py's _sync_approach_target
+    for the pathfinder-only reference version of this same idea."""
+    sync = self.drone.pending_point_a_sync
+    self.drone.pending_point_a_sync = None
+    if sync is None:
+        return
+    lat, lon = sync
+    x, y = pf.coord_converter.latlon_to_local(lat, lon)
+    pf.retarget_approach_target(x, y)
+
+
+async def _send_point_a_sync_if_changed(self: CalcScanPath, pf: Pathfinder) -> None:
+    """Sends this pair's own current point_A (maze_a_path[0]) to the
+    other pair/solo drone via CROSS_PAIR_POINT_A_SYNC, but only if it
+    actually moved since the last send -- point_A only changes as a side
+    effect of a mine-driven reroute (including a retarget_approach_target
+    of our own), so most rounds are a no-op here, same as
+    _sync_approach_target's own epsilon guard."""
+    partner_id = self.flight_settings.cross_pair_partner_id
+    if partner_id is None or not pf.maze_a_path:
+        return
+    a0 = pf.maze_a_path[0]
+    pos = pf.coord_converter.local_to_latlon(a0.x, a0.y)
+    last = self.drone.last_synced_point_a
+    if last is not None and abs(last[0] - pos[0]) < 1e-9 and abs(last[1] - pos[1]) < 1e-9:
+        return
+    await self.interdrone.send_cross_pair_point_a_sync(pos[0], pos[1], (partner_id,))
+    self.drone.last_synced_point_a = pos
+
+
 def _drain_verification_waypoints(self: CalcScanPath) -> list[Waypoint]:
     """Turns every staged CROSS_PAIR_PATCHED_SPAN point (see Drone.
     pending_verification_waypoints' own docstring) into a Waypoint --
@@ -140,6 +196,7 @@ async def _run_sologambler(self: CalcScanPath) -> State:
         pf.start_maze_navigation()
 
     await _drain_cross_pair_mines(self, pf)
+    _apply_point_a_sync(self, pf)
     verification_waypoints = _drain_verification_waypoints(self)
 
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
@@ -156,28 +213,26 @@ async def _run_sologambler(self: CalcScanPath) -> State:
         return ExpandNodes(self.drone, self.flight_settings, self.interdrone)
 
     self.drone.resetWaypoints(_build_waypoints(self.drone.id, a_places, b_places) + verification_waypoints)
+    await _send_point_a_sync_if_changed(self, pf)
     return Scan(self.drone, self.flight_settings, self.interdrone)
 
 
 async def _run_gambler(self: CalcScanPath) -> State:
     """GAMBLER: paired with an ASSISTANT. Plans the scored route the same
-    way SOLOGAMBLER does today -- TODO once the leader/follower handoff is
-    wired over interdrone comms (see Scan/DroneShare's own docstrings, and
-    flight/pathfinding/tests/droneWorkflowTest.py's
-    simulate_leader_follower_pair for the already-verified split this
-    should mirror): queue only a_places for itself here, and hand
-    b_places to the paired ASSISTANT instead of flying both segments
-    itself. Until that relay exists, a GAMBLER has no choice but to fly
-    both segments itself, same as a SOLOGAMBLER -- kept as its own
-    function (rather than folded into _run_sologambler) so that future
-    change has an obvious, isolated place to land, instead of an
-    "if role != ASSISTANT" that silently covered two roles about to
-    diverge."""
+    way SOLOGAMBLER does, but only queues a_places onto its own waypoints
+    -- b_places is handed to the paired ASSISTANT instead, over
+    SEND_SEGMENT_B_WAYPOINTS (see interdrone.py's own send_segment_b_
+    waypoints and its matching receive case), mirroring the already-
+    verified split in flight/pathfinding/tests/droneWorkflowTest.py's
+    simulate_leader_follower_pair. Kept as its own function (rather than
+    folded into _run_sologambler) since the two roles diverge here."""
     pf = Pathfinder.instance
     if not _maze_started(pf):
         pf.start_maze_navigation()
 
     await _drain_cross_pair_mines(self, pf)
+    await _drain_photo_reports(self, pf)
+    _apply_point_a_sync(self, pf)
     verification_waypoints = _drain_verification_waypoints(self)
 
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
@@ -190,7 +245,17 @@ async def _run_gambler(self: CalcScanPath) -> State:
             await self.interdrone.send_checksum(pf.nodeField.mineHash(), (partner_id,))
         return ExpandNodes(self.drone, self.flight_settings, self.interdrone)
 
+    # The paired ASSISTANT flies segment B -- see SEND_SEGMENT_B_WAYPOINTS's
+    # own receive case in interdrone.py, which queues these directly onto
+    # the ASSISTANT's own self.drone.waypoints. Only a_places (this
+    # drone's own segment A) goes onto its local queue below.
+    paired_id = self.flight_settings.paired_drone
+    if paired_id is not None and b_places:
+        await self.interdrone.send_segment_b_waypoints((paired_id,), b_places)
+        b_places = []
+
     self.drone.resetWaypoints(_build_waypoints(self.drone.id, a_places, b_places) + verification_waypoints)
+    await _send_point_a_sync_if_changed(self, pf)
     return Scan(self.drone, self.flight_settings, self.interdrone)
 
 
@@ -210,11 +275,9 @@ async def run(self: CalcScanPath) -> State:
 
     Dispatches on FlightSettings.role to one of three separate functions
     (_run_assistant/_run_gambler/_run_sologambler) rather than branching
-    only on "is this an ASSISTANT" -- GAMBLER and SOLOGAMBLER happen to
-    behave identically today (see _run_gambler's own docstring for why),
-    but that's a temporary fact about the unwired leader/follower handoff,
-    not a reason to share one code path between two roles that are about
-    to diverge.
+    only on "is this an ASSISTANT" -- GAMBLER hands segment B to its
+    paired ASSISTANT (see _run_gambler's own docstring) while SOLOGAMBLER
+    flies both segments itself, so the two roles diverge here.
 
     Returns
     -------

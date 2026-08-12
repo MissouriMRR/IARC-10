@@ -30,24 +30,37 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# Open/activate uv environment
+# Open/activate uv environment. PYTHON_BIN is used instead of `uv run` further down:
+# `uv run` re-syncs the project on every invocation, and the direct-URL dronekit wheel
+# needs a network fetch to generate its metadata, so it fails outright with no wifi.
+PYTHON_BIN=""
 log_message "Activating uv environment..."
 if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
+    PYTHON_BIN="$PWD/.venv/bin/python"
     log_message "uv virtual environment activated"
 elif [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
+    PYTHON_BIN="$PWD/venv/bin/python"
     log_message "uv virtual environment activated"
 else
+    # Needs network -- uv sync must download anything missing from the cache.
     log_message "WARNING: No virtual environment found. Running uv sync..."
     uv sync
     if [ $? -eq 0 ] && [ -f ".venv/bin/activate" ]; then
         source .venv/bin/activate
+        PYTHON_BIN="$PWD/.venv/bin/python"
         log_message "uv environment created and activated"
     else
         log_message "ERROR: Failed to create uv environment"
         exit 1
     fi
+fi
+
+# Fall back to the system interpreter -- the config update below is stdlib-only.
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="$(command -v python3)"
+    log_message "WARNING: venv interpreter missing, falling back to $PYTHON_BIN"
 fi
 
 # Wait for system to fully initialize
@@ -162,7 +175,7 @@ log_message "Changed to directory"
 # TODO VERIFY THIS WORKS ON PI
 # Update mission_config.json with correct mesh IPs for all drones
 log_message "Updating mission_config.json..."
-uv run python -c "
+"$PYTHON_BIN" -c "
 import json, sys
 from pathlib import Path
 try:

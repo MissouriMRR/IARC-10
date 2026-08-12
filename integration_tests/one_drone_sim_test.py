@@ -59,6 +59,7 @@ from state_machine.interdrone import CMD_MSG
 from state_machine.state_machine import StateMachine
 from state_machine.states import Start
 import state_machine.states.impl.takeoff_impl as takeoff_impl_module
+import vision.Cameras.RPICamera.RPICamera as rpicamera_module
 
 # ======================================================================
 # Ground-truth field/mine setup -- same equirectangular-approximation
@@ -376,7 +377,13 @@ async def run_simulation(true_mines_local: list[tuple[float, float]], timeout_s:
     _SIM_CONTEXT["pose_provider"] = _make_pose_provider(vehicle)
     _SIM_CONTEXT["true_mines_latlon"] = true_mines_latlon
 
-    takeoff_impl_module.RPICamera = MockCamera
+    # Takeoff.run() now imports RPICamera locally (inside the MISSION
+    # branch, not at module level -- see takeoff_impl.py) so that the real
+    # picamera2 stack is only ever pulled in on hardware that has it.
+    # Patching takeoff_impl_module.RPICamera would no-op against that local
+    # import -- it re-resolves the name from RPICamera's own home module at
+    # call time, so the patch has to land there instead.
+    rpicamera_module.RPICamera = MockCamera
 
     interdrone = MockInterdrone(flight_settings, drone)
     machine = StateMachine(

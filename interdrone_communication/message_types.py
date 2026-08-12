@@ -72,28 +72,33 @@ class MessageType(Enum):
     SURVEY_END = 570
     SURVEY_END_ACK = 571
     SHARE_PHOTOS = 575
+    SHARE_PHOTOS_ACK = 576
     FIELD_CHECKSUM = 580
     FIELD_CHECKSUM_ACK = 581
     MISSION_END = 585
     MISSION_END_ACK = 586
     SEND_SEEN = 590
     SEND_SEEN_ACK = 591
+    SEND_SEGMENT_B_WAYPOINTS = 595 # Also used to distrbute mines
 
     # Placeholder messages
-    MISC1 = 595
-    MISC2 = 596
-    MISC3 = 597
-    MISC4 = 598
+    MISC2 = 597
+    MISC3 = 598
+    MISC4 = 599
 
     # CROSS-PAIR (two pairs, or a pair + a solo drone, working the same
     # field from opposite ends -- see flight/pathfinder.py's own
     # retarget_approach_target). Gambler-to-gambler, not gambler-to-
     # assistant like SHARE_PHOTOS above -- see FlightSettings.
     # cross_pair_partner_id for how the target drone id is chosen.
-    CROSS_PAIR_MINE_RELAY = 599
-    CROSS_PAIR_MINE_RELAY_ACK = 600
-    CROSS_PAIR_PATCHED_SPAN = 601
-    CROSS_PAIR_PATCHED_SPAN_ACK = 602
+    CROSS_PAIR_MINE_RELAY = 600
+    CROSS_PAIR_MINE_RELAY_ACK = 601
+    CROSS_PAIR_PATCHED_SPAN = 602
+    CROSS_PAIR_PATCHED_SPAN_ACK = 603
+    # Not acked, not resent on failure -- same reasoning as POSITION_REPORT:
+    # a continuous stream where a dropped one is superseded by the next
+    # point_A move, so there's nothing a lost message would need retried.
+    CROSS_PAIR_POINT_A_SYNC = 604
 
 
 SchemaFieldType: TypeAlias = (
@@ -453,6 +458,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         ],  # Each photo has cornerCoordinates (4 corner tuples) and mines (list with coordinate tuples)
         # TODO: Update once photos are defined better
     },
+    MessageType.SHARE_PHOTOS_ACK: {
+        "id": MessageType.SHARE_PHOTOS_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
     MessageType.FIELD_CHECKSUM: {
         "id": MessageType.FIELD_CHECKSUM,
         "drones_to_send_data": tuple[int, ...],
@@ -489,6 +499,32 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
     },
     MessageType.SEND_SEEN_ACK: {
         "id": MessageType.SEND_SEEN_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.SEND_SEGMENT_B_WAYPOINTS: {
+        "id": MessageType.SEND_SEGMENT_B_WAYPOINTS,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # (lat, lon) -- was typed tuple[int, int] before this drone's own
+        # send_segment_b_waypoints/receive wiring existed; lat/lon are
+        # never integers, so every real send would have failed schema
+        # validation and silently gone out as an empty {} payload.
+        "waypoints": list[tuple[float, float]],
+    },
+    MessageType.MISC2: {
+        "id": MessageType.MISC2, # Change name when implemented
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "mines": list[tuple[int, int]],
+    },
+    MessageType.MISC3: {
+        "id": MessageType.MISC3, # Change name when implemented
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+    },
+    MessageType.MISC4: {
+        "id": MessageType.MISC4, # Change name when implemented
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
     },
@@ -548,25 +584,20 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "sender_id": int,
         "mine_obstacle_hash": str,
     },
-    MessageType.MISC1: {
-        "id": MessageType.MISC1, # Change name when implemented
+    # CROSS-PAIR: the sender's current point_A (maze_a_path[0]), so the
+    # OTHER pair/solo drone can retarget its own segment-A search onto it
+    # instead of the field's fixed far edge -- see Pathfinder.
+    # retarget_approach_target's own docstring for the mechanism this
+    # feeds and flight/pathfinding/tests/droneWorkflowTest.py's
+    # _sync_approach_target for the reference (pathfinder-only) version of
+    # this same sync being wired here for the real interdrone/state
+    # machine path.
+    MessageType.CROSS_PAIR_POINT_A_SYNC: {
+        "id": MessageType.CROSS_PAIR_POINT_A_SYNC,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-    },
-    MessageType.MISC2: {
-        "id": MessageType.MISC2, # Change name when implemented
-        "drones_to_send_data": tuple[int, ...],
-        "sender_id": int,
-    },
-    MessageType.MISC3: {
-        "id": MessageType.MISC3, # Change name when implemented
-        "drones_to_send_data": tuple[int, ...],
-        "sender_id": int,
-    },
-    MessageType.MISC4: {
-        "id": MessageType.MISC4, # Change name when implemented
-        "drones_to_send_data": tuple[int, ...],
-        "sender_id": int,
+        "point_a_lat": float,
+        "point_a_lon": float,
     },
 }
 

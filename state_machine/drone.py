@@ -6,6 +6,7 @@ import collections.abc
 import json
 import logging
 import os
+import sys
 import time
 from typing import Any, Awaitable, Callable, Iterable, NamedTuple
 
@@ -38,6 +39,14 @@ from flight.pathfinding.utils.goto import FlightInterrupted, move_to
 # Separate logger so collision avoidance can be tuned on its own:
 #   logging.getLogger("collision").setLevel(logging.DEBUG)
 collision_log = logging.getLogger("collision")
+
+# Off by default so a real-mode run never blocks on a console that isn't there.
+WAIT_FOR_USER_INPUT: bool = os.environ.get("WAIT_FOR_USER_INPUT", "0") not in (
+    "0",
+    "false",
+    "False",
+    "",
+)
 
 HOLD_POLL_INTERVAL_S: float = 0.1  # how often a held drone re-checks the leg
 HOLD_HEARTBEAT_S: float = 5.0  # how often a continuing hold is logged
@@ -121,6 +130,18 @@ class CrossPairMineReport(NamedTuple):
     # Who to reply to if applying this locally (prefer_local_patch=True)
     # produces a patch_confirmed_span result.
     discovering_drone_id: int
+
+
+class SharedPhotoReport(NamedTuple):
+    """One SHARE_PHOTOS entry (ASSISTANT -> its own paired GAMBLER),
+    staged on Drone.pending_photo_reports by interdrone's receive handler
+    for CalcScanPath to drain later, synchronously -- same reason
+    CrossPairMineReport is staged rather than applied directly: a live
+    Pathfinder can never be touched from the interdrone loop's own
+    (concurrent) task."""
+
+    corner_coordinates: list[tuple[float, float]]
+    mines: list[tuple[float, float]]
 
 
 def _describe_conflict(conflict: LegConflict) -> str:
@@ -254,6 +275,12 @@ class Drone:
         # for DroneShare's mine-detection placeholder to process without
         # recapturing.
         self.last_captured_image: Any = None
+        # ASSISTANT only: the TRUE ground footprint corners (lat, lon) of
+        # the photo _capture_for_assistant (scan_impl.py) just took --
+        # None if that capture failed. DroneShare reads this to build the
+        # SHARE_PHOTOS report sent back to the paired GAMBLER, since an
+        # ASSISTANT has no seen_tracker of its own to mark directly.
+        self.last_photo_corners_latlon: list[tuple[float, float]] | None = None
         # The parent drone's own accumulated, mission-wide route: plain
         # (lat, lon) points, in flight order, appended to ONLY once a
         # stretch is truly settled (see extend_mission_path) -- never
@@ -292,6 +319,21 @@ class Drone:
         # discovering pair, not the patching one, goes back to verify).
         # Drained the same way pending_cross_pair_mines is.
         self.pending_verification_waypoints: list[tuple[float, float]] = []
+        # Latest CROSS_PAIR_POINT_A_SYNC (lat, lon) from the other pair,
+        # staged by interdrone's own receive handler -- drained (calling
+        # Pathfinder.retarget_approach_target, which touches the live
+        # graph) synchronously from CalcScanPath, same reason
+        # pending_cross_pair_mines is never applied directly from that
+        # receive task. A single slot, not a list: only the OTHER pair's
+        # MOST RECENT point_A ever matters, so an older, still-undrained
+        # sync is just overwritten rather than queued.
+        self.pending_point_a_sync: tuple[float, float] | None = None
+        # Staged SHARE_PHOTOS reports (ASSISTANT -> its own paired
+        # GAMBLER), appended by interdrone's own receive handler, drained
+        # (synchronously, from CalcScanPath) via pf.accept_image_corner_
+        # coord for coverage and pf.add_discovered_mine for any mines --
+        # same staging reason as pending_cross_pair_mines.
+        self.pending_photo_reports: list[SharedPhotoReport] = []
         # TODO: add reference to mine and path data classes
 
     @property
@@ -358,7 +400,15 @@ class Drone:
         logging.info("Drone discovered!")
         self._vehicle.add_message_listener("DISTANCE_SENSOR", self._on_distance_sensor)
 
-        if self._sim_mode is not SimMode.REAL:
+        if self._sim_mode is not SimMode.REAL or not WAIT_FOR_USER_INPUT:
+            return
+
+        # Opt-in only: the flight code normally starts as a systemd service with
+        # no console attached, so a blocking prompt would hang the boot. Set
+        # WAIT_FOR_USER_INPUT=1 for a hand-launched run where you want the
+        # pre-arm messages on screen before the drone does anything.
+        if not sys.stdin.isatty():
+            logging.warning("WAIT_FOR_USER_INPUT is set but stdin is not a terminal; continuing.")
             return
 
         message_1: str = "Waiting for user input to continue... "

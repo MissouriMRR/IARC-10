@@ -20,9 +20,13 @@ from state_machine.states.state import State
 from vision.common.drone_coordinates import DronePose
 
 
-async def _check_photo(drone, pf: Pathfinder) -> tuple[float, float] | None:
+async def _check_photo_latlon(drone) -> tuple[float, float] | None:
     """"The actual check": runs mine detection and reports the highest-
-    confidence find's LOCAL (x, y), or None if nothing was found.
+    confidence find's (lat, lon), or None if nothing was found. Returns
+    lat/lon, not local (x, y): an ASSISTANT has no Pathfinder/coord_
+    converter to convert with (see configureField), and GAMBLER/
+    SOLOGAMBLER's own caller does that one conversion itself, right after
+    calling this.
 
     Footprint marking is NOT this function's job -- scan_impl.py's own
     capture/coverage-climb loop already marked pf.seen_tracker with the
@@ -87,7 +91,7 @@ async def _check_photo(drone, pf: Pathfinder) -> tuple[float, float] | None:
         logging.warning("drone %d: mine detection's pixel ray never reached the ground", drone.id)
         return None
     mine_lat, mine_lon = ground
-    return pf.coord_converter.latlon_to_local(mine_lat, mine_lon)
+    return mine_lat, mine_lon
 
 
 def _apply_local_mine(pf: Pathfinder, waypoint, mine_xy: tuple[float, float]):
@@ -122,27 +126,22 @@ async def run(self: DroneShare) -> State:
     Implements the run method for the DroneShare state.
 
     "The actual check": processes the photo just taken at the waypoint
-    Scan flew to (self.drone.last_reached_waypoint) -- mine detection,
-    then integrating any find into this drone's own Pathfinder -- and
-    would share the footprint/mine with the rest of the swarm (see the
-    PLACEHOLDER below). An ASSISTANT has no Pathfinder to check against,
-    so it only shares (or would) and returns straight to Scan.
-
-    PLACEHOLDER: sharing the footprint/mine with other drones over
-    interdrone comms (extending SHARE_PHOTOS, or a dedicated cross-pair
-    relay message) isn't implemented -- see interdrone.py's own
-    placeholder receive cases and the multi-drone mission flow diagram
-    for the full message list this needs. This is also the mechanism
-    that's supposed to set OTHER drones' self.drone.replan_needed on
-    THEIR end when it eventually exists -- this drone's own local finds
-    don't need that flag at all, since this state can just decide the
-    transition directly (see Returns below).
+    Scan flew to (self.drone.last_reached_waypoint). GAMBLER/SOLOGAMBLER:
+    mine detection, then integrating any find into this drone's own
+    Pathfinder, plus a CROSS_PAIR_MINE_RELAY to the other pair/solo drone
+    if this is a two-pair mission. ASSISTANT: no Pathfinder to check
+    against (see configureField) -- instead reports the photo's footprint
+    (from Scan's own _capture_for_assistant) and any mine found in it back
+    to its own paired GAMBLER via SHARE_PHOTOS, which applies it on
+    arrival (see interdrone.py's own SHARE_PHOTOS receive case and Drone.
+    pending_photo_reports).
 
     Returns
     -------
     CalcScanPath : State
-        If a mine was found here -- this drone's own Pathfinder needs to
-        replan around it before Scan can safely fly anything else queued.
+        If a mine was found here (GAMBLER/SOLOGAMBLER only) -- this
+        drone's own Pathfinder needs to replan around it before Scan can
+        safely fly anything else queued.
     Scan : State
         Otherwise -- there may be more already-queued waypoints to fly
         before the next replan.
@@ -163,8 +162,9 @@ async def run(self: DroneShare) -> State:
 
         if self.flight_settings.role != Role.ASSISTANT and waypoint is not None:
             pf = Pathfinder.instance
-            mine_xy = await _check_photo(self.drone, pf)
-            if mine_xy is not None:
+            mine_latlon = await _check_photo_latlon(self.drone)
+            if mine_latlon is not None:
+                mine_xy = pf.coord_converter.latlon_to_local(*mine_latlon)
                 applied = _apply_local_mine(pf, waypoint, mine_xy)
                 mine_found = True
                 flight_log.event(
@@ -188,10 +188,22 @@ async def run(self: DroneShare) -> State:
                         mine_lat, mine_lon, obstacle.obstacle_hash, (partner_id,)
                     )
 
-        # PLACEHOLDER: share waypoint's footprint with the ASSISTANT's own
-        # paired GAMBLER (SHARE_PHOTOS) -- being implemented separately;
-        # not this drone's own cross-pair relay above, which is intra-
-        # pair GAMBLER-to-GAMBLER, not GAMBLER-to-its-own-ASSISTANT.
+        elif self.flight_settings.role == Role.ASSISTANT and waypoint is not None:
+            # Report this waypoint's photo back to the paired GAMBLER --
+            # footprint corners from Scan's own _capture_for_assistant,
+            # plus any mine physically under it. Not this drone's own
+            # cross-pair relay above (that's intra-pair GAMBLER-to-
+            # GAMBLER, gated out for an ASSISTANT by the branch above);
+            # this is GAMBLER-to-its-own-ASSISTANT's report going back.
+            corners = self.drone.last_photo_corners_latlon
+            if corners is not None:
+                mine_latlon = await _check_photo_latlon(self.drone)
+                mines = [mine_latlon] if mine_latlon is not None else []
+                paired_id = self.flight_settings.paired_drone
+                if paired_id is not None:
+                    await self.interdrone.share_photos(
+                        [{"cornerCoordinates": corners, "mines": mines}], (paired_id,)
+                    )
 
         if mine_found:
             return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
