@@ -74,10 +74,10 @@ class MessageType(Enum):
     MISSION_END_ACK = 586
     SEND_SEEN = 590
     SEND_SEEN_ACK = 591
-    SEND_SEGMENT_B_WAYPOINTS = 595
-    DISTRIBUTE_MINES = 597
+    SEND_SEGMENT_B_WAYPOINTS = 595 # Also used to distrbute mines
 
     # Placeholder messages
+    MISC2 = 597
     MISC3 = 598
     MISC4 = 599
 
@@ -474,11 +474,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "sender_id": int,
         "waypoints": list[tuple[int, int]],
     },
-    MessageType.DISTRIBUTE_MINES: {
-        "id": MessageType.DISTRIBUTE_MINES,
+    MessageType.MISC2: {
+        "id": MessageType.MISC2, # Change name when implemented
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "mines": list[tuple[int, int]]
+        "mines": list[tuple[int, int]],
     },
     MessageType.MISC3: {
         "id": MessageType.MISC3, # Change name when implemented

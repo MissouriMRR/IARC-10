@@ -550,6 +550,32 @@ class Interdrone:
 
         return
 
+    # Also used for distributing mines
+    async def send_segment_b_waypoints(
+        self,
+        drones_to_send_data: tuple[int, ...],
+        waypoints: list[tuple[int, int]],
+    ) -> None:
+        """
+        Message ID = 595
+        Send segment B waypoints to specified drones.
+        Waypoints is a list of (lat, lon) tuples.
+        """
+        for target_drone in drones_to_send_data:
+            state = self.get_drone_state_from_id(target_drone)
+            if state is not None:
+                segment_message: Message = Message.create(
+                    id=MessageType.SEND_SEGMENT_B_WAYPOINTS,
+                    drones_to_send_data=(target_drone,),
+                    sender_id=self.flight_settings.current_drone_ID,
+                    data={"waypoints": waypoints},
+                )
+                self.send(segment_message)
+                # Mark peer as needing an update if relevant
+                state.waypoint_up_to_date = False
+
+        return
+
     async def reached_waypoint(
         self, drones_to_send_data: tuple[int, ...], waypoint: Waypoint
     ) -> None:
