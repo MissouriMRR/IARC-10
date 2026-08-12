@@ -1572,32 +1572,51 @@ class Interdrone:
                                     )
                                     self.send(reconfirm_waypoints_message_response)
                         case MessageType.SHARE_PHOTOS:
-                            # PLACEHOLDER -- send-only today (see share_photos
-                            # above); this receive-side case doesn't exist
-                            # yet. Per the leader/follower design (see the
-                            # coordinating-4-drones plan and
-                            # simulate_leader_follower_pair's
-                            # _leader_apply_follower_report), this is where an
-                            # ASSISTANT's photo reports would need to reach
-                            # its paired GAMBLER's own Pathfinder: for each
-                            # photo in message.data["photos"], call
-                            # accept_image_corner_coord for the image's corner
-                            # coords (coverage), then add_discovered_mine for
-                            # any mine coordinates reported in it. If a mine
-                            # IS reported, this drone's own Scan loop needs to
-                            # know its currently-queued waypoints may no
-                            # longer be safe/optimal -- set
-                            # self.drone.replan_needed to a reason string
-                            # (mirrors formation_abort's own pattern on
-                            # Drone) so Scan breaks out to CalcScanPath on
-                            # its next entry instead of blindly continuing
-                            # the old queue; CalcScanPath itself clears the
-                            # flag once it's recomputed in response. The same
-                            # flag is what a future cross-pair mine-relay
-                            # message (see the mission-flow diagram -- no
-                            # message type exists for that yet) would set
-                            # too. Left deliberately unimplemented for now.
-                            pass
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
+
+                            photos = message.data.get("photos", [])
+                            for photo in photos:
+                                corner_value = photo.get("cornerCoordinates", ())
+                                mine_value = photo.get("mines", [])
+
+                                corner_coordinates: list[tuple[float, float]] = []
+                                try:
+                                    for lat, lon in corner_value:
+                                        corner_coordinates.append((float(lat), float(lon)))
+                                except Exception:
+                                    corner_coordinates = []
+
+                                mines: list[tuple[float, float]] = []
+                                try:
+                                    for mlat, mlon in mine_value:
+                                        mines.append((float(mlat), float(mlon)))
+                                except Exception:
+                                    mines = []
+
+                                flight_log.event(
+                                    "share_photos_recv",
+                                    peer=message.sender_id,
+                                    corners=corner_coordinates,
+                                    mines=mines,
+                                )
+
+                                # PLACEHOLDER -- Pathfinding stuff goes here
+
+                            # ack sent once, after all photos in this message are processed
+                            share_ack: Message = Message.create(
+                                id=MessageType.SHARE_PHOTOS_ACK,
+                                drones_to_send_data=(message.sender_id,),
+                                sender_id=self.flight_settings.current_drone_ID,
+                                data={},
+                            )
+                            self.send(share_ack)
+
+                        case MessageType.SHARE_PHOTOS_ACK:
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
                         case MessageType.FIELD_CHECKSUM:
                             # PLACEHOLDER -- send_checksum (see above) has no
                             # caller anywhere yet either, so this case has

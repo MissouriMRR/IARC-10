@@ -68,6 +68,7 @@ class MessageType(Enum):
     SURVEY_END = 570
     SURVEY_END_ACK = 571
     SHARE_PHOTOS = 575
+    SHARE_PHOTOS_ACK = 576
     FIELD_CHECKSUM = 580
     MISSION_END = 585
     MISSION_END_ACK = 586
@@ -434,6 +435,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
             dict[str, Any]
         ],  # Each photo has cornerCoordinates (4 corner tuples) and mines (list with coordinate tuples)
         # TODO: Update once photos are defined better
+    },
+    MessageType.SHARE_PHOTOS_ACK: {
+        "id": MessageType.SHARE_PHOTOS_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
     },
     MessageType.FIELD_CHECKSUM: {
         "id": MessageType.FIELD_CHECKSUM,
