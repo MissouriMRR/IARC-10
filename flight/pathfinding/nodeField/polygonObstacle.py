@@ -1,3 +1,4 @@
+import hashlib
 from typing import List, Tuple
 from shapely.geometry import Polygon, LineString, Point
 from flight.pathfinding.nodeField.node import Node
@@ -5,6 +6,25 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon as polyPlt
 import math
+
+
+def hash_position(x: float, y: float, precision: int = 6) -> str:
+    """Stable, position-based identifier for a single local (x, y) point in
+    the field's shared local coordinate frame -- the shared formula behind
+    PolygonObstacle.obstacle_hash (its own self.origin) and
+    Pathfinder.add_discovered_mine's self_mine_order/other_mine_order
+    tracking (the just-discovered mine's own position, before it's
+    possibly merged into a union -- see that method's own comment for why
+    hashing the live obstacle after a merge would be the wrong value).
+    Two callers hashing the same rounded position always get the same
+    result, with no coordination -- same idea as Field.mineHash's own
+    whole-field hash, just scoped to one point.
+
+    hashlib, not Python's built-in hash(): that one is randomized per
+    process (PYTHONHASHSEED) and would NOT agree across two drones even
+    for identical input."""
+    payload = repr((round(x, precision), round(y, precision))).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def is_clockwise(points):
@@ -222,6 +242,39 @@ class PolygonObstacle:
         self.nodes = nodes
 
         self.polygon = Polygon(self.vertices)
+
+        # This obstacle's position at construction, in the field's shared
+        # local coordinate frame -- fixed forever, unlike self.vertices/
+        # self.polygon, which CAN change shape later (a BlockMine's own
+        # expand(), or a unionObstacle whose constituents change) -- see
+        # obstacle_hash, which is built from this specifically so it stays
+        # stable across those later changes instead of drifting with them.
+        # Every obstacle type gets a sensible default here (this polygon's
+        # own centroid); BlockMine overrides it immediately after calling
+        # this constructor with something more precise (the mine's actual
+        # discovery position, not the safety-radius block's centroid --
+        # see BlockMine's own comment on why that distinction matters for
+        # Field.mineHash specifically).
+        self.origin: Tuple[float, float] = (self.polygon.centroid.x, self.polygon.centroid.y)
+
+    @property
+    def obstacle_hash(self) -> "str | None":
+        """Stable, position-based identifier for THIS specific obstacle,
+        portable across processes/drones -- unlike Field._generateId()'s
+        own id (a per-process sequential counter, drone-number-prefixed,
+        never comparable between two drones' separate Fields), this is
+        derived purely from self.origin, so two drones that independently
+        discover the SAME obstacle compute the SAME hash with no
+        coordination at all. Same idea as Field.mineHash's own whole-
+        field hash, just scoped to one obstacle instead of every mine in
+        it -- see that method's own docstring for the matching design.
+
+        None if this obstacle never got a real self.origin (the len(
+        vertices) < 2 degenerate case __init__ bails out of early)."""
+        origin = getattr(self, "origin", None)
+        if origin is None:
+            return None
+        return hash_position(origin[0], origin[1])
 
     # A vertex's index in self.vertices is not guaranteed to line up with its
     # node's index in self.nodes (e.g. hull-derived or merged/union vertex

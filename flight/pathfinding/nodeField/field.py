@@ -27,6 +27,13 @@ from shapely import coverage_union, coverage_union_all, unary_union
 
 SQUARE_SIZE = 2
 
+# mergePolygons: how much to buffer each input polygon by when unary_union
+# alone doesn't fuse them into one Polygon (see that method). Far smaller
+# than anything that could meaningfully change an obstacle's own danger
+# radius -- purely large enough for floating-point unioning to register a
+# hairline of real interior overlap instead of a bare point/edge touch.
+_MERGE_TOUCH_FUSE_EPSILON = 1e-6
+
 
 # Field generates nodes off of mines, generates mines too
 class Field:
@@ -307,6 +314,36 @@ class Field:
             polygonList.append(i.polygon)
 
         unionPolygon = unary_union(polygonList)
+        if unionPolygon.geom_type != "Polygon":
+            # obstacleOverlap (this method's only caller, via
+            # _resolveOverlaps) tests with shapely's .intersects(), which is
+            # satisfied by two polygons merely TOUCHING at a boundary point
+            # or edge, not just a real interior overlap -- so this set was
+            # already correctly judged "should become one merged danger
+            # zone." But unary_union on bare touching polygons (no shared
+            # interior area) can come back as a MultiPolygon instead of
+            # fusing them -- a single point of contact isn't a valid simple
+            # Polygon boundary -- which crashed here (AttributeError:
+            # 'MultiPolygon' object has no attribute 'exterior') the one
+            # time this was actually hit in ~450 simulated expandField
+            # calls across mineExpandRestartTest.py's sweep, always at an
+            # exaggerated safety-margin expansion (real missions expand by
+            # ~2ft; this needed 6ft to surface, and even then only 1/25
+            # seeds). Buffering each input by a hairline first turns any
+            # such touch into genuine interior overlap, which unary_union
+            # always fuses into one Polygon -- the buffer is far too small
+            # to meaningfully change any obstacle's own danger radius.
+            unionPolygon = unary_union(
+                [p.buffer(_MERGE_TOUCH_FUSE_EPSILON) for p in polygonList]
+            )
+        if unionPolygon.geom_type != "Polygon":
+            # Should be unreachable (see above) -- surfacing loudly instead
+            # of silently dropping/mis-shaping a danger zone if it ever
+            # isn't.
+            raise ValueError(
+                f"mergePolygons: unary_union produced a {unionPolygon.geom_type},"
+                " not a Polygon, even after the touch-fusing buffer"
+            )
         nodes = []
         for i in unionPolygon.exterior.coords[:-1]:
             # print(i)

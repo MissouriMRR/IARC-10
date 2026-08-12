@@ -17,16 +17,16 @@ from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.calc_scan_path import CalcScanPath
-from state_machine.flight_settings import Role, Side
+from state_machine.flight_settings import Role, Side, SimMode
 from flight.pathfinder import Pathfinder
 from time import time
 
 from vision.Cameras.RPICamera.RPICamera import RPICamera
-
+from vision.Cameras.AirSimCamera.AirSimCamera import AirSimCamera
 # vision/config.json's own keys (hFovDeg, cameraOffsetM, modelPath, ...) --
 # see RPICamera.__init__/initialize_camera for what each is read for.
 VISION_CONFIG_PATH = "./vision/config.json"
-
+AIRSIM_VISION_CONFIG_PATH = "./vision/airsim_config.json"
 
 async def run(self: Takeoff) -> State:
     """
@@ -110,10 +110,18 @@ async def run(self: Takeoff) -> State:
                 # camera/model (RPICamera.piCam is a class-level singleton, but
                 # scan_impl.py reads it off self.drone.camera, set here, so the
                 # camera survives even if something else touches the singleton).
-                with open(VISION_CONFIG_PATH) as vision_config_file:
-                    vision_config = json.load(vision_config_file)
-                camera = RPICamera(vision_config)
-                camera.initialize_camera()
+
+
+                if self.flight_settings.sim_mode is SimMode.AIRSIM:
+                    with open(AIRSIM_VISION_CONFIG_PATH) as vision_config_file:
+                        vision_config = json.load(vision_config_file)
+                    camera = AirSimCamera(vision_config)
+                    camera.initialize_camera()
+                else:
+                    with open(VISION_CONFIG_PATH) as vision_config_file:
+                        vision_config = json.load(vision_config_file)
+                    camera = RPICamera(vision_config)
+                    camera.initialize_camera()
                 self.drone.camera = camera
                 if self.drone.id == 1:
 
@@ -125,7 +133,6 @@ async def run(self: Takeoff) -> State:
 
                         logging.info("Waiting for all drones to start the mission...")
                         await asyncio.sleep(0.1)
-                    break
                 else:
                     await self.interdrone.send_start_mission(tuple([1]))
                 await self.drone.takeoff(5)  # Fix altitude later lol

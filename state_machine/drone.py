@@ -22,6 +22,7 @@ from pymavlink.dialects.v20.all import MAVLink_command_long_message
 from flight.pathfinding.utils.calculate_distance import calculate_distance
 import flight.pathfinding.utils.seen_by_drone as seen_by_drone
 import flight.pathfinding.nodeField as nodeGen
+from flight.pathfinder import HEIGHTOFFIELD, Pathfinder, WIDTHOFFIELD, format_iarc_path
 from state_machine.flight_settings import SimMode
 from flight.waypoint import (
     COLLISION_RADIUS,
@@ -102,6 +103,24 @@ class LegConflict(NamedTuple):
     # "off_formation": peer inside the window but too far from the leg it claims
     # to be flying for the barrier's guarantee to hold.
     reason: str = "swept_path"
+
+
+class CrossPairMineReport(NamedTuple):
+    """One CROSS_PAIR_MINE_RELAY, staged on Drone.pending_cross_pair_mines
+    by interdrone's receive handler for CalcScanPath to drain later,
+    synchronously -- see that attribute's own docstring for why a live
+    Pathfinder can never be touched directly from the interdrone loop's
+    own (concurrent) task."""
+
+    lat: float
+    lon: float
+    # The SENDER's own PolygonObstacle.obstacle_hash for this mine --
+    # echoed back in CROSS_PAIR_MINE_RELAY_ACK and, if a local patch gets
+    # made in response, in CROSS_PAIR_PATCHED_SPAN too.
+    obstacle_hash: str
+    # Who to reply to if applying this locally (prefer_local_patch=True)
+    # produces a patch_confirmed_span result.
+    discovering_drone_id: int
 
 
 def _describe_conflict(conflict: LegConflict) -> str:
@@ -235,6 +254,44 @@ class Drone:
         # for DroneShare's mine-detection placeholder to process without
         # recapturing.
         self.last_captured_image: Any = None
+        # The parent drone's own accumulated, mission-wide route: plain
+        # (lat, lon) points, in flight order, appended to ONLY once a
+        # stretch is truly settled (see extend_mission_path) -- never
+        # Node objects, never read from a live Pathfinder's own maze_a_
+        # path/maze_b_path/maze_confirmed_path directly. That distinction
+        # matters as soon as there's more than one Pathfinder in a
+        # mission (two pairs, see CalcScanPath's own GAMBLER/SOLOGAMBLER
+        # split): each Pathfinder's node ids are drone-number-prefixed and
+        # not comparable across processes, and querying a live Pathfinder
+        # only ever gives you that ONE Pathfinder's own half of the field
+        # -- mission_path is meant to be readable by something outside
+        # this drone's own process (the app, a status file) without
+        # needing a live Pathfinder object at all. Every GAMBLER/
+        # SOLOGAMBLER accumulates its own (an ASSISTANT has no Pathfinder
+        # to accumulate one from, see configureField) -- but only drone 1
+        # (the mission's "parent", already the established app-reporting
+        # role -- see SEND_SWARM_STATUS) is meant to be READ externally.
+        # In a two-pair mission that means drone 1's own mission_path only
+        # covers its own pair's half until cross-pair relay exists to
+        # fold the other pair's confirmed stretches in too (see
+        # get_mission_iarc_path's own docstring) -- an honest gap, not
+        # papered over here.
+        self.mission_path: list[tuple[float, float]] = []
+        # Staged CROSS_PAIR_MINE_RELAY reports, appended by interdrone's
+        # own receive handler, drained (synchronously, from CalcScanPath)
+        # via Pathfinder.add_discovered_mine(report.lat, report.lon,
+        # prefer_local_patch=True) -- see CrossPairMineReport's own
+        # docstring for why the receive path only ever stages, never
+        # calls that directly itself.
+        self.pending_cross_pair_mines: list[CrossPairMineReport] = []
+        # Staged CROSS_PAIR_PATCHED_SPAN points, appended by interdrone's
+        # own receive handler -- this drone was the ORIGINAL discoverer,
+        # and these are the new places to fly to and re-photograph a
+        # local patch the OTHER pair made in response (see
+        # Pathfinder.patch_confirmed_span's own docstring for why the
+        # discovering pair, not the patching one, goes back to verify).
+        # Drained the same way pending_cross_pair_mines is.
+        self.pending_verification_waypoints: list[tuple[float, float]] = []
         # TODO: add reference to mine and path data classes
 
     @property
@@ -485,6 +542,41 @@ class Drone:
 
     def getWaypointChecksum(self):
         return Waypoint.getChecksum(self.waypoints)
+
+    def extend_mission_path(self, points_latlon: list[tuple[float, float]]) -> None:
+        """Appends newly-settled (lat, lon) points onto self.mission_path.
+        Call only with a stretch that's truly done changing -- CalcScanPath
+        calls this with maze_b_path's own points right before
+        pf.confirm_b_into_c() folds them into confirmed history (the exact
+        moment they stop being reroutable), and EndRun calls it once more
+        with the final maze_a_path once the mission concludes (the one
+        stretch that never goes through confirm_b_into_c at all, since
+        it's the approach edge, not something that drains into C)."""
+        self.mission_path.extend(points_latlon)
+
+    def get_mission_iarc_path(self, buffer_width: int = 0) -> str:
+        """Returns self.mission_path -- see that attribute's own docstring
+        for why it's tracked separately from any live Pathfinder's own
+        route -- in the IARC text-reporting format (see
+        flight.pathfinder.format_iarc_path for the format itself).
+
+        Needs Pathfinder.instance for coordinate geometry only (converting
+        mission_path's plain lat/lon into the local frame format_iarc_path
+        works in) -- whichever drone calls this (meant to be drone 1, the
+        mission's "parent") always has one, since only ASSISTANT skips
+        building a Pathfinder (see configureField) and drone 1 is never
+        assigned that role for any drone count.
+
+        Raises ValueError if mission_path is empty, or if this drone has
+        no Pathfinder to convert coordinates with."""
+        pf = Pathfinder.instance
+        if pf is None:
+            raise ValueError(
+                "get_mission_iarc_path needs Pathfinder.instance for coordinate"
+                " geometry, and this drone has none"
+            )
+        path_xy = [pf.coord_converter.latlon_to_local(lat, lon) for lat, lon in self.mission_path]
+        return format_iarc_path(path_xy, buffer_width)
 
     def checkForCollision(self, other_waypoints: list[Waypoint]) -> int:
         """Report where this drone's *planned* route crosses another drone's.
@@ -960,12 +1052,30 @@ class Drone:
         self.field = nodeGen.Field(xMin, xMax, yMin, yMax)
 
     # Smart landing sequence, Should be usable in final product!!
-    async def recall(self):
-        if self.field_size[0] - self.x < self.field_size[1] - self.y:
-            self.convert_goto(
-                self, [self.field_size[0] * round(self.x / self.field_size[0]), self.y], 23
-            )
+    async def recall(self) -> None:
+        """Flies to the nearest field edge (whichever of the two axes is
+        closer to a boundary, in the Pathfinder's own local frame) at
+        LEG_ALTITUDE_M -- exits the field along the shortest path before
+        Land's own return_to_launch takes over for the rest of the way
+        home, rather than cutting straight back across ground that might
+        not be fully swept. self.x/self.y/self.convert_goto (this
+        method's previous body) never existed anywhere on this class --
+        this predates the Pathfinder-based rewrite the rest of Drone/the
+        maze-mode states now use, and every call would have raised
+        AttributeError. A no-op if this drone never built a Pathfinder
+        (ASSISTANT -- see configureField -- or a test harness that
+        skipped Takeoff)."""
+        pf = Pathfinder.instance
+        if pf is None:
+            return
+        lat, lon = self.currentPosition()
+        x, y = pf.coord_converter.latlon_to_local(lat, lon)
+        if WIDTHOFFIELD - x < HEIGHTOFFIELD - y:
+            target_x, target_y = WIDTHOFFIELD, y
         else:
-            self.convert_goto(
-                self, [self.x, self.field_size[1] * round(self.y / self.field_size[1])], 23
-            )
+            target_x, target_y = x, HEIGHTOFFIELD
+        target_lat, target_lon = pf.coord_converter.local_to_latlon(target_x, target_y)
+        self.commandPoint(target_lat, target_lon, LEG_ALTITUDE_M, groundspeed=LEG_GROUNDSPEED_M_S)
+        target = (target_lat, target_lon)
+        while segment_distance(self.currentPosition(), self.currentPosition(), target, target) > LEG_TOLERANCE_M:
+            await asyncio.sleep(0.5)

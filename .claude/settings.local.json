@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(python \"C:\\\\Users\\\\harpe\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-harpe-Multirotor-IARC-10\\\\2567942b-0ada-473d-af3b-214803e7410d\\\\scratchpad\\\\verify_fresh_bad_edges.py\")",
+      "Bash(python -c \"import flight.pathfinder\")"
+    ]
+  }
+}

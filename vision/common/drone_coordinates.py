@@ -36,7 +36,11 @@ def rotation_matrix(yaw, pitch, roll):  # Rotational matrices for the x,y,and z 
     Ry = np.array([[cos(pitch), 0, sin(pitch)], [0, 1, 0], [-sin(pitch), 0, cos(pitch)]])
     # roll is rotation about the x axis (tilt left/right) The angle is the equivalent of alpha.
     Rx = np.array([[1, 0, 0], [0, cos(roll), -sin(roll)], [0, sin(roll), cos(roll)]])
-    return Rx @ Ry @ Rz
+    # Composition order matters once more than one angle is nonzero at a time: yaw must be
+    # applied last (outermost) so pitch/roll tilt relative to the drone's own heading rather
+    # than a fixed world axis. This is the standard aerospace yaw-pitch-roll body->world DCM,
+    # equivalent to the intrinsic Z-Y-X Euler sequence (e.g. scipy's Rotation.from_euler("ZYX", ...)).
+    return Rz @ Ry @ Rx
 
 
 # Geometrics

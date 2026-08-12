@@ -1,7 +1,11 @@
 """Gets the mission configuration."""
 
 import json
-from typing import NotRequired, TextIO, TypedDict
+from typing import TextIO, TypedDict
+
+# typing.NotRequired is Python 3.11+ (PEP 655); this dev environment runs
+# 3.10, where it only exists in the typing_extensions backport.
+from typing_extensions import NotRequired
 
 
 class SimModeConfig(TypedDict):

@@ -45,9 +45,36 @@ async def run(self: EndRun) -> State:
         logging.info("EndRun state running")
 
         pf = Pathfinder.instance
+        if pf is not None:
+            # Re-syncs mission_path with this Pathfinder's own final route
+            # -- a wholesale REPLACE, not another append. CalcScanPath's
+            # incremental extend_mission_path calls are a best-effort
+            # progress snapshot, taken as each stretch was confirmed; they
+            # are not still accurate by the time ExpandNodes has run.
+            # ExpandNodes' own increase_radius (the final competition-
+            # safety-margin growth) can shift EXISTING node positions
+            # outward even without changing the route's node count or
+            # structure -- confirmed directly: a 4-node confirmed+approach
+            # route came out of a real simulated run with the same 4-node
+            # shape before and after ExpandNodes, but different lat/lon,
+            # since the nodes themselves moved. get_maze_path() here is
+            # this Pathfinder's own, now-final, post-repair route -- the
+            # authoritative answer mission_path needs to hold once the
+            # mission concludes.
+            #
+            # This replaces mission_path with ONLY this Pathfinder's own
+            # contribution -- correct today (nothing else populates it),
+            # but will need to become a "replace my own portion, keep
+            # anything relayed from elsewhere" merge once cross-pair relay
+            # (two-pair missions) actually feeds mission_path from a
+            # SECOND Pathfinder that this drone has no live object for.
+            self.drone.mission_path = [
+                pf.coord_converter.local_to_latlon(n.x, n.y) for n in pf.get_maze_path()
+            ]
         flight_log.event(
             "end_run",
             confirmed_path_len=len(pf.maze_confirmed_path) if pf is not None else None,
+            mission_path_len=len(self.drone.mission_path),
             time_exceeded=self.drone.time_exceeded(self.flight_settings.max_flight_time),
         )
 

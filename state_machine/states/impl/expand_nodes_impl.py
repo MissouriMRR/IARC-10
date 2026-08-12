@@ -31,16 +31,14 @@ async def run(self: ExpandNodes) -> State:
     Once the scan is fully complete (CalcScanPath found nothing left to
     check), grows every known mine's danger polygon by
     MINE_RADIUS_EXPANSION_FT (Field.expandField, via Pathfinder.
-    increase_radius) as a final safety margin, then re-validates the
-    already-flown/planned route against every current obstacle.
-    expandField's own purge-and-rebuild can invalidate an edge that was
-    safe at the smaller radius, the same way a newly-discovered mine
-    can -- check_path_envelopment is what actually repairs that (not
-    just detects it) for a fresh discovery, and it's exactly as correct
-    reused here: it's a no-op the instant it finds nothing wrong with a
-    given obstacle, so sweeping every current one (expandField itself
-    doesn't report which specific mines grew) is safe rather than
-    wasteful at this field's obstacle counts.
+    increase_radius) as a final safety margin, then "restarts the gambler/
+    assistant loop" against the now-expanded mine set (Pathfinder.
+    repair_path_after_expansion) -- growing every mine at once can break
+    edges the planned route relies on the same way a newly-discovered mine
+    can mid-scan, and repair_path_after_expansion is the general form of
+    the same repair check_path_envelopment already does for one fresh
+    discovery, replayed to a fixed point instead of once (see its own
+    docstring for why more than one pass can genuinely be needed here).
 
     An ASSISTANT has no Pathfinder of its own (see configureField), so
     this is a no-op for it.
@@ -64,13 +62,13 @@ async def run(self: ExpandNodes) -> State:
         pf = Pathfinder.instance
         if pf is not None:
             pf.increase_radius(MINE_RADIUS_EXPANSION_FT)
-            for obstacle in list(pf.nodeField.mines) + list(pf.nodeField.unionObstacles):
-                pf.check_path_envelopment(obstacle)
+            repair_passes = pf.repair_path_after_expansion()
             flight_log.event(
                 "nodes_expanded",
                 expansion_ft=MINE_RADIUS_EXPANSION_FT,
                 mines=len(pf.nodeField.mines),
                 unions=len(pf.nodeField.unionObstacles),
+                repair_passes=repair_passes,
             )
 
         return EndRun(self.drone, self.flight_settings, self.interdrone)

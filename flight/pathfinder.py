@@ -13,12 +13,14 @@
 # The class needs a static variable used to store an instance of itself for use in the state machine.
 
 # .. and the constants for arbitrary things like end node density etc.
+import hashlib
 import math
 
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer
 from flight.pathfinding.path_subdivision import Path
 from flight.pathfinding.nodeField.field import Field
 from flight.pathfinding.nodeField.node import Node
+from flight.pathfinding.nodeField.polygonObstacle import hash_position
 from flight.pathfinding.path_calculation import Graph
 from flight.pathfinding.cellField.cellField import CellField
 from flight.pathfinding.protoMine import protoMine
@@ -158,6 +160,103 @@ WIDTHOFSQUARE = 2
 WIDTHOFFIELD = 80
 HEIGHTOFFIELD = 300
 
+# get_iarc_path's (col, row) step -> IARC direction letter. Matches
+# flight.pathfinding.cellField._path._STEP_TO_DIRECTION's own mapping (row
+# increases north/"U", same convention CellField.block_commands uses) --
+# duplicated rather than imported since that one is that module's private
+# implementation detail, and get_iarc_path needs to run its own compression
+# over a cell list _path.py's own public API can't produce (see that
+# method's docstring for why).
+_IARC_STEP_TO_DIRECTION: dict[tuple[int, int], str] = {
+    (0, 1): "U",
+    (0, -1): "D",
+    (-1, 0): "L",
+    (1, 0): "R",
+}
+
+
+def format_iarc_path(points_local_xy: list[tuple[float, float]], buffer_width: int = 0) -> str:
+    """Converts an ordered list of LOCAL (x, y) points (Pathfinder's own
+    arbitrary field-local frame -- feet, not lat/lon) into the IARC text-
+    reporting format:
+        S,<start_col>,<buffer_width>
+        U,9
+        L,1
+        ...
+    buffer_width is the green-zone safety-buffer width, in squares, to
+    report on either side of the path -- purely descriptive here (what
+    gets written to the S line), not enforced against any obstacle.
+
+    Takes local (x, y), not (lat, lon): a caller holding lat/lon (Drone.
+    get_mission_iarc_path, since mission_path is deliberately plain lat/lon
+    -- see that method's own docstring for why) converts once, one-way, via
+    Pathfinder.instance.coord_converter.latlon_to_local before calling this.
+    Pathfinder.get_iarc_path already has get_maze_path()'s local (x, y)
+    directly and must NOT round-trip it through local->latlon->local first
+    -- that round trip isn't perfectly lossless, and the tiny error it
+    introduces is enough to push a point sitting exactly on a cell boundary
+    (e.g. x=40.0) to just under it, flooring into the wrong column --
+    confirmed directly: a synthetic straight-up-center-of-field path this
+    was checked against reported col 19 instead of col 20 the one time this
+    function took (lat, lon) + a converter instead of local (x, y) directly.
+
+    The grid geometry itself (WIDTHOFFIELD/WIDTHOFSQUARE cols x
+    HEIGHTOFFIELD/WIDTHOFSQUARE rows, WIDTHOFSQUARE-ft cells -- identical to
+    flight.pathfinding.blockField.field_grid.BlockField's own 40x150x2ft
+    grid) is the same for every Pathfinder in a mission, so a throwaway
+    CellField built from the module constants is exactly as correct as
+    reusing any one instance's own seen_tracker, without coupling this to
+    one -- it's used purely as a coordinate-conversion helper (CellField.
+    path_cells; see _path.py), never read for its own marked-seen bits.
+
+    points_local_xy's own points are typically many feet apart -- not one
+    grid cell apart (graph tangent points for Pathfinder.get_maze_path(),
+    photo waypoints for Drone.mission_path) -- so turning them into
+    cardinal (U/D/L/R) block moves needs real per-segment line
+    rasterization, not a naive per-point block lookup (which would leave
+    gaps no single cardinal step covers); that's what CellField.path_cells
+    is for.
+
+    The competition's own convention (confirmed against its own worked
+    examples: a full-field traverse is reported as exactly
+    HEIGHTOFFIELD/WIDTHOFSQUARE, i.e. 150, "U"s) treats "S" as placing the
+    drone just OUTSIDE the field at the front line, not already inside
+    row 0 -- the first "U" is what enters row 0. path_cells can't
+    represent that row itself (CellField only has cells 0..height-1; the
+    field entry's real position, row -1, gets clipped away by path_cells'
+    own in-bounds clipping before the walk even starts), so it's
+    prepended here by hand instead of reusing CellField.block_commands'
+    own run-length compression (which only ever sees the already-clipped,
+    in-bounds cell list).
+
+    Raises ValueError if points_local_xy is empty or entirely outside the
+    field's own bounds (nothing to report)."""
+    grid = CellField(
+        WIDTHOFFIELD // WIDTHOFSQUARE,
+        HEIGHTOFFIELD // WIDTHOFSQUARE,
+        max_corner=(WIDTHOFFIELD, HEIGHTOFFIELD),
+    )
+    cells = grid.path_cells(points_local_xy)
+    if not cells:
+        raise ValueError("no current path to report -- points_local_xy is empty")
+    start_col = cells[0][0]
+    cells = [(start_col, -1)] + cells
+
+    commands: list[tuple[str, int]] = []
+    for i in range(1, len(cells)):
+        step = (cells[i][0] - cells[i - 1][0], cells[i][1] - cells[i - 1][1])
+        direction = _IARC_STEP_TO_DIRECTION.get(step)
+        if direction is None:
+            continue
+        if commands and commands[-1][0] == direction:
+            commands[-1] = (direction, commands[-1][1] + 1)
+        else:
+            commands.append((direction, 1))
+
+    lines = [f"S,{start_col},{buffer_width}"]
+    lines.extend(f"{direction},{count}" for direction, count in commands)
+    return "\n".join(lines)
+
 # Hysteresis margin for ending-node choice (fraction of best route length) --
 # see _dijkstra_path_with_hysteresis. 0.03 covers the sub-1ft near-ties seen
 # between candidate ending nodes on a ~300ft field, without masking a real
@@ -286,6 +385,28 @@ class Pathfinder:
         self.endingNodes = []
         self._original_ending_nodes = None
         self.protoMines = []
+
+        # Each discovered mine's own position hash (PolygonObstacle.
+        # obstacle_hash's formula, via hash_position -- computed from the
+        # RAW discovered position, not whatever live obstacle it may have
+        # merged into, so this doesn't change if a later merge folds it
+        # into a union -- see add_discovered_mine's own comment), in
+        # discovery order. self_mine_order is this Pathfinder's own local
+        # finds (add_discovered_mine's default prefer_local_patch=False);
+        # other_mine_order is mines relayed from the other pair/solo
+        # drone and applied here with prefer_local_patch=True. Never
+        # reset by start_maze_navigation -- mine discovery history is
+        # cumulative for the whole mission, not per-navigation-restart.
+        # See self_mine_order_hash/other_mine_order_hash for what these
+        # are actually for: an ORDER-sensitive fingerprint (unlike Field.
+        # mineHash's own deliberately order-independent whole-SET hash)
+        # that the discovering side's self_mine_order_hash and the
+        # relayed side's other_mine_order_hash can be compared against,
+        # to catch a relay that arrived out of order or with a message
+        # dropped -- mineHash alone can't tell that apart from "we agree
+        # on the same mines".
+        self.self_mine_order: list[str] = []
+        self.other_mine_order: list[str] = []
 
         self.best_path = Path()
         self.altitude = altitude
@@ -416,7 +537,11 @@ class Pathfinder:
         OTHER pair, so this pair's own progress past the hit doesn't get
         needlessly discarded. Result (if any) is left on
         self.last_patched_span rather than added to this method's return
-        tuple, so every existing caller's unpacking stays unaffected."""
+        tuple, so every existing caller's unpacking stays unaffected.
+        Doubles as the self_mine_order/other_mine_order discriminator
+        (see those attributes' own docstring in __init__) -- every
+        current caller only ever passes True for a cross-pair relay, so
+        it's also exactly "was this mine discovered by someone else"."""
         self.last_patched_span = None
         x, y = self.coord_converter.latlon_to_local(mine_lat, mine_lon)
         Xsquare, Ysquare = self.nodeField.getSquareCoordinates(x, y)
@@ -426,6 +551,16 @@ class Pathfinder:
         Yoffset = WIDTHOFSQUARE * (Ysquare - mid)
         newProtoMine = protoMine(self.mine_saftey_radius, (mine_lat, mine_lon), (Xoffset, Yoffset))
         self.protoMines.append(newProtoMine)
+        # Hash the mine's own just-discovered position (newProtoMine.
+        # mineLocation) directly, NOT whatever live obstacle it ends up
+        # part of below -- a merge would fold it into a unionObstacle
+        # whose own obstacle_hash reflects the MERGED shape's centroid,
+        # a different value that also changes if the union later gains
+        # more constituents. This mine's own identity has to stay fixed
+        # regardless of what it merges into, same reasoning as
+        # BlockMine.origin itself.
+        mine_hash = hash_position(*newProtoMine.mineLocation)
+        (self.other_mine_order if prefer_local_patch else self.self_mine_order).append(mine_hash)
 
         was_merged = self.nodeField.addFromProtoMine(newProtoMine)
 
@@ -446,6 +581,31 @@ class Pathfinder:
             self.check_path_envelopment(new_mine_obstacle)
         return new_mine_obstacle, was_merged, rewound
 
+    def self_mine_order_hash(self) -> str:
+        """ORDER-sensitive hash of self.self_mine_order (this Pathfinder's
+        own local discoveries, in discovery order) -- unlike Field.
+        mineHash (deliberately order/id-independent, answering "do we
+        agree on the same SET of mines"), this hashes the SEQUENCE
+        itself, so it changes if the exact same mines were found/applied
+        in a different order.
+
+        Meant to be compared against the OTHER side's
+        other_mine_order_hash for the same stretch of relayed mines: a
+        mismatch means messages arrived out of order, duplicated, or got
+        dropped -- something mineHash can't tell apart from "we simply
+        haven't agreed on the same mines yet". Not wired to any
+        interdrone message yet -- see the mine-relay message pair
+        (CROSS_PAIR_MINE_RELAY/CROSS_PAIR_PATCHED_SPAN) this is meant to
+        accompany once that's built."""
+        return hashlib.sha256(repr(self.self_mine_order).encode("utf-8")).hexdigest()
+
+    def other_mine_order_hash(self) -> str:
+        """Same idea as self_mine_order_hash, for self.other_mine_order
+        (mines relayed from the other pair/solo drone, in the order THIS
+        Pathfinder actually applied them via add_discovered_mine(...,
+        prefer_local_patch=True))."""
+        return hashlib.sha256(repr(self.other_mine_order).encode("utf-8")).hexdigest()
+
     def accept_image_corner_coord(self, corner_coords_latlon: tuple[tuple[float, float]]):
         """Takes: an image's corner coords (lat/lon, in order). Marks every
         seen_tracker cell FULLY enclosed by them (not partially-clipped ones)."""
@@ -457,6 +617,54 @@ class Pathfinder:
 
     def increase_radius(self, mine_radius_increment):
         self.nodeField.expandField(mine_radius_increment)
+
+    # Safety valve for repair_path_after_expansion's fixed-point loop: a
+    # single obstacle-hit repair (Rule 1's own full recompute) resolves
+    # everything in practice, so this is generous headroom, not a tuned
+    # bound -- see that method's own docstring for why more than one pass
+    # can genuinely be needed.
+    MAX_EXPANSION_REPAIR_PASSES = 8
+
+    def repair_path_after_expansion(self) -> int:
+        """[Call right after increase_radius] "Restarts the gambler/
+        assistant loop" against the now-expanded mine set: Field.
+        expandField already keeps every OBSTACLE-to-obstacle graph edge
+        globally consistent when it grows every live mine at once (its own
+        docstring walks through why a single merge-then-rewire pass over
+        every affected obstacle together is enough for that) -- but it
+        never revisits a floating-node-to-floating-node edge (start/end/
+        helper nodes; see Field._connectFloatingNodeToFloatingNode, wired
+        once, at that node's own creation time, and never re-checked
+        afterward). A straight floating-to-floating edge that was clear
+        when created can end up crossing a since-grown mine, with nothing
+        in expandField itself to catch it.
+
+        check_path_envelopment's own edge scan already catches exactly
+        that, for whatever's on the CURRENT planned route -- so this sweeps
+        it over every current obstacle, exactly like a fresh mine
+        discovery would trigger one at a time during the scan itself, just
+        replayed here against the whole now-expanded mine set in one go.
+        Unlike a single discovery, several obstacles can matter at once
+        here, and a repair recompute is a fresh Dijkstra search blind to
+        geometry beyond graph validity -- it can itself select a NEW edge
+        that crosses an obstacle already swept earlier in the very same
+        pass. So this repeats full passes until one produces zero hits (a
+        real fixed point, not just "everything looked fine in whatever
+        order we happened to check it"), capped at
+        MAX_EXPANSION_REPAIR_PASSES as a safety valve.
+
+        An ASSISTANT has no Pathfinder of its own (see configureField) and
+        never calls this. Returns how many passes ran (1 means the first
+        pass was already clean).
+        """
+        for pass_num in range(1, self.MAX_EXPANSION_REPAIR_PASSES + 1):
+            changed = False
+            for obstacle in list(self.nodeField.mines) + list(self.nodeField.unionObstacles):
+                if self.check_path_envelopment(obstacle):
+                    changed = True
+            if not changed:
+                return pass_num
+        return self.MAX_EXPANSION_REPAIR_PASSES
 
     def _dijkstra_path_with_hysteresis(self, start_nodes: list, hysteresis_tolerance: float):
         """Dijkstra from each of start_nodes to the best ending node,
@@ -703,16 +911,43 @@ class Pathfinder:
                 best_node = node
         return best_node
 
+    def _resolve_starting_nodes(self) -> list:
+        """self.startingNodes, each re-resolved to a live graph node by
+        position (see _resolve_node_near), dropping any that no longer
+        resolve to anything live. Normally a no-op (the field entry is
+        essentially never touched once the drone has flown past it) --
+        but repair_path_after_expansion can grow a mine enough to swallow
+        the entry itself, and check_path_envelopment's own node-hit
+        handling then removes it from the graph entirely (see
+        removeNode) while self.startingNodes, a plain Pathfinder-level
+        list, has no way to know that happened. Without this, a since-
+        empty maze_confirmed_path's fallback below would hand
+        _dijkstra_path_with_hysteresis a start node with no entry left in
+        the graph at all -- Graph.shortest_distances indexes graph[node]
+        unconditionally for whatever it's given, so that's a KeyError, not
+        a 'can't find a path' -- confirmed directly as a real crash on
+        this exact path during the mine-expansion-restart stress sweep
+        (mineExpandRestartTest.py). Mirrors _dijkstra_path_with_hysteresis's
+        own self._original_ending_nodes fallback for the same class of
+        problem on the END side."""
+        resolved = []
+        for node in self.startingNodes:
+            live = self._resolve_node_near(node.x, node.y)
+            if live is not None:
+                resolved.append(live)
+        return resolved
+
     def _maze_c_start_nodes(self) -> list:
         """Takes: nothing. Returns: [node] to search FROM for a Rule-1
         recompute -- wherever self.maze_confirmed_path (point_C) currently
-        ends, re-resolved to a live node, or self.startingNodes if C is
+        ends, re-resolved to a live node, or self.startingNodes
+        (re-resolved the same way -- see _resolve_starting_nodes) if C is
         still empty (nothing confirmed yet)."""
         if not self.maze_confirmed_path:
-            return self.startingNodes
+            return self._resolve_starting_nodes()
         last = self.maze_confirmed_path[-1]
         node = self._resolve_node_near(last.x, last.y)
-        return [node] if node is not None else self.startingNodes
+        return [node] if node is not None else self._resolve_starting_nodes()
 
     def _prepend_seam_if_needed(self, path_nodes: list) -> list:
         """If path_nodes[0] (possibly a re-resolved substitute for point_C,
@@ -1432,7 +1667,7 @@ class Pathfinder:
             return None, None
         return prefix_path, old_node
 
-    def check_path_envelopment(self, new_mine) -> None:
+    def check_path_envelopment(self, new_mine) -> bool:
         """
         [Call after EVERY add_discovered_mine, for every maze variant --
         general catch-all, not specific to use_helper_nodes] Scans
@@ -1475,6 +1710,11 @@ class Pathfinder:
         maze_a_path/maze_b_path with the standard recompute + seam guard.
         Prunes self.promoted_helper_nodes to what's still referenced
         afterward.
+
+        Returns True if a hit was found and repaired, False if new_mine
+        didn't invalidate anything -- see repair_path_after_expansion,
+        which sweeps this over every current obstacle and uses the return
+        value to detect when a fixed point has been reached.
         """
         # Scan maze_confirmed_path index by index, checking node-containment
         # and this index's own outgoing edge together at each step, so
@@ -1538,7 +1778,7 @@ class Pathfinder:
                     edge_hit_index = i
                     break
         if hit is None and edge_hit_index is None:
-            return
+            return False
 
         if edge_hit_index is not None:
             if edge_hit_in_confirmed:
@@ -1570,6 +1810,7 @@ class Pathfinder:
 
         self._prune_promoted_helper_nodes()
         self.remote_mine_placeholders = []
+        return True
 
     def patch_confirmed_span(self, new_mine):
         """[CROSS-PAIR] Call (via add_discovered_mine's prefer_local_patch=
@@ -2064,6 +2305,27 @@ class Pathfinder:
         if self.maze_a_path:
             _join(pieces, self.maze_a_path)
         return pieces
+
+    def get_iarc_path(self, buffer_width: int = 0) -> str:
+        """Returns get_maze_path() -- the actual route committed to and
+        checked so far, on THIS Pathfinder alone -- in the IARC text-
+        reporting format. See format_iarc_path (module-level) for the
+        format itself and why the conversion works the way it does; this
+        is a thin wrapper feeding it get_maze_path()'s own local (x, y)
+        directly (NOT round-tripped through lat/lon -- see
+        format_iarc_path's own docstring for why that loses precision at
+        cell boundaries).
+
+        For a mission-wide report (spanning more than one Pathfinder --
+        two pairs, or anything the parent drone accumulates independently
+        of any single Pathfinder's own live A/B/C state), see
+        state_machine.drone.Drone.get_mission_iarc_path instead, which
+        calls the same format_iarc_path.
+
+        Raises ValueError if get_maze_path() is empty or entirely outside
+        the field's own bounds (nothing to report)."""
+        path_xy = [(n.x, n.y) for n in self.get_maze_path()]
+        return format_iarc_path(path_xy, buffer_width)
 
     def get_places_to_check_maze(
         self, method: str = "path", overlap: float = 0.0, path_width: float = 0.0,

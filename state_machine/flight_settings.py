@@ -581,6 +581,37 @@ class FlightSettings:
         self.__paired_drone = paired_drone
 
     @property
+    def cross_pair_partner_id(self) -> int | None:
+        """
+        The OTHER pair's own gambler (or solo gambler)'s drone id -- who
+        this drone's own cross-pair mine relay (CROSS_PAIR_MINE_RELAY)
+        should be addressed to. None for a 1 or 2 drone mission (there is
+        no other pair). Not this drone's OWN paired_drone (that's its own
+        ASSISTANT/GAMBLER partner, an entirely different relationship --
+        see SHARE_PHOTOS vs CROSS_PAIR_MINE_RELAY).
+
+        Computed the same way __init__ derives THIS drone's own role:
+        purely from current_drone_ID and len(drones_in_mission), not
+        looked up from drone_info (DroneInfo carries no role field at
+        all, only id/IP/port).
+
+        Returns
+        -------
+        cross_pair_partner_id : int | None
+            The other pair's gambler drone id, or None if there is no
+            other pair.
+        """
+        n = len(self.__drones_in_mission)
+        if n <= 2:
+            return None
+        # 3-drone: drones 1/2 are the START-side pair, drone 3 is the
+        # END-side solo gambler. 4-drone: drones 1/2 are the START-side
+        # pair, drones 3/4 are the END-side pair. Either way, drone 1 is
+        # never anything but the START side and drone 3 the END side, so
+        # the same "am I 1 or 2" split picks the right partner for both.
+        return 3 if self.__current_drone_ID in (1, 2) else 1
+
+    @property
     def start_side(self) -> Side:
         """
         Returns which field edge this drone's pathfinding graph starts from.

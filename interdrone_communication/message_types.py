@@ -1,5 +1,9 @@
 # Outside Imports
-from typing import Any, Final, override
+from typing import Any, Final
+
+# typing.override is Python 3.12+ (PEP 698); this dev environment runs
+# 3.10, where it only exists in the typing_extensions backport.
+from typing_extensions import override
 from enum import Enum
 from typing import TypeAlias
 from dataclasses import dataclass, field
@@ -69,6 +73,7 @@ class MessageType(Enum):
     SURVEY_END_ACK = 571
     SHARE_PHOTOS = 575
     FIELD_CHECKSUM = 580
+    FIELD_CHECKSUM_ACK = 581
     MISSION_END = 585
     MISSION_END_ACK = 586
     SEND_SEEN = 590
@@ -79,6 +84,16 @@ class MessageType(Enum):
     MISC2 = 596
     MISC3 = 597
     MISC4 = 598
+
+    # CROSS-PAIR (two pairs, or a pair + a solo drone, working the same
+    # field from opposite ends -- see flight/pathfinder.py's own
+    # retarget_approach_target). Gambler-to-gambler, not gambler-to-
+    # assistant like SHARE_PHOTOS above -- see FlightSettings.
+    # cross_pair_partner_id for how the target drone id is chosen.
+    CROSS_PAIR_MINE_RELAY = 599
+    CROSS_PAIR_MINE_RELAY_ACK = 600
+    CROSS_PAIR_PATCHED_SPAN = 601
+    CROSS_PAIR_PATCHED_SPAN_ACK = 602
 
 
 SchemaFieldType: TypeAlias = (
@@ -159,6 +174,9 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
         "map_data_ready": bool,
+        # Drone.get_mission_iarc_path()'s own output -- the IARC S,col,
+        # buffer / U,D,L,R text format. "" until map_data_ready is True.
+        "path": str,
     },
     MessageType.SEND_DRONE_LOCATIONS: {
         "id": MessageType.SEND_DRONE_LOCATIONS,
@@ -439,7 +457,19 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.FIELD_CHECKSUM,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "checksum": int,
+        # Field.mineHash() -- a sha256 hexdigest, not a plain int checksum
+        # (this field used to be typed int, before mineHash existed and
+        # before this message had a real sender or receiver at all).
+        "checksum": str,
+    },
+    MessageType.FIELD_CHECKSUM_ACK: {
+        "id": MessageType.FIELD_CHECKSUM_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # Whether the receiver's own Field.mineHash() matched the sent
+        # checksum -- lets the sender log a mismatch without needing its
+        # own copy of the receiver's hash.
+        "matched": bool,
     },
     MessageType.MISSION_END: {
         "id": MessageType.MISSION_END,
@@ -461,6 +491,62 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SEND_SEEN_ACK,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
+    },
+    # CROSS-PAIR: the discovering pair's own report of a mine to the OTHER
+    # pair/solo drone -- see Pathfinder.add_discovered_mine's own
+    # prefer_local_patch docstring for why the receiving side must call
+    # add_discovered_mine(..., prefer_local_patch=True), not the plain
+    # form SHARE_PHOTOS' own receive handler uses.
+    MessageType.CROSS_PAIR_MINE_RELAY: {
+        "id": MessageType.CROSS_PAIR_MINE_RELAY,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "mine_lat": float,
+        "mine_lon": float,
+        # PolygonObstacle.obstacle_hash on the SENDER's own Pathfinder --
+        # position-derived, so both sides compute the same value for the
+        # same physical mine with no shared numeric id needed. Lets a
+        # later CROSS_PAIR_PATCHED_SPAN reply reference this exact mine.
+        "mine_obstacle_hash": str,
+    },
+    MessageType.CROSS_PAIR_MINE_RELAY_ACK: {
+        "id": MessageType.CROSS_PAIR_MINE_RELAY_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # Echoed back so the sender can match this ack to the relay that
+        # prompted it -- sent the moment the relay is QUEUED (see
+        # Drone.pending_cross_pair_mines), not once it's actually
+        # processed by CalcScanPath.
+        "mine_obstacle_hash": str,
+    },
+    # CROSS-PAIR: the patching pair's reply once it applies a relayed mine
+    # via add_discovered_mine(prefer_local_patch=True) -- see
+    # Pathfinder.patch_confirmed_span's own docstring for why the result
+    # goes back to the DISCOVERING pair (the one that sent
+    # CROSS_PAIR_MINE_RELAY) to go re-verify/photograph, even though the
+    # patch itself landed in the PATCHING pair's own confirmed history.
+    # Only ever sent if patch_confirmed_span actually made a patch
+    # (self.last_patched_span is not None) -- check_path_envelopment's own
+    # unconditional full-recompute fallback needs no reply, since it
+    # doesn't ask the discovering pair to do anything.
+    MessageType.CROSS_PAIR_PATCHED_SPAN: {
+        "id": MessageType.CROSS_PAIR_PATCHED_SPAN,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # Which CROSS_PAIR_MINE_RELAY this replies to.
+        "mine_obstacle_hash": str,
+        # The new local sub-path's own (lat, lon) points, inclusive of
+        # both boundary nodes -- exactly patch_confirmed_span's own
+        # return value, converted from local (x, y) to lat/lon before
+        # sending (see that method's own docstring for the local-frame
+        # node list it returns).
+        "patched_span": list[tuple[float, float]],
+    },
+    MessageType.CROSS_PAIR_PATCHED_SPAN_ACK: {
+        "id": MessageType.CROSS_PAIR_PATCHED_SPAN_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        "mine_obstacle_hash": str,
     },
     MessageType.MISC1: {
         "id": MessageType.MISC1, # Change name when implemented

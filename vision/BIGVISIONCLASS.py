@@ -1,6 +1,6 @@
 from vision.common.image import Image
 from vision.common.detection import Detection
-from Cameras.baseCamera import BaseCamera
+from vision.Cameras.baseCamera import BaseCamera
 from math import sin, acos
 import dronekit
 from common.drone_coordinates import DronePose, GimbalPose, pixel_to_geocoord_gimbal
