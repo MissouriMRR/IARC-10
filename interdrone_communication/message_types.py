@@ -472,13 +472,13 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "id": MessageType.SEND_SEGMENT_B_WAYPOINTS,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "waypoints": list[tuple[int, ...]],
+        "waypoints": list[tuple[int, int]],
     },
     MessageType.DISTRIBUTE_MINES: {
         "id": MessageType.DISTRIBUTE_MINES,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "mines": list[tuple[int, ...]]
+        "mines": list[tuple[int, int]]
     },
     MessageType.MISC3: {
         "id": MessageType.MISC3, # Change name when implemented
