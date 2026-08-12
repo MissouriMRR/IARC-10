@@ -12,7 +12,7 @@ from state_machine.state_tracker import (
 )
 from state_machine.states.land import Land
 from state_machine.states.state import State
-from state_machine.drone import LEG_ALTITUDE_M
+from state_machine.drone import LEG_ALTITUDE_M, MISSION_ALTITUDE_M
 from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
@@ -142,7 +142,7 @@ async def run(self: Takeoff) -> State:
                         await asyncio.sleep(0.1)
                 else:
                     await self.interdrone.send_start_mission(tuple([1]))
-                await self.drone.takeoff(5)  # Fix altitude later lol
+                await self.drone.takeoff(MISSION_ALTITUDE_M)
                 self.drone.startTime = time()
                 await asyncio.sleep(5)
 
@@ -166,7 +166,13 @@ async def run(self: Takeoff) -> State:
 
                 else:
                     await self.interdrone.send_takeoff_ack()
-                await self.drone.takeoff(5)  # Fix altitude later lol
+                # CMD_MSG.TAKEOFF is a standalone "just take off and land"
+                # command -- not POIF (LEG_ALTITUDE_M) or the mapping
+                # mission (also MISSION_ALTITUDE_M, but for a different
+                # reason) -- MISSION_ALTITUDE_M chosen here too since
+                # there's no competition rule tying this command to a
+                # specific altitude.
+                await self.drone.takeoff(MISSION_ALTITUDE_M)
                 await asyncio.sleep(5)
 
                 return Land(self.drone, self.flight_settings, self.interdrone)

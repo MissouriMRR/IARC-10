@@ -920,10 +920,12 @@ class Interdrone:
     async def send_paths_to_app(self, path: str, map_data_ready: bool = True) -> None:
         """
         Message ID = 420
-        Reply to REQUEST_MAP_DATA -- path is Drone.get_mission_iarc_path()'s
-        own output (the IARC S,col,buffer / U,D,L,R text format). Sent to
-        the app (drone 0 -- see APP_TEST's own "(0) for drones_to_send_data"
-        convention), not other drones.
+        path is Drone.get_mission_iarc_path()'s own output (the IARC
+        S,col,buffer / U,D,L,R text format). Sent to the app (drone 0 --
+        see APP_TEST's own "(0) for drones_to_send_data" convention), not
+        other drones. Both a reply (REQUEST_MAP_DATA's own receive case)
+        and a proactive push (push_mission_path, below) use this same
+        send -- the app never has to tell the difference.
         """
         paths_message: Message = Message.create(
             id=MessageType.SEND_PATHS_TO_APP,
@@ -938,6 +940,27 @@ class Interdrone:
         self.send(paths_message)
 
         return
+
+    async def push_mission_path(self) -> None:
+        """Sends this drone's own current Drone.mission_path to the app
+        (SEND_PATHS_TO_APP) -- a no-op for anything but drone 1 (the
+        mission's own "parent" -- see Drone.mission_path's own docstring
+        on why only drone 1's copy is meant to be read externally).
+
+        Called PROACTIVELY, not just in reply to REQUEST_MAP_DATA:
+        CalcScanPath's own _confirm_b_into_mission_path calls this right
+        after every stretch that settles (Drone.extend_mission_path),
+        and AppShare calls it once more with the mission's own final,
+        post-ExpandNodes route (EndRun's wholesale resync) -- so the app
+        sees the path update live as the mission progresses instead of
+        only whenever it happens to ask.
+        """
+        if self.flight_settings.current_drone_ID != 1:
+            return
+        if self.drone.mission_path:
+            await self.send_paths_to_app(self.drone.get_mission_iarc_path(), map_data_ready=True)
+        else:
+            await self.send_paths_to_app("", map_data_ready=False)
 
     async def send_mission_end(self) -> None:
         """
@@ -1545,6 +1568,21 @@ class Interdrone:
                                     f"Drone {message.sender_id} failed to arm. Resending message."
                                 )
                                 await self.send_ARM(drones_to_send_data=(message.sender_id,))
+                        case MessageType.PING:
+                            # Unconditional liveness reply -- unlike ARM,
+                            # answering doesn't depend on ping_response
+                            # (that would be circular: ping_drones() is
+                            # what SETS ping_response in the first place).
+                            # No dedicated send_ping_ack helper exists
+                            # elsewhere, so this is built inline, matching
+                            # e.g. SURVEY_START_ACK/FIELD_CHECKSUM_ACK.
+                            ping_ack_message: Message = Message.create(
+                                id=MessageType.PING_ACK,
+                                drones_to_send_data=(message.sender_id,),
+                                sender_id=self.flight_settings.current_drone_ID,
+                                data={},
+                            )
+                            self.send(ping_ack_message)
                         case MessageType.DISARM:
                             self.cmd_msg = CMD_MSG.DISARM
                             if self.flight_settings.current_drone_ID == 1:
@@ -2049,6 +2087,7 @@ class Interdrone:
                         case MessageType.SEND_GROUND_TRUTH_COORDS:
                             # If this message isn't addressed to us, only drone 1 (the app's
                             # only connection) should be relaying it on to the real target.
+                            
                             if message.drones_to_send_data != (
                                 self.flight_settings.current_drone_ID,
                             ):
@@ -2062,6 +2101,20 @@ class Interdrone:
                                 # TODO Set ardupilot param as well
                                 self.flight_settings.gps_lat_offset = 0.0
                                 self.flight_settings.gps_lon_offset = 0.0
+                                averageCoords=[]
+                                for i in range(10):
+                                    averageCoords.append(self.drone.currentPosition())
+                                    await asyncio.sleep(0.5)
+                                latSum=0
+                                lonSum=0
+                                for i in averageCoords:
+                                    latSum+=i[0]
+                                    lonSum+=i[1]
+                                latAvg=latSum/10
+                                lonAvg=lonSum/10
+                                self.drone._vehicle.parameters["GPS1_LAT_OFS"]=message.data["lat"]-latAvg
+                                self.drone._vehicle.parameters["GPS_LNG_OFS"]=message.data["lon"]-lonAvg
+                                
                                 await self.send_ground_truth_ack()
                         case MessageType.SEND_GROUND_TRUTH_COORDS_ACK:
                             # Relay to the app if we're drone 1 and this ack arrived over the
@@ -2144,20 +2197,12 @@ class Interdrone:
                             # gather_swarm_status(); nothing to do here.
                             pass
                         case MessageType.REQUEST_MAP_DATA:
-                            # Only drone 1 (the mission's "parent" -- see
-                            # Drone.mission_path's own docstring) accumulates
-                            # a mission-wide path worth reporting. Pure read
-                            # (mission_path/get_mission_iarc_path never
-                            # mutate anything) + reply, same as
+                            # Pure read (mission_path/get_mission_iarc_path
+                            # never mutate anything) + reply, same as
                             # FIELD_CHECKSUM above -- safe straight from
-                            # this loop's own task.
-                            if self.flight_settings.current_drone_ID == 1:
-                                if self.drone.mission_path:
-                                    await self.send_paths_to_app(
-                                        self.drone.get_mission_iarc_path(), map_data_ready=True
-                                    )
-                                else:
-                                    await self.send_paths_to_app("", map_data_ready=False)
+                            # this loop's own task. push_mission_path is
+                            # itself a no-op for anything but drone 1.
+                            await self.push_mission_path()
                     # Catch different messages here and add them to interdrone message queue so other functions can use them
                     # msgNum += 1
                     # print(f"Server Data: {msgNum}")

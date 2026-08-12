@@ -336,6 +336,14 @@ class MockInterdrone:
     async def send_takeoff_ack(self) -> None:
         pass
 
+    async def push_mission_path(self) -> None:
+        # AppShare's own final push (Interdrone.push_mission_path, added
+        # once SEND_PATHS_TO_APP became a real proactive push, not just a
+        # REQUEST_MAP_DATA reply) -- a no-op here, same reasoning as every
+        # other send_* stub on this class: this test validates state-
+        # machine/pathfinder behavior, not interdrone wire traffic.
+        pass
+
 
 async def _autopilot(interdrone: MockInterdrone) -> None:
     """Stands in for an operator/app: arms immediately, then starts the

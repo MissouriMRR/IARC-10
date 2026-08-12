@@ -75,17 +75,23 @@ def _run_assistant(self: CalcScanPath) -> State:
     return Scan(self.drone, self.flight_settings, self.interdrone)
 
 
-def _confirm_b_into_mission_path(self: CalcScanPath, pf: Pathfinder) -> None:
+async def _confirm_b_into_mission_path(self: CalcScanPath, pf: Pathfinder) -> None:
     """Appends pf.maze_b_path's own points onto self.drone.mission_path
     (see that attribute's own docstring) BEFORE pf.confirm_b_into_c()
     clears maze_b_path -- this is the exact moment a stretch stops being
     reroutable and becomes settled history, which is what mission_path is
     meant to track. No-op (matching confirm_b_into_c's own safety-net
-    behavior) if b is already empty."""
+    behavior) if b is already empty -- including the app push below,
+    since nothing about mission_path actually changed. Pushes the
+    updated path to the app (Interdrone.push_mission_path, itself a
+    no-op for anything but drone 1) right after, so the app's own view
+    updates live as each stretch settles instead of only once at the
+    very end (AppShare's own final push)."""
     if pf.maze_b_path:
         self.drone.extend_mission_path(
             [pf.coord_converter.local_to_latlon(n.x, n.y) for n in pf.maze_b_path]
         )
+        await self.interdrone.push_mission_path()
     pf.confirm_b_into_c()
 
 
@@ -202,7 +208,7 @@ async def _run_sologambler(self: CalcScanPath) -> State:
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
     a_places, b_places = places["a"], places["b"]
     if not a_places and not b_places and not verification_waypoints:
-        _confirm_b_into_mission_path(self, pf)
+        await _confirm_b_into_mission_path(self, pf)
         flight_log.event("calc_scan_path_complete", role="sologambler")
         partner_id = self.flight_settings.cross_pair_partner_id
         if partner_id is not None:
@@ -238,7 +244,7 @@ async def _run_gambler(self: CalcScanPath) -> State:
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
     a_places, b_places = places["a"], places["b"]
     if not a_places and not b_places and not verification_waypoints:
-        _confirm_b_into_mission_path(self, pf)
+        await _confirm_b_into_mission_path(self, pf)
         flight_log.event("calc_scan_path_complete", role="gambler")
         partner_id = self.flight_settings.cross_pair_partner_id
         if partner_id is not None:
@@ -251,7 +257,16 @@ async def _run_gambler(self: CalcScanPath) -> State:
     # drone's own segment A) goes onto its local queue below.
     paired_id = self.flight_settings.paired_drone
     if paired_id is not None and b_places:
-        await self.interdrone.send_segment_b_waypoints((paired_id,), b_places)
+        # b_places stays the SAME set every pass until the ASSISTANT's own
+        # SHARE_PHOTOS reports get drained back in and shrink it (see
+        # _drain_photo_reports) -- resend only on an actual change, or
+        # every CalcScanPath pass would resetWaypoints the ASSISTANT's
+        # queue out from under whatever it's mid-flight on (see Drone.
+        # last_sent_segment_b's own docstring).
+        b_places_key = tuple(b_places)
+        if self.drone.last_sent_segment_b != b_places_key:
+            await self.interdrone.send_segment_b_waypoints((paired_id,), b_places)
+            self.drone.last_sent_segment_b = b_places_key
         b_places = []
 
     self.drone.resetWaypoints(_build_waypoints(self.drone.id, a_places, b_places) + verification_waypoints)

@@ -59,8 +59,24 @@ PEER_STALE_S: float = 12.0
 # How long a drone may hold for a peer before it gives up and lands.
 HOLD_ABORT_S: float = 15.0
 
-# POIF requirement: 20 ft.
+# POIF requirement: 20 ft. POIF-demo legs only (see gotoWaypoint's own
+# altitude_m default, and Takeoff's DEMO branch) -- NOT the mapping-
+# mission altitude, see MISSION_ALTITUDE_M below for that.
 LEG_ALTITUDE_M: float = 6.0
+
+# Mapping-mission flight altitude: 2m, chosen together with vision/
+# config.json's own hFovDeg/vFovDeg (RPICamera/AirSimCamera read FOV
+# from that file, never a hardcoded value here -- this constant only
+# fixes the ALTITUDE half of the footprint, camera-coverage math still
+# depends on whatever FOV config.json currently holds). Used for the
+# MISSION takeoff itself (see takeoff_impl.py), every leg Scan flies
+# during CalcScanPath's own scan loop (gotoWaypoint's altitude_m), and
+# as the geolocation fallback (scan_impl.py/drone_share_impl.py) when no
+# fresh rangefinder reading is available -- that fallback has to match
+# the real commanded altitude, or a stale rangefinder reading makes the
+# footprint math think the drone is higher (or lower) than it actually
+# commanded, silently skewing every mine/coverage position it computes.
+MISSION_ALTITUDE_M: float = 2.0
 
 # Speed bounds how far two drones can drift apart in waypoint index between
 # lockstep checks, so this is a formation parameter as much as a pace one.
@@ -334,6 +350,23 @@ class Drone:
         # coord for coverage and pf.add_discovered_mine for any mines --
         # same staging reason as pending_cross_pair_mines.
         self.pending_photo_reports: list[SharedPhotoReport] = []
+        # GAMBLER only: the exact (lat, lon) tuple set most recently sent
+        # to the paired ASSISTANT via SEND_SEGMENT_B_WAYPOINTS. Segment B
+        # doesn't shrink until the ASSISTANT's own SHARE_PHOTOS reports
+        # get drained back in (see _drain_photo_reports), so
+        # get_places_to_check_maze keeps returning the SAME still-
+        # uncovered b_places every CalcScanPath pass in between --
+        # without this, _run_gambler would resend (and the ASSISTANT's
+        # own receive handler would resetWaypoints) every single pass,
+        # repeatedly discarding whatever the ASSISTANT is mid-flight on.
+        self.last_sent_segment_b: tuple[tuple[float, float], ...] | None = None
+        # GAMBLER/SOLOGAMBLER with a cross_pair_partner_id only: the
+        # (lat, lon) this pair's own point_A (maze_a_path[0]) was last
+        # synced to the other pair/solo drone at, via
+        # CROSS_PAIR_POINT_A_SYNC -- see _send_point_a_sync_if_changed's
+        # own epsilon-guard docstring for why a sync is skipped once
+        # nothing has actually moved.
+        self.last_synced_point_a: tuple[float, float] | None = None
         # TODO: add reference to mine and path data classes
 
     @property
@@ -934,8 +967,13 @@ class Drone:
         peer_states: Iterable[Any] = (),
         heartbeat: Callable[[], Awaitable[None]] | None = None,
         points_per_lap: int | None = None,
+        altitude_m: float = LEG_ALTITUDE_M,
     ):
         """Fly to the next waypoint, holding position first if the leg is not clear.
+
+        altitude_m defaults to LEG_ALTITUDE_M (POIF's own callers rely on
+        that default, unchanged) -- Scan's own call, during the mapping
+        mission, passes MISSION_ALTITUDE_M explicitly instead.
 
         The hold is re-evaluated against where the other drones actually are and
         releases the moment the leg is clear. (Waiting for a peer to *reach* a
@@ -1076,7 +1114,7 @@ class Drone:
             self.vehicle,
             curWaypoint.lat,
             curWaypoint.long,
-            LEG_ALTITUDE_M,
+            altitude_m,
             groundspeed=LEG_GROUNDSPEED_M_S,
             tolerance=LEG_TOLERANCE_M,
             max_tolerance=LEG_MAX_TOLERANCE_M,
@@ -1105,16 +1143,18 @@ class Drone:
     async def recall(self) -> None:
         """Flies to the nearest field edge (whichever of the two axes is
         closer to a boundary, in the Pathfinder's own local frame) at
-        LEG_ALTITUDE_M -- exits the field along the shortest path before
-        Land's own return_to_launch takes over for the rest of the way
-        home, rather than cutting straight back across ground that might
-        not be fully swept. self.x/self.y/self.convert_goto (this
-        method's previous body) never existed anywhere on this class --
-        this predates the Pathfinder-based rewrite the rest of Drone/the
-        maze-mode states now use, and every call would have raised
-        AttributeError. A no-op if this drone never built a Pathfinder
-        (ASSISTANT -- see configureField -- or a test harness that
-        skipped Takeoff)."""
+        MISSION_ALTITUDE_M -- exits the field along the shortest path
+        before Land's own return_to_launch takes over for the rest of the
+        way home, rather than cutting straight back across ground that
+        might not be fully swept. Only ever reached from the mapping
+        mission's own EndRun -> AppShare -> Recall tail (see recall_impl.py),
+        never POIF, hence MISSION_ALTITUDE_M and not LEG_ALTITUDE_M here.
+        self.x/self.y/self.convert_goto (this method's previous body)
+        never existed anywhere on this class -- this predates the
+        Pathfinder-based rewrite the rest of Drone/the maze-mode states
+        now use, and every call would have raised AttributeError. A no-op
+        if this drone never built a Pathfinder (ASSISTANT -- see
+        configureField -- or a test harness that skipped Takeoff)."""
         pf = Pathfinder.instance
         if pf is None:
             return
@@ -1125,7 +1165,7 @@ class Drone:
         else:
             target_x, target_y = x, HEIGHTOFFIELD
         target_lat, target_lon = pf.coord_converter.local_to_latlon(target_x, target_y)
-        self.commandPoint(target_lat, target_lon, LEG_ALTITUDE_M, groundspeed=LEG_GROUNDSPEED_M_S)
+        self.commandPoint(target_lat, target_lon, MISSION_ALTITUDE_M, groundspeed=LEG_GROUNDSPEED_M_S)
         target = (target_lat, target_lon)
         while segment_distance(self.currentPosition(), self.currentPosition(), target, target) > LEG_TOLERANCE_M:
             await asyncio.sleep(0.5)

@@ -46,12 +46,19 @@ async def run(self: AppShare) -> State:
         update_flight_settings(self.flight_settings)
         logging.info("AppShare state running")
 
-        # PLACEHOLDER: share this mission's final results (discovered
-        # mines, flown coverage) with the app here -- see
-        # MessageType.SEND_PATHS_TO_APP/SEND_GROUND_TRUTH_COORDS in
-        # interdrone_communication/message_types.py for the closest
-        # existing message shapes. Left deliberately unimplemented for
-        # now, same as the interdrone relay work elsewhere in this file.
+        # The mission's own final route -- EndRun already resynced
+        # self.drone.mission_path with this Pathfinder's now-final,
+        # post-ExpandNodes route (see its own docstring on why that's a
+        # wholesale replace, not another append) before transitioning
+        # here. A no-op for anything but drone 1 (push_mission_path's own
+        # gate) and for an ASSISTANT (mission_path stays empty its whole
+        # life -- see configureField).
+        #
+        # PLACEHOLDER still: sharing discovered-mine data specifically
+        # with the app isn't implemented -- see SEND_GROUND_TRUTH_COORDS
+        # in interdrone_communication/message_types.py for the closest
+        # existing message shape, if that's the intended vehicle.
+        await self.interdrone.push_mission_path()
 
         return Recall(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:

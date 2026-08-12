@@ -7,7 +7,7 @@ import math
 import flight.flight_log as flight_log
 from flight.pathfinder import Pathfinder
 from flight.pathfinding.utils.goto import move_to
-from state_machine.drone import LEG_ALTITUDE_M, LEG_GROUNDSPEED_M_S, LEG_TOLERANCE_M
+from state_machine.drone import LEG_GROUNDSPEED_M_S, LEG_TOLERANCE_M, MISSION_ALTITUDE_M
 from state_machine.flight_settings import Role
 from state_machine.state_tracker import (
     update_drone,
@@ -71,9 +71,9 @@ async def _capture_for_assistant(self: Scan, waypoint) -> None:
             "drone %d: no fresh rangefinder3 reading -- falling back to %.1fm for"
             " this photo's footprint math",
             self.drone.id,
-            LEG_ALTITUDE_M,
+            MISSION_ALTITUDE_M,
         )
-        altitude_agl_m = LEG_ALTITUDE_M
+        altitude_agl_m = MISSION_ALTITUDE_M
 
     drone_pose = DronePose(
         lat=location.lat,
@@ -122,7 +122,7 @@ async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
     Altitude for the footprint math comes exclusively from
     self.drone.rangefinder_altitude_agl_m -- the only real AGL source
     available (GPS/relative-frame altitude is not AGL: it drifts with
-    terrain and takeoff-point error) -- falling back to LEG_ALTITUDE_M, with
+    terrain and takeoff-point error) -- falling back to MISSION_ALTITUDE_M, with
     a logged warning, if no rangefinder3 reading has arrived yet. That
     fallback altitude is ONLY ever used for this footprint math, never for
     flight control.
@@ -155,9 +155,9 @@ async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
                 "drone %d: no fresh rangefinder3 reading -- falling back to %.1fm for"
                 " this photo's footprint math",
                 self.drone.id,
-                LEG_ALTITUDE_M,
+                MISSION_ALTITUDE_M,
             )
-            altitude_agl_m = LEG_ALTITUDE_M
+            altitude_agl_m = MISSION_ALTITUDE_M
 
         drone_pose = DronePose(
             lat=location.lat,
@@ -293,13 +293,30 @@ async def run(self: Scan) -> State:
             return EndRun(self.drone, self.flight_settings, self.interdrone)
 
         if self.drone.replan_needed is not None or not self.drone.waypoints:
+            # An empty queue with nothing to replan around yet (an
+            # ASSISTANT waiting on its paired GAMBLER's next SEND_SEGMENT_
+            # B_WAYPOINTS, or a GAMBLER that just handed segment B off and
+            # has nothing local left of its own) bounces straight back to
+            # CalcScanPath with no other await in between -- across two
+            # concurrently-running drones sharing one event loop, that is
+            # a tight loop with no suspension point, which starves every
+            # OTHER drone's task (including the very interdrone_loop that
+            # would deliver the message this drone is waiting on). A
+            # single real drone process never notices this (nothing else
+            # is competing for its event loop); asyncio.sleep(0) costs it
+            # nothing and fixes the concurrent-drones-in-one-process case.
+            await asyncio.sleep(0)
             return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
 
         # drone_states is read-only peer state this drone already
         # maintains for collision avoidance (see conflictsForLeg's own
         # docstring on why it applies to non-formation, maze-mode
         # waypoints too) -- not a new interdrone send.
-        reached = await self.drone.gotoWaypoint(self.interdrone.drone_states)
+        # MISSION_ALTITUDE_M, not gotoWaypoint's own POIF-oriented default
+        # (LEG_ALTITUDE_M) -- this is the mapping-mission scan loop.
+        reached = await self.drone.gotoWaypoint(
+            self.interdrone.drone_states, altitude_m=MISSION_ALTITUDE_M
+        )
         self.drone.last_reached_waypoint = reached
         flight_log.event("scan_waypoint_reached", waypoint=flight_log.waypoint_brief(reached))
 

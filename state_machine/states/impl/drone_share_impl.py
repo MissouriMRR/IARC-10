@@ -6,7 +6,7 @@ import math
 
 import flight.flight_log as flight_log
 from flight.pathfinder import Pathfinder
-from state_machine.drone import LEG_ALTITUDE_M
+from state_machine.drone import MISSION_ALTITUDE_M
 from state_machine.flight_settings import Role
 from state_machine.state_tracker import (
     update_drone,
@@ -73,9 +73,9 @@ async def _check_photo_latlon(drone) -> tuple[float, float] | None:
             "drone %d: no fresh rangefinder3 reading -- falling back to %.1fm for"
             " mine-detection geolocation",
             drone.id,
-            LEG_ALTITUDE_M,
+            MISSION_ALTITUDE_M,
         )
-        altitude_agl_m = LEG_ALTITUDE_M
+        altitude_agl_m = MISSION_ALTITUDE_M
     drone_pose = DronePose(
         lat=location.lat,
         lon=location.lon,
