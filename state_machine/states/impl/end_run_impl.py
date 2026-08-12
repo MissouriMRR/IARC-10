@@ -71,6 +71,8 @@ async def run(self: EndRun) -> State:
             self.drone.mission_path = [
                 pf.coord_converter.local_to_latlon(n.x, n.y) for n in pf.get_maze_path()
             ]
+            print(self.mission_path)
+            
         flight_log.event(
             "end_run",
             confirmed_path_len=len(pf.maze_confirmed_path) if pf is not None else None,

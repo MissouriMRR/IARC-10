@@ -57,7 +57,8 @@ async def run(self: AppShare) -> State:
         # PLACEHOLDER still: sharing discovered-mine data specifically
         # with the app isn't implemented -- see SEND_GROUND_TRUTH_COORDS
         # in interdrone_communication/message_types.py for the closest
-        # existing message shape, if that's the intended vehicle.
+        # existing message shape, if that's the intended vehicle.]
+        
         await self.interdrone.push_mission_path()
 
         return Recall(self.drone, self.flight_settings, self.interdrone)

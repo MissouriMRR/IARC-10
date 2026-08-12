@@ -1,12 +1,15 @@
 """Implements the behavior of the CalcScanPath state."""
 
 import asyncio
+import json
 import logging
+import math
 import time
 
 import flight.flight_log as flight_log
 from flight.pathfinder import Pathfinder
 from flight.waypoint import Waypoint
+from state_machine.drone import MISSION_ALTITUDE_M
 from state_machine.flight_settings import Role
 from state_machine.state_tracker import (
     update_drone,
@@ -19,13 +22,61 @@ from state_machine.states.expand_nodes import ExpandNodes
 from state_machine.states.scan import Scan
 from state_machine.states.state import State
 
-# Camera footprint for one photo/check, in feet -- matches the shape_size_ft
-# every droneWorkflowTest.py simulation this session was verified against
-# (200-seed sweeps, both single-pair and two-pair). TODO: derive from real
-# camera FOV/altitude once vision is wired in (see DroneShare's own
-# placeholder) the same way Pathfinder.matSize already does for the "no
-# override" case.
-SHAPE_SIZE_FT = (6.0, 4.0)
+# Same file Takeoff.run() loads the real camera from (RPICamera's own
+# config, not the AirSim one -- SHAPE_SIZE_FT is a waypoint-SPACING
+# planning estimate, and AirSim missions still fly the same real-world
+# camera/lens the field deployment does).
+VISION_CONFIG_PATH = "./vision/config.json"
+_METERS_TO_FT = 3.28084
+_FALLBACK_SHAPE_SIZE_FT = (6.0, 4.0)
+
+
+def _camera_footprint_ft(altitude_m: float, config_path: str) -> tuple[float, float]:
+    """Ground footprint (along_ft, across_ft) of one photo at altitude_m,
+    derived from vision/config.json's own hFovDeg/vFovDeg -- straight-
+    down flat-ground approximation (2 * altitude * tan(fov / 2)), the
+    same formula flight/pathfinding/path_subdivision.py's own (dead,
+    unreachable) ground_covered_image uses. This is only ever used to
+    decide how far apart to SPACE planned waypoints -- Scan's own
+    _capture_and_mark_seen computes the REAL per-photo footprint later,
+    via full ray-casting (BaseCamera.get_image_corner_coordinates), for
+    the actual coverage marking.
+
+    along/across assignment (h_fov -> along, v_fov -> across) matches
+    this constant's own previous hardcoded placeholder, (6.0, 4.0) --
+    along was the larger of the two there, and hFovDeg (66.0 in the
+    current config) is likewise larger than vFovDeg (52.3) -- but is
+    otherwise an assumption about the camera's mount orientation
+    (cameraMountRotationDeg) that hasn't been confirmed against real
+    hardware; swap the two if the real mount turns out to run the other
+    way.
+
+    Falls back to the previous hardcoded placeholder if config.json is
+    missing/unreadable or either FOV is left at its own 0.0 default,
+    rather than degenerating to a zero-size (or crashing) footprint.
+    """
+    try:
+        with open(config_path) as f:
+            vision_config = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return _FALLBACK_SHAPE_SIZE_FT
+    h_fov_deg = vision_config.get("hFovDeg", 0.0)
+    v_fov_deg = vision_config.get("vFovDeg", 0.0)
+    if h_fov_deg <= 0.0 or v_fov_deg <= 0.0:
+        return _FALLBACK_SHAPE_SIZE_FT
+    altitude_ft = altitude_m * _METERS_TO_FT
+    along_ft = 2 * altitude_ft * math.tan(math.radians(h_fov_deg) / 2)
+    across_ft = 2 * altitude_ft * math.tan(math.radians(v_fov_deg) / 2)
+    return (along_ft, across_ft)
+
+
+# Camera footprint for one photo/check, in feet -- see _camera_footprint_ft's
+# own docstring. Computed against MISSION_ALTITUDE_M=2.0m and the current
+# vision/config.json (hFovDeg=66.0, vFovDeg=52.3): (8.52, 6.44) ft --
+# larger than the old (6.0, 4.0) hardcoded placeholder, not smaller: that
+# placeholder was never actually derived from any altitude, real or
+# assumed, so there's no size relationship to read into the change.
+SHAPE_SIZE_FT = _camera_footprint_ft(MISSION_ALTITUDE_M, VISION_CONFIG_PATH)
 OVERLAP = 0.1
 
 # How long an ASSISTANT's waypoint queue may sit empty before this drone
