@@ -2,19 +2,37 @@
 # B.A.T.M.A.N. Mesh Network Setup Script
 # Finds USB WiFi adapter and configures it for ad-hoc mesh networking
 
-# Log file for debugging
-LOG_FILE="/home"
+# ---- Configuration -----------------------------------------------------
+LOG_FILE="/var/log/batman-setup.log"
+REGDOMAIN="US"
+MESH_SSID="my-batman-mesh"
+MESH_FREQ="5200"
+MESH_WIDTH="HT20"
+MESH_BSSID="02:ca:fe:ca:ca:40"
+BATMAN_MTU=1532
+PI_NUMBER=201 # SET PI NUM TO 201, 202, 203, or 204
+# ------------------------------------------------------------------------
 
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
+fail() {
+    log_message "ERROR: $1"
+    exit 1
+}
+
+# Must be root: iw reg set, modprobe, and /var/log writes all require it
+if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: This script must be run as root (use sudo)."
+    exit 1
+fi
+
 log_message "Starting B.A.T.M.A.N. mesh setup..."
 
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then
-    log_message "ERROR: uv command not found! Please install uv first."
-    exit 1
+    fail "uv command not found! Please install uv first."
 fi
 
 # Open/activate uv environment
@@ -32,15 +50,27 @@ else
         source .venv/bin/activate
         log_message "uv environment created and activated"
     else
-        log_message "ERROR: Failed to create uv environment"
-        exit 1
+        fail "Failed to create uv environment"
     fi
 fi
 
 # Wait for system to fully initialize
 sleep 10
 
-# Find USB WiFi adapter interface
+# ---- Regulatory domain -------------------------------------------------
+# World domain (country 00) marks 5170-5250 MHz as NO-IR, which makes
+# IBSS join fail with -22. This must be set and verified before joining.
+log_message "Setting regulatory domain to $REGDOMAIN..."
+iw reg set "$REGDOMAIN"
+sleep 1
+
+CURRENT_REG=$(iw reg get | grep -m1 '^country' | awk '{print $2}' | tr -d ':')
+if [ "$CURRENT_REG" != "$REGDOMAIN" ]; then
+    fail "Regulatory domain is '$CURRENT_REG', expected '$REGDOMAIN'. 5 GHz IBSS will fail. Install wireless-regdb and set 'options cfg80211 ieee80211_regdom=$REGDOMAIN' in /etc/modprobe.d/cfg80211.conf"
+fi
+log_message "Regulatory domain confirmed: $CURRENT_REG"
+
+# ---- Find USB WiFi adapter ---------------------------------------------
 # This looks for wireless interfaces that are NOT the built-in WiFi (usually wlan0)
 UAIN=""
 
@@ -70,21 +100,18 @@ if [ -z "$UAIN" ]; then
 fi
 
 if [ -z "$UAIN" ]; then
-    log_message "ERROR: No USB WiFi adapter found!"
-    exit 1
+    fail "No USB WiFi adapter found!"
 fi
 
 log_message "Found USB WiFi adapter: $UAIN"
 
 # Load batman-adv kernel module
-modprobe batman-adv
-if [ $? -ne 0 ]; then
-    log_message "ERROR: Failed to load batman-adv module"
-    exit 1
+if ! modprobe batman-adv; then
+    fail "Failed to load batman-adv module"
 fi
 log_message "Loaded batman-adv module"
 
-# Configure the interface
+# ---- Configure the wireless interface ----------------------------------
 log_message "Setting $UAIN to unmanaged mode..."
 nmcli device set "$UAIN" managed no
 
@@ -92,7 +119,16 @@ log_message "Bringing $UAIN down..."
 ip link set "$UAIN" down
 
 log_message "Setting $UAIN to ad-hoc (IBSS) mode..."
-iw dev "$UAIN" set type ibss
+if ! iw dev "$UAIN" set type ibss; then
+    fail "Failed to set $UAIN to IBSS mode"
+fi
+
+# batman-adv adds its own header, so the underlying interface needs headroom
+# above the standard 1500 MTU or frames will fragment.
+log_message "Setting MTU $BATMAN_MTU on $UAIN..."
+if ! ip link set "$UAIN" mtu "$BATMAN_MTU"; then
+    log_message "WARNING: Could not set MTU $BATMAN_MTU on $UAIN (driver may not support it)"
+fi
 
 log_message "Bringing $UAIN up..."
 ip link set "$UAIN" up
@@ -101,36 +137,45 @@ ip link set "$UAIN" up
 sleep 2
 
 log_message "Joining ad-hoc mesh network..."
-iw dev "$UAIN" ibss join my-batman-mesh 5200 HT20 fixed-freq 02:ca:fe:ca:ca:40
+if ! iw dev "$UAIN" ibss join "$MESH_SSID" "$MESH_FREQ" "$MESH_WIDTH" fixed-freq "$MESH_BSSID"; then
+    fail "IBSS join failed on $MESH_FREQ MHz. Check 'iw reg get' for NO-IR on this band, or try 2412 MHz."
+fi
+log_message "Joined mesh: $MESH_SSID @ $MESH_FREQ MHz ($MESH_BSSID)"
 
 # Small delay before adding to batman
 sleep 2
 
 log_message "Adding $UAIN to batman-adv..."
-batctl if add "$UAIN"
-
-log_message "Bringing bat0 interface up..."
-ip link set bat0 up
-
-# Extract Pi number from hostname (mrrdt-#)
-HOSTNAME=$(hostname)
-PI_NUMBER=201 # SET PI NUM TO 201, 202, 203, or 204
-
-if [ -z "$PI_NUMBER" ]; then
-    log_message "WARNING: Could not extract Pi number from hostname '$HOSTNAME'"
-    log_message "Expected format: mrrdt-# (e.g., mrrdt-1, mrrdt-42)"
-    log_message "Defaulting to IP 169.254.97.99"
-    PI_NUMBER=99
+if ! batctl if add "$UAIN"; then
+    fail "Failed to add $UAIN to batman-adv"
 fi
 
-# Set IP address based on Pi number
+log_message "Bringing bat0 interface up..."
+if ! ip link set bat0 up; then
+    fail "Failed to bring up bat0"
+fi
+
+# ---- Address assignment ------------------------------------------------
 NODE_IP="169.254.97.$PI_NUMBER"
+
+# Flush first so re-running the script doesn't fail with "Address already assigned"
+log_message "Flushing existing addresses on bat0..."
+ip addr flush dev bat0
+
 log_message "Setting IP address $NODE_IP on bat0..."
-ip addr add "$NODE_IP/16" dev bat0
-arping -c 3 -I bat0 "$NODE_IP"
+if ! ip addr add "$NODE_IP/16" dev bat0; then
+    fail "Failed to assign $NODE_IP to bat0"
+fi
+
+# Gratuitous ARP so peers learn our address without waiting for resolution
+if command -v arping &> /dev/null; then
+    arping -c 3 -I bat0 "$NODE_IP" > /dev/null 2>&1
+else
+    log_message "WARNING: arping not found (install iputils-arping) - skipping gratuitous ARP"
+fi
 
 log_message "B.A.T.M.A.N. mesh setup complete!"
-log_message "Interface: $UAIN, IP: $NODE_IP"
+log_message "Interface: $UAIN, IP: $NODE_IP, Regdomain: $CURRENT_REG"
 
 sleep 10
 
