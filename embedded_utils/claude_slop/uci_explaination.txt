@@ -1,0 +1,79 @@
+The DWM3001C is a UWB radio module: a Qorvo DW3110 radio plus a Nordic nRF52833 MCU. When it runs Qorvo's stock UCI firmware, it acts as a UWB chip that a host (a Pi, a PC or a phone)
+  controls over serial. UCI (UWB Command Interface) is the protocol for that link. The FiRa Consortium standardised it, and Android uses the same interface. Your repo already has a small
+  driver for it in embedded_utils/claude_slop/uci.py, so I'll explain it using that code.
+
+  Physical link
+
+  - Port: The DWM3001CDK board has two USB ports. The upper one (J20) connects to the nRF52833's own USB and shows up on Linux as /dev/ttyACMx. That's the UCI port. The lower one (J9) goes
+    to the on-board J-Link and is only for flashing and debugging.
+  - Baud rate: Because the link is USB-CDC, the baud rate you set is ignored.
+  - Several boards on one Pi: Use the /dev/serial/by-id/... paths so the port names stay the same after a reboot (find_ports.py).
+
+  Packet format
+
+  Every message starts with a 4-byte header followed by the payload (uci.py:217):
+
+  byte0: MT[7:5] | PBF[4] | GID[3:0]
+  byte1: RFU[7:6] | OID[5:0]
+  byte2: RFU
+  byte3: payload length (0–255)
+
+  - MT (message type): 1 = command (CMD), 2 = response (RSP), 3 = notification (NTF), 0 = data.
+  - PBF (packet boundary flag): Set when a message is split into several packets. You won't need it for basic ranging.
+  - GID/OID (group ID / opcode ID): Together they say which command a message is:
+    - 0x0 Core: reset, device info, capabilities, device config.
+    - 0x1 Session Config: session init/deinit, app config, session state.
+    - 0x2 Ranging Control: start/stop. Ranging results also come back under this group and opcode.
+    - 0x9–0xF: vendor-specific (Qorvo's calibration and extensions).
+
+  How messages flow
+
+  - Commands and responses: The host sends a CMD. The device always replies with an RSP that has the same GID/OID, and the first payload byte is a status code (0x00 = OK).
+  - Notifications: The device sends these whenever it wants, without being asked: state changes, errors, and every ranging result.
+
+  UciTransport handles this with a reader thread. It hands each RSP to whichever call is waiting for it and puts NTFs on a queue.
+
+  Session lifecycle (two-way ranging)
+
+  CORE_DEVICE_RESET            → RSP, then CORE_DEVICE_STATUS_NTF(READY)
+  CORE_GET_DEVICE_INFO         → UCI/MAC/PHY versions + vendor blob
+  SESSION_INIT(id, type=0)     → RSP + SESSION_STATUS_NTF(INIT)
+  SESSION_SET_APP_CONFIG(TLVs) → RSP + SESSION_STATUS_NTF(IDLE)
+  RANGE_START(id)              → RSP + SESSION_STATUS_NTF(ACTIVE)
+     ... RANGE_DATA NTF every ranging interval ...
+  RANGE_STOP / SESSION_DEINIT
+
+  App config is a list of TLVs (tag, length, value). The two boards must disagree on some settings and match on the rest:
+
+  ┌─────────────────────────────────────────────────────────────────────────────────┬────────────┬────────────┐
+  │                                     Setting                                     │ Controller │ Controlee  │
+  ├─────────────────────────────────────────────────────────────────────────────────┼────────────┼────────────┤
+  │ Device type                                                                     │ Controller │ Controlee  │
+  ├─────────────────────────────────────────────────────────────────────────────────┼────────────┼────────────┤
+  │ Device role                                                                     │ Initiator  │ Responder  │
+  ├─────────────────────────────────────────────────────────────────────────────────┼────────────┼────────────┤
+  │ Own address / destination address                                               │ own / peer │ swapped    │
+  ├─────────────────────────────────────────────────────────────────────────────────┼────────────┼────────────┤
+  │ Channel, STS mode, ranging interval, multi-node mode, round usage (e.g. DS-TWR) │ must match │ must match │
+  └─────────────────────────────────────────────────────────────────────────────────┴────────────┴────────────┘
+
+  Your code builds this list in build_fira_app_config_tlvs (uci.py:634).
+
+  RANGE_DATA NTF contains a header (sequence number, session ID, interval, address mode) and then one 31-byte record per peer: MAC address, status, NLOS, distance in cm, AoA fields and slot
+  index.
+
+  Problems I noticed in the driver
+
+  1. AoA units are wrong. FiRa sends AoA as Q9.7 fixed point in degrees, not radians. _aoa_q9_7_to_deg (uci.py:456) multiplies by 180/π, so the angles come out about 57× too large. It should
+     just return raw / 128.0. In practice this doesn't matter much: the DWM3001C has a single antenna, so its AoA values are meaningless anyway. Only distance is useful.
+  2. Extended-address records are probably the wrong size. In the spec, the extended-address record is also 31 bytes: the 8-byte MAC takes space from the reserved bytes. The code uses 37
+     (uci.py:522). This only matters if you switch to extended addresses.
+  3. UCI 2.0 session handles. In FiRa UCI 2.x, the SESSION_INIT response returns a session handle, and later commands must use that handle instead of the session ID. Newer QM33 SDK firmware
+     may speak 2.x. If commands after init fail, check the uci_version that get_device_info reports.
+  4. Timing issues (minor):
+     - After reset, the code sleeps a fixed 0.3 s. It should wait for CORE_DEVICE_STATUS_NTF instead.
+     - wait_session_status after set-config will probably receive the INIT notification first, not the IDLE one.
+  5. Static STS settings. Some firmware builds reject a static-STS config that doesn't include VENDOR_ID and STATIC_STS_IV. If set-config returns INVALID_PARAM, add those two TLVs.
+
+  For a known-good reference, Qorvo's SDK includes host-side Python tools with a ready-made two-way ranging script. Capture its traffic and compare it byte-for-byte with what your driver
+  sends, especially the RANGE_DATA offsets, which Qorvo may extend with vendor fields.
