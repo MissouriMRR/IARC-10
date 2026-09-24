@@ -16,7 +16,7 @@ from state_machine.states.state import State
 
 # How much extra safety margin (in feet) to grow every known mine's
 # danger radius by before actually ending the run. The scan itself
-# already flies with Pathfinder.mine_saftey_radius's own margin (see
+# already flies with Pathfinder.mine_safety_radius_ft's own margin (see
 # add_discovered_mine) -- this is a further, deliberately conservative
 # pad specifically for the final, committed route, not the exploratory
 # one. TODO: pick a real value from competition rules/hardware GPS

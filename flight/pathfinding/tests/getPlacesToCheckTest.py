@@ -21,7 +21,9 @@ directly, no stubbing needed.
 """
 
 import math
+import os
 import random
+import tempfile
 
 import matplotlib
 
@@ -38,10 +40,12 @@ from flight.pathfinding.path_cover import (
     _polyline_normals_per_vertex,
 )
 
-SCRATCH_DIR = (
-    r"C:\Users\harpe\AppData\Local\Temp\claude\c--Users-harpe-Multirotor-IARC-10"
-    r"\2567942b-0ada-473d-af3b-214803e7410d\scratchpad"
+# Override with IARC_SCRATCH_DIR; otherwise a per-user temp dir. Was hardcoded to
+# one developer's absolute path, which no other machine can write to.
+SCRATCH_DIR = os.environ.get("IARC_SCRATCH_DIR") or os.path.join(
+    tempfile.gettempdir(), "iarc10_scratch"
 )
+os.makedirs(SCRATCH_DIR, exist_ok=True)
 
 # A field-sized rectangle of lat/lon corners, built from a base point purely
 # by offsetting in meters -- WIDTHOFFIELD/HEIGHTOFFIELD (80ft x 300ft) are

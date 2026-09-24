@@ -18,7 +18,7 @@ from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.flight_settings import Role, Side, SimMode
-from flight.pathfinder import Pathfinder
+from flight.pathfinder import HEIGHTOFFIELD, Pathfinder
 from time import time
 
 # RPICamera and AirSimCamera are imported inside the MISSION branch below, not
@@ -225,3 +225,13 @@ def configureField(state: Takeoff) -> None:
         (state.flight_settings.start_coord["lat"], state.flight_settings.start_coord["lon"]),
         startEdge=startEdge,
     )
+
+    # Two pairs launching from opposite edges: each targets a fixed row at the field's
+    # midline instead of the far edge, so neither crosses into the other's half. Must
+    # run after buildNodeField and before start_maze_navigation (CalcScanPath).
+    # This replaces the old chase-the-other-pair retargeting, which had no lower bound
+    # on the chase and drove a pair deep into the other's half on 5/5 dense seeds --
+    # that mechanism used to be the only one wired here, so every real two-pair mission
+    # flew the design its own docstring recorded as broken.
+    if state.flight_settings.cross_pair_partner_id is not None:
+        pathfinder.set_cross_pair_home_boundary(HEIGHTOFFIELD / 2.0)

@@ -27,11 +27,8 @@ from shapely import coverage_union, coverage_union_all, unary_union
 
 SQUARE_SIZE = 2
 
-# mergePolygons: how much to buffer each input polygon by when unary_union
-# alone doesn't fuse them into one Polygon (see that method). Far smaller
-# than anything that could meaningfully change an obstacle's own danger
-# radius -- purely large enough for floating-point unioning to register a
-# hairline of real interior overlap instead of a bare point/edge touch.
+# Buffer applied in mergePolygons when unary_union can't fuse touching polygons.
+# Tiny: only turns a point/edge touch into a real overlap, doesn't change danger radius.
 _MERGE_TOUCH_FUSE_EPSILON = 1e-6
 
 
@@ -40,31 +37,18 @@ class Field:
 
     debugPoints = []  # purely for debuging and testing, field will plot these points
 
-    # simFieldSize = simulated size of field, in feet, the bottom left corner is (0,0) and the top right corner is (simFieldSize[0], simFieldSize[1])
-    # fieldCorners = arbitrary corners that might not form a rectangle, in
-    # [top-left, top-right, bottom-left, bottom-right] order -- fieldVertPairLeft/
-    # Right/fieldHorzPairUpper/Lower below are built from these exact index
-    # pairs (0&2 = left edge, 1&3 = right edge, 0&1 = top edge, 2&3 = bottom
-    # edge), so any OTHER corner order (e.g. a walk-around-the-quad
-    # [origin,+x,diagonal,+y] order) silently produces the wrong edges --
-    # withinField (and so every non-floating-to-non-floating connection,
-    # since that's what gates addGraph) ends up rejecting the entire field.
-    # A caller with corners in a different order/convention (e.g.
-    # SimToLatLonTransformer.get_arb_corners(), whose order is
-    # [origin/bottom-left, +x/bottom-right, diagonal/top-right, +y/top-left])
-    # must reorder to this one before constructing Field -- see Pathfinder's
-    # own reordering of arb_corner_coords for a worked example.
     def __init__(self, simFieldSizeFT: list, fieldCorners: list, droneNumber: int = 0):
         """
-        simFieldSize = simulated size of field, a rectangle's [width,height].
-        \nfieldCorners = the field's 4 corners as [top-left, top-right,
-        bottom-left, bottom-right] -- NOT a general walk-around-the-quad
-        traversal order; see the comment above this method for why the order
-        matters and what happens if it's wrong.
-        \ndroneNumber = this drone's number; every node/mine id assigned by
-        this field starts with it (e.g. "3-0", "3-1", ...), so ids stay
-        unique across drones even though each drone assigns its own
-        sequentially and independently.
+        Takes:
+        - simFieldSizeFT: [width, height] in feet. Bottom-left is (0,0).
+        - fieldCorners: the 4 corners in EXACTLY this order:
+          [top-left, top-right, bottom-left, bottom-right].
+          Any other order (e.g. walk-around-the-quad) builds the wrong edges,
+          so withinField rejects the whole field.
+          Reorder first if your source uses another order
+          (e.g. SimToLatLonTransformer.get_arb_corners()); see Pathfinder for an example.
+        - droneNumber: prefix for every node/mine id ("3-0", "3-1", ...),
+          keeps ids unique across drones.
         """
         self.droneNumber = droneNumber
         self._nextId = 0
@@ -119,26 +103,16 @@ class Field:
         self.polygonObstacles = []
         self.fieldConnection = FieldConnections(self)
 
-    # Every node/mine id issued by this field starts with self.droneNumber
-    # and is otherwise a bare sequential counter -- ids carry no positional
-    # or semantic meaning, they only need to be unique within this drone
-    # (and, via the droneNumber prefix, across drones too).
+    # Next id: "<droneNumber>-<counter>". Only needs to be unique, carries no meaning.
     def _generateId(self) -> str:
         newId = f"{self.droneNumber}-{self._nextId}"
         self._nextId += 1
         return newId
 
-    # Hash over the field's CURRENT live mines (standalone and nested inside
-    # unions), keyed on each mine's origin -- its position at first
-    # detection in this field's shared local coordinate frame, fixed at
-    # construction and unaffected by later expansion (see BlockMine.origin)
-    # -- not on per-drone-assigned ids or insertion order. Two drones that
-    # have detected the exact same set of mines get the exact same hash,
-    # regardless of what order they found them in, how many ids each has
-    # handed out for unrelated nodes, or how many times each has since run
-    # expandField. Uses hashlib rather than Python's built-in hash(), which
-    # is randomized per-process (PYTHONHASHSEED) and would NOT agree across
-    # two separate drone processes even for identical input.
+    # Hash of all live mines (standalone + inside unions).
+    # - Keyed on each mine's origin (position when first detected; see BlockMine.origin).
+    # - Ignores ids and discovery order, so two drones that found the same mines match.
+    # - Uses hashlib, not hash(): hash() is randomized per process.
     def mineHash(self, precision: int = 6) -> str:
         allMines = list(self.mines) + self._collect_mines(self.unionObstacles)
         positions = sorted(
@@ -148,24 +122,13 @@ class Field:
         payload = repr(positions).encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
-    # obstacle.connectFloatingNode only reasons about obstacle's OWN convex
-    # hull (pointTangents), with no idea any other obstacle exists -- so a
-    # geometrically valid tangent to `obstacle` can still cut straight
-    # through some UNRELATED obstacle sitting between it and fNode. Every
-    # floating-node connection site (addFloatingNode, addObstacle,
-    # expandField) needs the same "and nothing else is in the way" check
-    # _addOwnConnections already does for obstacle-to-obstacle tangents, so
-    # it's centralized here rather than duplicated at each call site.
+    # Connect floating node fNode to obstacle's tangent points.
+    # - obstacle.connectFloatingNode only knows about its own hull, so a tangent
+    #   can still pass through some OTHER obstacle. Skip those.
+    # - Shared by addFloatingNode, addObstacle, expandField.
     def _connectFloatingNodeToObstacle(self, obstacle, fNode: "Node") -> None:
-        # Built once per obstacle, not once per tangent candidate -- and each
-        # `other` is cheaply rejected by its precomputed xMin/xMax/yMin/yMax
-        # bounding box before ever paying for its real (shapely-backed)
-        # .intersects() check. Measured on a 70-mine field: this bbox
-        # pre-filter skips ~79% of the other-obstacle checks that would
-        # otherwise all reach .intersects() (33,046 -> 6,801 real calls) --
-        # segments here are usually long (floating node to a tangent point
-        # far across the field), but still narrow in one axis, which is
-        # exactly what an AABB test is cheap at rejecting.
+        # Cheap bounding-box test first, exact .intersects() only if boxes overlap
+        # (skipped ~79% of exact checks on a 70-mine field).
         others = [
             o for o in self.polygonObstacles + self.mines + self.unionObstacles if o is not obstacle
         ]
@@ -186,17 +149,10 @@ class Field:
             if not blocked:
                 self.fieldConnection.connectNode(fNode, tangentNode)
 
-    # A floating node's only OTHER connection sites (_connectFloatingNodeToObstacle,
-    # above) wire it to obstacles -- nothing ever wired two floating nodes
-    # DIRECTLY to each other, even with a clear, unobstructed line of sight
-    # between them. That's not just a missed optimization: with zero
-    # obstacles anywhere in the field (e.g. a Pathfinder before any mine has
-    # ever been discovered), NO connection of any kind ever gets created --
-    # every start/end floating node sits completely isolated, and
-    # get_shortest_path's Dijkstra KeyErrors immediately (the start node
-    # isn't even a key in an empty nodeGraph). Same bbox-then-intersects
-    # occlusion check as _connectFloatingNodeToObstacle, just against every
-    # current obstacle rather than one obstacle's own tangent candidates.
+    # Connect two floating nodes directly if no obstacle is in the way.
+    # - Needed for an empty field: with no obstacles nothing else creates
+    #   connections, so start/end nodes stay isolated and Dijkstra KeyErrors.
+    # - Same bounding-box-then-intersects check as above.
     def _connectFloatingNodeToFloatingNode(self, nodeA: "Node", nodeB: "Node") -> None:
         seg_min_x, seg_max_x = min(nodeA.x, nodeB.x), max(nodeA.x, nodeB.x)
         seg_min_y, seg_max_y = min(nodeA.y, nodeB.y), max(nodeA.y, nodeB.y)
@@ -228,12 +184,8 @@ class Field:
         for other in self.floatingNodes:
             self._connectFloatingNodeToFloatingNode(other, fNode)
 
-        # Every floating node (not just ones added via the placeStartNode/
-        # placeEndNodes* wrappers below) needs to be in this list -- it's
-        # what addObstacle uses to retroactively connect a NEWLY added
-        # obstacle back to floating nodes that already existed before it
-        # (see addObstacle), the mirror image of the connecting-to-existing-
-        # obstacles loop just above.
+        # Track every floating node: addObstacle uses this list to connect
+        # obstacles added LATER back to nodes that already exist.
         self.floatingNodes.append(fNode)
         return fNode
 
@@ -300,12 +252,9 @@ class Field:
         else:
             return True
 
-    # A union obstacle is made up of two or more regular or mine obstacles
-    # When a union obstacle is created it deletes all connections of it's
-    # constituents's nodes and makes its own for the obstacle.
-    # The constituent nodes still exist, but aren't used for anything.
-    # If a constituent is a mine Obstacle, the expanding nodes function
-    # will search
+    # Merge 2+ overlapping obstacles into one unionObstacle.
+    # - Purges the constituents' node connections; the union gets its own nodes.
+    # - Constituent nodes still exist but are unused.
     def mergePolygons(self, polygonObstacleList: list[PolygonObstacle]):
         polygonList = []
         for i in polygonObstacleList:
@@ -315,31 +264,15 @@ class Field:
 
         unionPolygon = unary_union(polygonList)
         if unionPolygon.geom_type != "Polygon":
-            # obstacleOverlap (this method's only caller, via
-            # _resolveOverlaps) tests with shapely's .intersects(), which is
-            # satisfied by two polygons merely TOUCHING at a boundary point
-            # or edge, not just a real interior overlap -- so this set was
-            # already correctly judged "should become one merged danger
-            # zone." But unary_union on bare touching polygons (no shared
-            # interior area) can come back as a MultiPolygon instead of
-            # fusing them -- a single point of contact isn't a valid simple
-            # Polygon boundary -- which crashed here (AttributeError:
-            # 'MultiPolygon' object has no attribute 'exterior') the one
-            # time this was actually hit in ~450 simulated expandField
-            # calls across mineExpandRestartTest.py's sweep, always at an
-            # exaggerated safety-margin expansion (real missions expand by
-            # ~2ft; this needed 6ft to surface, and even then only 1/25
-            # seeds). Buffering each input by a hairline first turns any
-            # such touch into genuine interior overlap, which unary_union
-            # always fuses into one Polygon -- the buffer is far too small
-            # to meaningfully change any obstacle's own danger radius.
+            # Polygons that only TOUCH (point/edge) count as overlapping upstream
+            # (.intersects()), but unary_union returns a MultiPolygon for them,
+            # which used to crash here. A tiny buffer makes them truly overlap
+            # so they fuse into one Polygon.
             unionPolygon = unary_union(
                 [p.buffer(_MERGE_TOUCH_FUSE_EPSILON) for p in polygonList]
             )
         if unionPolygon.geom_type != "Polygon":
-            # Should be unreachable (see above) -- surfacing loudly instead
-            # of silently dropping/mis-shaping a danger zone if it ever
-            # isn't.
+            # Should be unreachable; fail loudly rather than mis-shape a danger zone.
             raise ValueError(
                 f"mergePolygons: unary_union produced a {unionPolygon.geom_type},"
                 " not a Polygon, even after the touch-fusing buffer"
@@ -373,9 +306,8 @@ class Field:
                 overlaps.append(i)
         return overlaps
 
-    # Nearest/farthest vertex-to-vertex distance between two obstacles -- cheap
-    # (no shapely crossing calls), used to chain obstacles into groups by
-    # distance-range overlap before any exact geometric check is paid for.
+    # (nearest, farthest) distance between two obstacles. Cheap; used to group
+    # obstacles by distance range before any exact geometry check.
     def _obstacleDistanceRange(self, a, b):
         nearest = a.polygon.distance(b.polygon)
         farthest = 0.0
@@ -393,9 +325,8 @@ class Field:
                 return i
         return 0
 
-    # Retroactively removes existing connections that polygonObstacle now
-    # crosses. Split out from connectPolygon so batch callers (expandField)
-    # can control exactly when this runs relative to _addOwnConnections.
+    # Delete existing edges that polygonObstacle now crosses.
+    # Split from connectPolygon so expandField can order it vs _addOwnConnections.
     def _cleanupInvalidatedConnections(self, polygonObstacle):
         nodeGraph = self.fieldConnection.nodeGraph
         edges = [
@@ -405,9 +336,8 @@ class Field:
         for i in connectionsToRemove:
             self.fieldConnection.deleteConnection(i[0], i[1])
 
-    # Computes and adds polygonObstacle's own new tangent connections to
-    # every other existing obstacle (group/arc occlusion algorithm). Split
-    # out from connectPolygon for the same reason as _cleanupInvalidatedConnections.
+    # Add polygonObstacle's tangent connections to every other obstacle
+    # (group + occlusion-arc algorithm). Split from connectPolygon like the above.
     def _addOwnConnections(self, polygonObstacle):
         others = [
             o
@@ -434,16 +364,11 @@ class Field:
                     break
             remaining = remaining[len(group) :]
 
-            # up to 4 (selfNode, otherNode) tangent pairs per group member --
-            # commonTangents runs for every group member regardless of how
-            # cheap the later acceptance decision ends up being
+            # Up to 4 (selfNode, otherNode) tangent pairs per group member.
             candidate_pairs = {o: polygonObstacle.connectPolygonObstacle(o) for o in group}
 
-            # per-vertex occlusion arcs for the NEW obstacle only, seeded from
-            # each group member's own tangent pair (fast starting guess, not
-            # an approximation of the arc boundary itself). other's own
-            # vertices are never touched -- they got their arcs once, when
-            # `other` was added, and are never revisited.
+            # Occlusion arcs for the NEW obstacle's vertices only, seeded from each
+            # member's tangent pair. Older obstacles' arcs are never recomputed.
             new_arcs = (
                 {}
             )  # Node -> list of (loAngle, hiAngle, pivotAngle, blockerObstacle, near, far)
@@ -460,16 +385,8 @@ class Field:
                 for node in polygonObstacle.nodes:
                     pivotAngle = math.atan2(centroid[1] - node.y, centroid[0] - node.x)
                     if other.polygon.covers(Point(node.x, node.y)):
-                        # The tangent-cone math below assumes an EXTERNAL
-                        # viewpoint to a convex shape (visible span < 180
-                        # degrees) -- that guarantee breaks if node sits
-                        # inside (or on) other's own convex hull, which can
-                        # legitimately happen with no merge warranted (a node
-                        # can sit in a concave union's empty notch -- see
-                        # unionObstacle.obstacleOverlap). Since .intersects()
-                        # treats the hull as fully solid for blocking
-                        # purposes elsewhere, a node inside it is blocked by
-                        # `other` in every direction.
+                        # Tangent math needs a viewpoint OUTSIDE the hull. A node inside
+                        # it (e.g. a concave union's notch) is blocked in every direction.
                         loAngle, hiAngle = -math.pi, math.pi
                     else:
                         loIdx = _find_point_tangent((node.x, node.y), other.vertices, 1, seedLoIdx)
@@ -527,9 +444,7 @@ class Field:
                 for entry in arc_list:
                     node.recordOcclusionArc(*entry)
 
-    # Preserves the exact original combined behavior (cleanup, then add own
-    # connections) for every caller that doesn't need to control the two
-    # phases independently.
+    # Cleanup, then add own connections. For callers that don't need the phases split.
     def connectPolygon(self, polygonObstacle):
         self._cleanupInvalidatedConnections(polygonObstacle)
         self._addOwnConnections(polygonObstacle)
@@ -547,13 +462,9 @@ class Field:
         newObstacle = PolygonObstacle(vertices, nodeList, True)
         self.addObstacle(newObstacle, isWrapping=True)
 
-    # Pure geometry/list-bookkeeping merge resolution for ONE obstacle against
-    # whatever is CURRENTLY in the field's lists -- no node wiring at all, and
-    # does NOT place a merged result into self.unionObstacles (a caller doing
-    # a fixed-point resolution needs to re-check a freshly merged shape's own
-    # overlaps before it's considered settled; adding it to the field's lists
-    # too early would make it collide with itself). A non-merged obstacle is
-    # also left unplaced -- the caller decides which list it belongs in.
+    # Merge newObstacle with anything it overlaps (geometry + list bookkeeping only).
+    # - No node wiring. Does NOT add the result to any field list; caller decides
+    #   (a fresh merge may need re-checking before it's settled).
     # Returns (resolvedObstacle, isWrapping, wasMerged).
     def _resolveOverlaps(self, newObstacle: PolygonObstacle):
         overlaps = self.checkForObstacleCollisions(newObstacle)
@@ -563,19 +474,11 @@ class Field:
             return newObstacle, isWrapping, True
         return newObstacle, False, False
 
-    # Builds obstacle's own internal (perimeter + convex-hull) node
-    # connections only -- never connects it to any OTHER existing obstacle.
-    # `wasMerged` controls whether the extra convex-hull chain is also wired
-    # (only meaningful for a freshly-merged union).
+    # Wire obstacle's OWN nodes (perimeter + convex hull). Never links to other obstacles.
+    # wasMerged: also wire the convex-hull chain (only matters for a fresh union).
     def _selfConnect(self, obstacle: PolygonObstacle, isWrapping: bool, wasMerged: bool):
-        # Assign ids to whichever of this obstacle's nodes don't have one
-        # yet -- runs here because every obstacle (fresh mine/plain
-        # obstacle, or a freshly-merged union with brand new Node instances
-        # from mergePolygons) passes through _selfConnect exactly once,
-        # in both the single-add and batch expandField flows. A union's
-        # constituent obstacles keep the ids their own nodes already got
-        # when THEY were originally added -- only the union's own new
-        # exterior nodes are unassigned at this point.
+        # Assign ids to nodes that lack one. Every obstacle passes through here
+        # exactly once; a union's constituents keep their old ids.
         if isinstance(obstacle, BlockMine) and obstacle.id is None:
             obstacle.id = self._generateId()
         for node in obstacle.nodes:
@@ -624,15 +527,9 @@ class Field:
             ):
                 self.fieldConnection.connectNode(laggingConvexNode, firstConvexNode)
 
-    # Resolves overlaps/merges for newObstacle and builds the resulting
-    # obstacle's own internal (perimeter + convex-hull) connections only --
-    # never connects it to any OTHER existing obstacle. Split out from
-    # addObstacle so batch callers (expandField) can run a full merge pass
-    # across many obstacles before any inter-obstacle connections are added,
-    # without those merges accidentally creating premature inter-obstacle
-    # connections (connections *within* one obstacle/union's own nodes are
-    # fine and expected here; connections *between* separate obstacles are
-    # deliberately deferred to connectPolygon/_addOwnConnections).
+    # Merge newObstacle with overlaps, then wire only its OWN nodes.
+    # - Connections BETWEEN obstacles are deferred to connectPolygon/_addOwnConnections.
+    # - Split from addObstacle so expandField can finish all merges first.
     def _mergeAndSelfConnect(
         self, newObstacle: PolygonObstacle, isWrapping: bool = False, isMine: bool = False
     ):
@@ -648,43 +545,18 @@ class Field:
         self._selfConnect(newObstacle, isWrapping, wasMerged)
         return newObstacle, wasMerged
 
-    # Preserves the exact original combined behavior (merge + self-connect,
-    # then connect to every other obstacle) for every caller that doesn't
-    # need to control the two phases independently.
+    # Merge + self-connect, then connect to every other obstacle.
     def addObstacle(
         self, newObstacle: PolygonObstacle, isWrapping: bool = False, isMine: bool = False
     ) -> bool:
         newObstacle, wasMerged = self._mergeAndSelfConnect(newObstacle, isWrapping, isMine)
         self.connectPolygon(newObstacle)
-        # Re-verify newObstacle's own freshly created connections (from
-        # _addOwnConnections, just above) against EVERY current obstacle --
-        # not just the ones _addOwnConnections' own near/far "group"
-        # heuristic happened to chain-overlap into the same processing
-        # batch. That heuristic can legitimately exclude a real blocker
-        # sitting between the two tangent points if its own distance
-        # range doesn't overlap into the group being processed -- and a
-        # freshly merged union's own brand-new nodes additionally start
-        # with zero occlusion-arc history (crossGroupOccluded's cache,
-        # which normally catches some of what a group missed, has nothing
-        # to fall back on for them). Confirmed empirically on both counts:
-        # traced a real bad edge in the two-pair sweep to exactly this
-        # gap, blocked by an ordinary standalone mine well outside the
-        # processing group -- not a union or a merge at all.
-        #
-        # Checks the segment's MIDPOINT for containment, not
-        # find_crossed_edges' crosses()/contains() (tried first, and
-        # didn't catch the traced case -- a shallow, sub-1ft sliver
-        # apparently classifies as "touches" rather than a clean
-        # topological "crosses" for shapely's predicate here, the same
-        # distinction find_crossed_edges' own docstring leans on to avoid
-        # flagging a legitimate tangent connection that merely touches an
-        # obstacle's boundary at its own endpoint). Midpoint containment
-        # is the exact "is this edge bad" definition this session's own
-        # verification sweeps have used throughout, so it's what's
-        # actually being guaranteed here, and a real tangent connection's
-        # midpoint is never inside the obstacle it touches only at an
-        # endpoint. Bounded to newObstacle's own edges (the only ones
-        # that just changed), not a full graph audit.
+        # Safety re-check of newObstacle's own new edges against EVERY obstacle.
+        # - _addOwnConnections' grouping can miss a blocker outside its group
+        #   (seen as a real bad edge in the two-pair sweep).
+        # - Test = edge MIDPOINT inside an obstacle. find_crossed_edges misses
+        #   shallow (<1ft) slivers; a real tangent's midpoint is never inside.
+        # - Only newObstacle's own edges (the ones that just changed).
         own_edges = [
             (node, neighbor)
             for node in newObstacle.nodes
@@ -704,17 +576,9 @@ class Field:
             for n1, n2 in to_remove:
                 self.fieldConnection.deleteConnection(n1, n2)
 
-        # The reverse direction of the same gap: does newObstacle (as the
-        # newly added mine/union) retroactively invalidate a PRE-EXISTING
-        # edge elsewhere in the graph that doesn't touch its own nodes at
-        # all? _cleanupInvalidatedConnections (inside connectPolygon,
-        # above) already does a whole-graph scan for this via
-        # find_crossed_edges, but that predicate can miss the same kind of
-        # shallow sub-1ft sliver the own_edges check above was built for
-        # -- same midpoint-containment definition, applied the other way.
-        # O(all edges) but against a single polygon (newObstacle), so
-        # comparable cost to _cleanupInvalidatedConnections' own existing
-        # whole-graph scan, not an additional order of magnitude.
+        # Reverse check: does newObstacle invalidate an OLD edge elsewhere?
+        # Same midpoint test, since _cleanupInvalidatedConnections
+        # (find_crossed_edges) misses shallow slivers. Similar cost to that scan.
         own_node_set = set(newObstacle.nodes)
         other_edges = [
             (n1, n2)
@@ -729,12 +593,8 @@ class Field:
                 to_remove2.append((n1, n2))
         for n1, n2 in to_remove2:
             self.fieldConnection.deleteConnection(n1, n2)
-        # Mirror image of the connect-to-existing-obstacles loop in
-        # addFloatingNode: a floating node (e.g. a start/end node) placed
-        # BEFORE this obstacle existed never had a chance to connect to it --
-        # addFloatingNode only wires a new node to obstacles that already
-        # exist at that point, so an obstacle added afterward has to reach
-        # back out to every already-placed floating node itself.
+        # Floating nodes placed BEFORE this obstacle never connected to it,
+        # so connect them now (mirror of the loop in addFloatingNode).
         for fNode in self.floatingNodes:
             self._connectFloatingNodeToObstacle(newObstacle, fNode)
         return wasMerged
@@ -745,9 +605,8 @@ class Field:
         newMine = BlockMine(protoMine.nodeVertices, origin=tuple(protoMine.mineLocation))
         return self.addObstacle(newMine, isWrapping=True, isMine=True)
 
-    # Recursively finds every live BlockMine within a list of obstacles,
-    # descending into any nested unionObstacle's own obstacleList (a union
-    # can itself be a constituent of a later union).
+    # All BlockMines in obstacle_list, including ones nested inside unions
+    # (a union can be part of a later union).
     def _collect_mines(self, obstacle_list):
         found = []
         for o in obstacle_list:
@@ -757,42 +616,15 @@ class Field:
                 found.extend(self._collect_mines(o.obstacleList))
         return found
 
-    # Grows every live mine (standalone or nested inside a union obstacle) by
-    # distance, then fully recomputes the field's state for whatever changed,
-    # in three explicit phases:
-    #   1. teardown + expand (geometry only, no connection logic at all)
-    #   2. a full MERGE PASS across every affected obstacle -- resolves all
-    #      overlaps/unions to a FIXED POINT before any inter-obstacle
-    #      connection is computed or any obstacle is self-wired. A single
-    #      one-shot scan (resolve each obstacle once, in list order) can miss
-    #      merges: if obstacle X settles as standalone before Y and Z
-    #      (processed later in the same pass) merge into a new union that now
-    #      overlaps X, a one-shot scan never gives X a chance to re-check
-    #      against that new union -- it already "decided". This can't happen
-    #      in the original one-obstacle-at-a-time addObstacle flow (the field
-    #      only ever grows one already-settled obstacle at a time), but IS
-    #      possible once multiple obstacles expand and merge together in the
-    #      same batch. Left unresolved, a node can end up sitting inside a
-    #      foreign, still-unmerged obstacle -- and the tangent/occlusion-arc
-    #      math in _addOwnConnections assumes an external viewpoint to a
-    #      convex shape (visible angular span < 180 degrees), which silently
-    #      breaks (and can disagree with itself depending on which side of a
-    #      pair is evaluated first) once that assumption is violated. Once
-    #      the fixed point is reached, self-wire (perimeter + convex-hull
-    #      connections) each finally-resolved obstacle exactly once -- no
-    #      inter-obstacle connections are created during this phase.
-    #   3. the connection phase: for every obstacle that came out of the
-    #      merge pass, run cleanup (retroactively removing now-invalid old
-    #      polygon-to-polygon connections) for every affected obstacle first,
-    #      then add (this obstacle's own new tangent connections) for every
-    #      affected obstacle. Both orderings were verified equally safe (0
-    #      unsafe edges across 25+ random seeds at 25-100 mine scale, plus
-    #      the full existing regression suite) once the phase-2 fixes above
-    #      landed; cleanup-then-add was chosen because it timed marginally
-    #      faster (~6% on a 100-mine stress scenario, 5 trials) -- its
-    #      cleanup pass runs while the graph is smaller (before this round's
-    #      new tangent connections exist), whereas add-then-cleanup's
-    #      cleanup pass runs against the larger, already-grown graph.
+    # Grow every live mine (standalone or inside a union) by `distance`, then rebuild.
+    # Phases:
+    #   1. Teardown + expand: geometry only, no connections.
+    #   2. Merge pass: resolve ALL overlaps to a fixed point, then self-wire each
+    #      final obstacle once. A one-shot scan can miss merges (X settles, then
+    #      Y+Z merge into a union that overlaps X), leaving a node inside an
+    #      unmerged obstacle, which breaks the tangent math.
+    #   3. Connection phase: cleanup for all affected obstacles, then add own
+    #      connections for all. (Cleanup-first was ~6% faster; both orders were safe.)
     def expandField(self, distance):
         standalone_mines = list(self.mines)
         affected_unions = [u for u in self.unionObstacles if self._collect_mines(u.obstacleList)]
@@ -818,9 +650,7 @@ class Field:
         for mine in all_expanded_mines:
             mine.expand(distance)
 
-        # MERGE PASS -- fixed-point resolution (geometry/list bookkeeping
-        # only; see the phase-2 note above the method for why a one-shot
-        # scan isn't enough).
+        # Phase 2: merge pass (fixed point; see note above the method).
         isMineFlag = {id(m): True for m in standalone_mines}
         for o in union_constituents:
             isMineFlag.setdefault(id(o), isinstance(o, BlockMine))
@@ -830,10 +660,7 @@ class Field:
             obj = pending.pop()
             obj, _, wasMerged = self._resolveOverlaps(obj)
             if wasMerged:
-                # Re-check the merged shape itself -- it may in turn overlap
-                # something else (possibly another already-settled batch
-                # item, which checkForObstacleCollisions will now find since
-                # it's sitting in the field's lists).
+                # The merged shape may overlap something else; re-check it.
                 pending.append(obj)
             elif isinstance(obj, unionObstacle):
                 self.unionObstacles.append(obj)
@@ -842,20 +669,15 @@ class Field:
             else:
                 self.polygonObstacles.append(obj)
 
-        # Recompute the final affected set from the CURRENT authoritative
-        # lists rather than trusting individual merge results, since a mine
-        # resolved early in the fixed-point loop above may have since been
-        # dissolved into a union formed by a later item in the same pass.
+        # Rebuild the affected set from the field's lists (an early mine may
+        # have been absorbed into a later union).
         expanded_ids = {id(m) for m in all_expanded_mines}
         final_affected = [m for m in self.mines if id(m) in expanded_ids]
         for u in self.unionObstacles:
             if any(id(m) in expanded_ids for m in self._collect_mines(u.obstacleList)):
                 final_affected.append(u)
 
-        # Self-wiring (each obstacle's own perimeter + convex-hull
-        # connections), exactly once per finally-resolved obstacle, now that
-        # the fixed-point merge pass above guarantees no node can end up
-        # sitting inside a foreign, still-unmerged obstacle.
+        # Self-wire each final obstacle once (safe now that merges are settled).
         for o in final_affected:
             self._selfConnect(o, True, isinstance(o, unionObstacle))
 
@@ -864,13 +686,8 @@ class Field:
         for o in final_affected:
             self._addOwnConnections(o)
 
-        # The purge at the top of this method (line ~580) drops EVERY
-        # connection on a growing obstacle's nodes, including to floating
-        # nodes (start/end) -- not just to other obstacles. _selfConnect/
-        # _cleanupInvalidatedConnections/_addOwnConnections above only
-        # restore obstacle-to-obstacle wiring, so without this, every
-        # floating node loses its connection to any mine that ever expands
-        # (same gap addObstacle had for a newly-added obstacle -- see there).
+        # The purge at the top also dropped links to floating (start/end) nodes,
+        # and the steps above only restore obstacle-to-obstacle links. Reconnect them.
         for o in final_affected:
             for fNode in self.floatingNodes:
                 self._connectFloatingNodeToObstacle(o, fNode)
@@ -895,16 +712,13 @@ class Field:
         plt.xlim(self.xMin - padding, self.xMax + padding)
         plt.ylim(self.yMin - padding, self.yMax + padding)
 
-        # Obstacles now come in three flavors that all expose (vertices, polygon, nodes):
-        # circular/blocky mines, standalone polygon obstacles, and merged union obstacles.
+        # Mines, plain polygon obstacles, and unions all expose (vertices, polygon, nodes).
         obstacles = self.mines + self.polygonObstacles + self.unionObstacles
 
         if len(title) <= 0:
             title = f"Obstacles({len(obstacles)}) and Potential Paths"
         xlabel += "KEY:\n"
-        # Obstacles are never filled in: a polygon can have both a convex-hull connection and
-        # its actual (possibly non-convex) shape connection between the same outside nodes, and
-        # filling to the hull would visually hide the real shape. Only the node connections are drawn.
+        # Obstacles are not filled: a hull fill would hide the real (non-convex) shape.
         for obstacle in obstacles:
             if not hasattr(obstacle, "color"):
                 obstacle.color = (
@@ -912,8 +726,7 @@ class Field:
                     random.randint(20, 80) / 100,
                     random.randint(20, 80) / 100,
                 )
-            # A second, distinct color for the obstacle's own vertex/edge outline, kept apart from
-            # obstacle.color so it never gets confused with the node-connection color on the same obstacle
+            # Separate outline color, so it isn't confused with the node-connection color.
             if not hasattr(obstacle, "outlineColor"):
                 obstacle.outlineColor = (
                     random.randint(20, 80) / 100,
@@ -938,9 +751,7 @@ class Field:
                 )
             plt.plot(centerX, centerY, "x", color=(1, 1, 1))
 
-        # Plot each obstacle's own vertices and the edges connecting them, in the obstacle's outline
-        # color (distinct from obstacle.color used for its node connections below).
-        # This is independent of the node markers/connections drawn from the node graph below.
+        # Obstacle outline (vertices + edges), independent of the node graph drawn below.
         for obstacle in obstacles:
             vertices = getattr(obstacle, "vertices", None)
             if not vertices:
@@ -950,8 +761,7 @@ class Field:
             plt.plot(xs, ys, marker="o", color=obstacle.outlineColor)
 
         nodeSymbol = ""  # Empty string makes either lines or invisible points; otherwise points are displayed using the symbol
-        # Map each obstacle's nodes to that obstacle's color and their index within its node list,
-        # so every edge on the same polygon matches and each node can show its position in the obstacle
+        # node -> obstacle color / index, so edges on one polygon match and nodes show their index.
         nodeObstacleColor = {}
         nodeObstacleIndex = {}
         for obstacle in obstacles:
@@ -980,8 +790,7 @@ class Field:
                     c=(0.0, 0.0, 0.0),
                 )
 
-            # Mark every node with a small circle, colored by its obstacle if it belongs to one,
-            # and overlay its index within that obstacle's node list when it has one
+            # Node marker: colored by its obstacle, labeled with its index in that obstacle.
             plt.plot(
                 node.x, node.y, "o", color=nodeObstacleColor.get(node, (0, 0, 0)), markersize=4
             )
@@ -999,7 +808,7 @@ class Field:
             if not node.plotted:
                 for connectedNode in self.fieldConnection.nodeGraph[node].keys():
                     sharedObstacleColor = nodeObstacleColor.get(node)
-                    # If both nodes belong to the same obstacle's polygon, keep every edge on it the same color
+                    # Same obstacle: use the obstacle's color.
                     if (
                         sharedObstacleColor is not None
                         and nodeObstacleColor.get(connectedNode) is sharedObstacleColor
@@ -1060,8 +869,7 @@ class Field:
         ]:
             plt.plot([pair[0][0], pair[1][0]], [pair[0][1], pair[1][1]], color=(0.3, 0.3, 0.3))
 
-        # Plot the previous, if any, path from a previous iteration
-        # Useful if you run plotField twice in the same program instance.
+        # Previous path, if any (useful when calling plotField twice).
         if len(pastPath) > 0:
             for i, node in enumerate(pastPath):
                 if i < len(path) - 1:
@@ -1256,7 +1064,6 @@ class seg(Enum):
 
 
 class FieldConnections:
-
     def __init__(self, field: "Field", mineRadius: float = -1):
         self.nodeGraph = {}
         self.field = field
@@ -1331,9 +1138,8 @@ class FieldConnections:
         return validPath
 
     def addGraph(self, node1, node2):
-        # Floating nodes (start/end points) are allowed to sit outside the
-        # field boundary and to connect from there -- the bounds gate below
-        # only applies to connections where neither endpoint is floating.
+        # Bounds check only applies when neither node is floating
+        # (start/end nodes may sit outside the field).
         if not (node1.floating or node2.floating):
             if not (
                 self.field.withinField(node1.x, node1.y)
@@ -1371,12 +1177,11 @@ class FieldConnections:
             self.deleteConnection(node1, i)
 
     def removeNode(self, node) -> None:
-        """Fully removes node from the graph: purges every edge it has
-        (same as purgeConnections), then deletes its own key from
-        nodeGraph so it doesn't linger as a permanent 0-edge orphan.
-        purgeConnections alone never does this (its purgeNodes branches
-        in deleteConnection are dead -- purgeNodes is hard-coded False at
-        both call sites); nothing else in this codebase does either."""
+        """
+        Remove node from the graph.
+        - Purges every edge, then deletes the node's own key (no 0-edge orphan).
+        - purgeConnections alone never removes the key (purgeNodes is always False).
+        """
         self.purgeConnections(node)
         self.nodeGraph.pop(node, None)
 
@@ -1612,11 +1417,8 @@ class FieldConnections:
 
 
 def _link():
-    # Dead code path -- never called (its only caller, nodeField/__init__.py,
-    # has it entirely inside a docstring). Imports kept local rather than at
-    # module load time so this legacy archive/newPathfinding dependency
-    # chain can't break every import of field.py if it goes stale, as it
-    # since has (flight/newPathfinding was removed).
+    # Dead code: never called. Imports are local so its stale legacy
+    # dependencies (flight/newPathfinding was removed) can't break importing field.py.
     from flight.pathfinding.nodeField.archive import mine as m
     from flight.pathfinding.nodeField import node as n
     from flight.pathfinding.nodeField import node_connection as nc
@@ -1772,36 +1574,18 @@ def find_colliding_pairs(nodes, obstacle):
     return results
 
 
-# find_colliding_pairs above discovers CANDIDATE pairs from a bare node list
-# via enclosing-circle + angular-window pruning -- necessary when there's no
-# cheaper way to know which pairs might matter. But _cleanupInvalidatedConnections
-# (the only real caller) only ever wants to delete connections that already
-# EXIST, so handing it the actual edge list instead of rediscovering
-# candidates from scratch skips a large amount of pruned-but-still-checked
-# pairs that were never real edges anyway (deleteConnection on a non-edge
-# was already a harmless no-op, so this changes nothing about the result --
-# just how much work it costs to get there). Measured on a 70-mine field:
-# ~3,465 pruned candidate pairs/call vs ~761 actual live edges/call -- about
-# a 4.5x cut on top of find_colliding_pairs' own pruning. Kept as a separate
-# function (not a rewrite of find_colliding_pairs itself) so
-# connectPolygonTimingCheck.py's historical old-algorithm reconstruction,
-# which deliberately calls find_colliding_pairs the original way, keeps
-# working unchanged.
+# Like find_colliding_pairs, but tests only EXISTING edges instead of every node pair.
+# - Same result (deleting a non-edge was a no-op), ~4.5x less work on a 70-mine field.
+# - Separate function so connectPolygonTimingCheck.py can still call the old one.
 def find_crossed_edges(edges, obstacle):
     """
-    Parameters
-    ----------
-    edges : list of (node_a, node_b) tuples, each exposing ``.x``/``.y`` --
-        the actual existing connections to test, not every possible pair.
-    obstacle : list of (x, y) vertices describing a polygon
+    Takes:
+    - edges: list of (node_a, node_b), each with .x/.y (the real existing connections).
+    - obstacle: list of (x, y) polygon vertices.
 
-    Returns
-    -------
-    list of (node_a, node_b) tuples (a subset of `edges`) whose connecting
-    segment crosses the obstacle's boundary OR lies entirely inside it
-    (a segment can end up wholly interior with no boundary crossing at
-    all when a merge grows the obstacle around an edge that already
-    existed -- crosses() alone would silently miss that case).
+    Returns:
+    - The subset of edges that cross the obstacle boundary OR lie fully inside it
+      (a merge can grow an obstacle around an existing edge; crosses() alone misses that).
     """
     if not edges:
         return []
@@ -1813,12 +1597,8 @@ def find_crossed_edges(edges, obstacle):
     obs_max_y = max(v[1] for v in obstacle)
     results = []
     for node_a, node_b in edges:
-        # An edge whose bounding box doesn't overlap the obstacle's cannot
-        # possibly cross it -- a sound (not approximate) rejection, cheap
-        # enough to pay for every edge before ever constructing a
-        # LineString or touching shapely. Measured on a 70-mine field: cuts
-        # this function's cost by roughly 4x on top of being handed edges
-        # instead of all node pairs in the first place.
+        # Bounding boxes that don't overlap can't cross: cheap, exact rejection
+        # (~4x faster on a 70-mine field).
         seg_min_x = node_a.x if node_a.x < node_b.x else node_b.x
         seg_max_x = node_a.x if node_a.x > node_b.x else node_b.x
         if seg_max_x < obs_min_x or seg_min_x > obs_max_x:
@@ -1828,11 +1608,7 @@ def find_crossed_edges(edges, obstacle):
         if seg_max_y < obs_min_y or seg_min_y > obs_max_y:
             continue
         seg = LineString(((node_a.x, node_a.y), (node_b.x, node_b.y)))
-        # crosses() alone misses an edge that already lies entirely inside
-        # obstacle without ever touching its boundary -- exactly the case a
-        # merge produces when it grows a polygon around an existing,
-        # already-connected edge (see PolygonObstacle.intersects, which
-        # documents and fixes the identical gap for a different caller).
+        # contains() covers an edge fully inside the obstacle (see PolygonObstacle.intersects).
         if prepared.crosses(seg) or prepared.contains(seg):
             results.append((node_a, node_b))
     return results

@@ -335,15 +335,6 @@ class Drone:
         # discovering pair, not the patching one, goes back to verify).
         # Drained the same way pending_cross_pair_mines is.
         self.pending_verification_waypoints: list[tuple[float, float]] = []
-        # Latest CROSS_PAIR_POINT_A_SYNC (lat, lon) from the other pair,
-        # staged by interdrone's own receive handler -- drained (calling
-        # Pathfinder.retarget_approach_target, which touches the live
-        # graph) synchronously from CalcScanPath, same reason
-        # pending_cross_pair_mines is never applied directly from that
-        # receive task. A single slot, not a list: only the OTHER pair's
-        # MOST RECENT point_A ever matters, so an older, still-undrained
-        # sync is just overwritten rather than queued.
-        self.pending_point_a_sync: tuple[float, float] | None = None
         # Staged SHARE_PHOTOS reports (ASSISTANT -> its own paired
         # GAMBLER), appended by interdrone's own receive handler, drained
         # (synchronously, from CalcScanPath) via pf.accept_image_corner_
@@ -360,13 +351,14 @@ class Drone:
         # own receive handler would resetWaypoints) every single pass,
         # repeatedly discarding whatever the ASSISTANT is mid-flight on.
         self.last_sent_segment_b: tuple[tuple[float, float], ...] | None = None
-        # GAMBLER/SOLOGAMBLER with a cross_pair_partner_id only: the
-        # (lat, lon) this pair's own point_A (maze_a_path[0]) was last
-        # synced to the other pair/solo drone at, via
-        # CROSS_PAIR_POINT_A_SYNC -- see _send_point_a_sync_if_changed's
-        # own epsilon-guard docstring for why a sync is skipped once
-        # nothing has actually moved.
-        self.last_synced_point_a: tuple[float, float] | None = None
+        # Set by calc_scan_path_impl.py's _check_no_valid_path the first
+        # time get_shortest_path() comes back empty -- no route exists
+        # from the field entry to any ending node at all (see that
+        # function's own docstring for why this can't be told apart from
+        # a genuinely finished scan any other way). AppShare's own path
+        # file/push checks this so a fully mine-blocked field is reported
+        # as "no path found," not silently as an empty-but-successful one.
+        self.no_valid_path_found: bool = False
         # TODO: add reference to mine and path data classes
 
     @property
@@ -659,7 +651,11 @@ class Drone:
                 " geometry, and this drone has none"
             )
         path_xy = [pf.coord_converter.latlon_to_local(lat, lon) for lat, lon in self.mission_path]
-        return format_iarc_path(path_xy, buffer_width)
+        # strict=False: a discontinuity here is logged, not raised. mission_path is
+        # accumulated across confirmations and is currently NOT guaranteed continuous
+        # (observed starting mid-field rather than at the field edge), and raising out of
+        # EndRun/AppShare would leave the drone hovering -- nothing above catches it.
+        return format_iarc_path(path_xy, buffer_width, strict=False)
 
     def checkForCollision(self, other_waypoints: list[Waypoint]) -> int:
         """Report where this drone's *planned* route crosses another drone's.

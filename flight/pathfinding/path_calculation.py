@@ -45,7 +45,7 @@ class Graph:
         # walk-back in shortest_path/pathfinder.py's own path
         # reconstruction into an infinite loop. A wide, well-spread target
         # set rarely ties exactly; a single retargeted point (see
-        # Pathfinder.retarget_approach_target) does much more easily, which
+        # Pathfinder's cross-pair floating target nodes) does much more easily, which
         # is what surfaced this.
         predecessors = {node: None for node in self.graph}
 

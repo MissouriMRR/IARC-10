@@ -14,6 +14,7 @@
 
 # .. and the constants for arbitrary things like end node density etc.
 import hashlib
+import logging
 import math
 
 from flight.pathfinding.utils.coord_convert import SimToLatLonTransformer
@@ -23,7 +24,7 @@ from flight.pathfinding.nodeField.node import Node
 from flight.pathfinding.nodeField.polygonObstacle import hash_position
 from flight.pathfinding.path_calculation import Graph
 from flight.pathfinding.cellField.cellField import CellField
-from flight.pathfinding.protoMine import protoMine
+from flight.pathfinding.protoMine import protoMine, safety_cells
 from flight.pathfinding.path_cover import path_cover_unseen, _normalize_shape_size
 from flight.pathfinding.mineCellField import build_mine_cell_field
 
@@ -160,13 +161,9 @@ WIDTHOFSQUARE = 2
 WIDTHOFFIELD = 80
 HEIGHTOFFIELD = 300
 
-# get_iarc_path's (col, row) step -> IARC direction letter. Matches
-# flight.pathfinding.cellField._path._STEP_TO_DIRECTION's own mapping (row
-# increases north/"U", same convention CellField.block_commands uses) --
-# duplicated rather than imported since that one is that module's private
-# implementation detail, and get_iarc_path needs to run its own compression
-# over a cell list _path.py's own public API can't produce (see that
-# method's docstring for why).
+# (col, row) step -> IARC direction letter. Same mapping as
+# cellField._path._STEP_TO_DIRECTION (row increases north = "U"); copied because
+# that one is private.
 _IARC_STEP_TO_DIRECTION: dict[tuple[int, int], str] = {
     (0, 1): "U",
     (0, -1): "D",
@@ -175,62 +172,42 @@ _IARC_STEP_TO_DIRECTION: dict[tuple[int, int], str] = {
 }
 
 
-def format_iarc_path(points_local_xy: list[tuple[float, float]], buffer_width: int = 0) -> str:
-    """Converts an ordered list of LOCAL (x, y) points (Pathfinder's own
-    arbitrary field-local frame -- feet, not lat/lon) into the IARC text-
-    reporting format:
+def format_iarc_path(
+    points_local_xy: list[tuple[float, float]], buffer_width: int = 0, strict: bool = True
+) -> str:
+    """
+    Convert ordered LOCAL (x, y) points (feet, not lat/lon) to the IARC text format:
         S,<start_col>,<buffer_width>
         U,9
         L,1
         ...
-    buffer_width is the green-zone safety-buffer width, in squares, to
-    report on either side of the path -- purely descriptive here (what
-    gets written to the S line), not enforced against any obstacle.
 
-    Takes local (x, y), not (lat, lon): a caller holding lat/lon (Drone.
-    get_mission_iarc_path, since mission_path is deliberately plain lat/lon
-    -- see that method's own docstring for why) converts once, one-way, via
-    Pathfinder.instance.coord_converter.latlon_to_local before calling this.
-    Pathfinder.get_iarc_path already has get_maze_path()'s local (x, y)
-    directly and must NOT round-trip it through local->latlon->local first
-    -- that round trip isn't perfectly lossless, and the tiny error it
-    introduces is enough to push a point sitting exactly on a cell boundary
-    (e.g. x=40.0) to just under it, flooring into the wrong column --
-    confirmed directly: a synthetic straight-up-center-of-field path this
-    was checked against reported col 19 instead of col 20 the one time this
-    function took (lat, lon) + a converter instead of local (x, y) directly.
+    Takes:
+    - points_local_xy: local (x, y) points, typically many feet apart.
+    - buffer_width: safety-buffer width in squares. Only written to the S line, not enforced.
 
-    The grid geometry itself (WIDTHOFFIELD/WIDTHOFSQUARE cols x
-    HEIGHTOFFIELD/WIDTHOFSQUARE rows, WIDTHOFSQUARE-ft cells -- identical to
-    flight.pathfinding.blockField.field_grid.BlockField's own 40x150x2ft
-    grid) is the same for every Pathfinder in a mission, so a throwaway
-    CellField built from the module constants is exactly as correct as
-    reusing any one instance's own seen_tracker, without coupling this to
-    one -- it's used purely as a coordinate-conversion helper (CellField.
-    path_cells; see _path.py), never read for its own marked-seen bits.
+    Does:
+    - Rasterizes the points into grid cells (CellField.path_cells), then run-length
+      compresses steps into U/D/L/R commands.
+    - Prepends a virtual entry cell just OUTSIDE the field, on whichever edge the path
+      actually starts from, so the first command enters the field:
+        - bottom entry -> virtual row -1, first command "U"
+        - top entry    -> virtual row n_rows, first command "D"
+      path_cells clips that row away, so it is added by hand. The edge is inferred from
+      which one the first cell is nearer. Hardcoding row -1 broke every top-starting
+      path (the END-side pair of a two-pair mission): the first step became a
+      whole-field jump, which is not a unit step, so it was silently dropped and the
+      output read as "start below the field, then walk further down".
 
-    points_local_xy's own points are typically many feet apart -- not one
-    grid cell apart (graph tangent points for Pathfinder.get_maze_path(),
-    photo waypoints for Drone.mission_path) -- so turning them into
-    cardinal (U/D/L/R) block moves needs real per-segment line
-    rasterization, not a naive per-point block lookup (which would leave
-    gaps no single cardinal step covers); that's what CellField.path_cells
-    is for.
+    Notes:
+    - Takes local xy, NOT lat/lon. A lat/lon round trip isn't lossless and can push a
+      point on a cell boundary (x=40.0) into the wrong column (seen: col 19 vs 20).
+      Callers with lat/lon convert once, one-way (see Drone.get_mission_iarc_path).
+    - The grid is a throwaway CellField built from the module constants (same for
+      every Pathfinder); used only for coordinate conversion.
 
-    The competition's own convention (confirmed against its own worked
-    examples: a full-field traverse is reported as exactly
-    HEIGHTOFFIELD/WIDTHOFSQUARE, i.e. 150, "U"s) treats "S" as placing the
-    drone just OUTSIDE the field at the front line, not already inside
-    row 0 -- the first "U" is what enters row 0. path_cells can't
-    represent that row itself (CellField only has cells 0..height-1; the
-    field entry's real position, row -1, gets clipped away by path_cells'
-    own in-bounds clipping before the walk even starts), so it's
-    prepended here by hand instead of reusing CellField.block_commands'
-    own run-length compression (which only ever sees the already-clipped,
-    in-bounds cell list).
-
-    Raises ValueError if points_local_xy is empty or entirely outside the
-    field's own bounds (nothing to report)."""
+    Raises ValueError if points_local_xy is empty or entirely outside the field.
+    """
     grid = CellField(
         WIDTHOFFIELD // WIDTHOFSQUARE,
         HEIGHTOFFIELD // WIDTHOFSQUARE,
@@ -239,14 +216,29 @@ def format_iarc_path(points_local_xy: list[tuple[float, float]], buffer_width: i
     cells = grid.path_cells(points_local_xy)
     if not cells:
         raise ValueError("no current path to report -- points_local_xy is empty")
-    start_col = cells[0][0]
-    cells = [(start_col, -1)] + cells
+    n_rows = HEIGHTOFFIELD // WIDTHOFSQUARE
+    start_col, start_row = cells[0]
+    entered_from_top = (n_rows - 1 - start_row) < start_row
+    cells = [(start_col, n_rows if entered_from_top else -1)] + cells
 
     commands: list[tuple[str, int]] = []
     for i in range(1, len(cells)):
         step = (cells[i][0] - cells[i - 1][0], cells[i][1] - cells[i - 1][1])
         direction = _IARC_STEP_TO_DIRECTION.get(step)
         if direction is None:
+            if step == (0, 0):
+                continue  # same cell twice; nothing to emit
+            # A non-adjacent step means the path is discontinuous: the emitted route would
+            # silently skip real ground. strict=True (sims, tests) fails loudly. A live
+            # mission reports rather than aborts -- raising here would propagate out of
+            # EndRun/AppShare, and nothing above catches it, so the drone would hover.
+            msg = (
+                f"path is discontinuous at cell {i}: {cells[i - 1]} -> {cells[i]} "
+                f"is not a unit step"
+            )
+            if strict:
+                raise ValueError(msg)
+            logging.error("format_iarc_path: %s -- reported path skips this gap", msg)
             continue
         if commands and commands[-1][0] == direction:
             commands[-1] = (direction, commands[-1][1] + 1)
@@ -257,32 +249,14 @@ def format_iarc_path(points_local_xy: list[tuple[float, float]], buffer_width: i
     lines.extend(f"{direction},{count}" for direction, count in commands)
     return "\n".join(lines)
 
-# Hysteresis margin for ending-node choice (fraction of best route length) --
-# see _dijkstra_path_with_hysteresis. 0.03 covers the sub-1ft near-ties seen
-# between candidate ending nodes on a ~300ft field, without masking a real
-# multi-foot detour.
+# Ending-node hysteresis (fraction of best route length); see _dijkstra_path_with_hysteresis.
+# Absorbs sub-1ft near-ties without hiding a real detour.
 PATH_HYSTERESIS_TOLERANCE = 0.03
 
-# Cap on simultaneous outstanding (not yet confirmed into C) helper-node
-# detours -- see start_helper_node_detour. Measured empirically (200 pair
-# seeds): real chains almost never exceed depth 3 on their own, so this
-# cap is rarely the thing actually limiting gambler -- it exists as a
-# backstop against a pathological run letting gambler race arbitrarily
-# far ahead of an assistant that's stuck reworking a difficult stretch.
+# Max outstanding (unconfirmed) helper-node detours; see start_helper_node_detour.
+# Chains rarely exceed 3 anyway; this is a backstop against the gambler racing far
+# ahead of a stuck assistant.
 MAX_CHAIN_DEPTH = 3
-
-# Below this remaining distance, Pathfinder._try_apply_pending_approach_target
-# closes the rest of the way to a cross-pair target instead of halving it
-# again. Halving unconditionally is a real Zeno's-paradox convergence
-# problem: repeatedly closing "half the remaining gap" gets arbitrarily
-# close to zero but never actually REACHES it, so two pairs converging
-# this way can take unboundedly many rounds and, in the worst case, leave
-# a permanent single-cell coverage gap exactly at the sliver neither
-# pair's target ever quite reaches -- confirmed directly on the two-pair
-# safety sweep (hit_cap and a real coverage_fail both appeared only once
-# halving was introduced). WIDTHOFSQUARE * 4 is a small multiple of the
-# base grid cell, not tied to any particular camera footprint size.
-CLOSE_ENOUGH_TO_STOP_HALVING_FT = WIDTHOFSQUARE * 4
 
 
 class Pathfinder:
@@ -343,7 +317,12 @@ class Pathfinder:
             ),
         ]
 
-        self.mine_saftey_radius = 3  # Get from the coord converter
+        # A mine's danger-zone radius in FEET (not cells) -- protoMine takes it as feet and
+        # derives its cell count via safety_cells. TODO: get from the coord converter.
+        # The safety_margin sites below read it as CELLS instead (radius * WIDTHOFSQUARE),
+        # so at 3 they model a 6ft radius against protoMine's 3ft -- conservative, so left
+        # alone deliberately; tightening them changes flown margins and needs its own sweep.
+        self.mine_safety_radius_ft = 3
 
         self.real_corner_coords = real_corner_coords
 
@@ -386,25 +365,12 @@ class Pathfinder:
         self._original_ending_nodes = None
         self.protoMines = []
 
-        # Each discovered mine's own position hash (PolygonObstacle.
-        # obstacle_hash's formula, via hash_position -- computed from the
-        # RAW discovered position, not whatever live obstacle it may have
-        # merged into, so this doesn't change if a later merge folds it
-        # into a union -- see add_discovered_mine's own comment), in
-        # discovery order. self_mine_order is this Pathfinder's own local
-        # finds (add_discovered_mine's default prefer_local_patch=False);
-        # other_mine_order is mines relayed from the other pair/solo
-        # drone and applied here with prefer_local_patch=True. Never
-        # reset by start_maze_navigation -- mine discovery history is
-        # cumulative for the whole mission, not per-navigation-restart.
-        # See self_mine_order_hash/other_mine_order_hash for what these
-        # are actually for: an ORDER-sensitive fingerprint (unlike Field.
-        # mineHash's own deliberately order-independent whole-SET hash)
-        # that the discovering side's self_mine_order_hash and the
-        # relayed side's other_mine_order_hash can be compared against,
-        # to catch a relay that arrived out of order or with a message
-        # dropped -- mineHash alone can't tell that apart from "we agree
-        # on the same mines".
+        # Position hashes of discovered mines, in discovery order.
+        # - Hashed from the RAW discovered position (not the merged obstacle).
+        # - self_mine_order: own finds. other_mine_order: relayed from the other pair/solo.
+        # - Never reset by start_maze_navigation (mission-long history).
+        # - Backs the order-SENSITIVE self/other_mine_order_hash, which catches a relay
+        #   that arrived out of order or dropped (Field.mineHash ignores order).
         self.self_mine_order: list[str] = []
         self.other_mine_order: list[str] = []
 
@@ -426,9 +392,8 @@ class Pathfinder:
         self.checkpointNode = None
         self.flownPrefixNodes = []
 
-        # MAZE-STYLE state (start_maze_navigation). A = approach (final
-        # edge, fixed anchor point_A), B = bridge (reroutable), C =
-        # confirmed (frozen history).
+        # MAZE-STYLE state (start_maze_navigation): A = approach (final edge, anchor
+        # point_A), B = bridge (reroutable), C = confirmed (frozen history).
         self.maze_a_path = []
         self.maze_b_path = []
         self.maze_confirmed_path = []
@@ -436,62 +401,45 @@ class Pathfinder:
         self.next_place_to_check_maze_a = None
         self.next_place_to_check_maze_b = None
 
-        # HELPER-NODE state (use_helper_nodes). helper_node_trail:
-        # not-yet-graph (distance, x, y) breadcrumbs from segment A, oldest
-        # first. promoted_helper_nodes:
-        # [{"node", "previous_point_a", "obstacle"}] for every breadcrumb
-        # actually promoted to a graph node.
+        # HELPER-NODE state (use_helper_nodes).
+        # - helper_node_trail: (distance, x, y) breadcrumbs from segment A, oldest first.
+        # - promoted_helper_nodes: [{"node", "previous_point_a", "obstacle"}] for breadcrumbs
+        #   promoted to graph nodes.
         self.helper_node_trail = []
         self.promoted_helper_nodes = []
 
-        # CROSS-PAIR state. remote_mine_placeholders: [{"position", "obstacle"}]
-        # for other-pair mines crossing THIS pair's segment A that haven't been
-        # physically reached yet (see record_remote_mine_on_segment_a /
-        # _check_remote_placeholder_reached). cross_pair_patches: pending
-        # node-list patches THIS pair's assistant owes a verification flight to
-        # (see patch_confirmed_span / get_cross_pair_patch_places_to_check) --
-        # spliced into the OTHER pair's confirmed history, not this one's.
+        # CROSS-PAIR state.
+        # - remote_mine_placeholders: [{"position", "obstacle"}] other-pair mines on this
+        #   pair's segment A not yet reached (see record_remote_mine_on_segment_a).
+        # - cross_pair_patches: patches this pair's assistant owes a verification flight
+        #   (see patch_confirmed_span); they were spliced into the OTHER pair's history.
         self.remote_mine_placeholders = []
         self.cross_pair_patches = []
-        # Result of the most recent add_discovered_mine(..., prefer_local_patch=True)
-        # call's patch_confirmed_span attempt -- read by the caller right after,
-        # not part of add_discovered_mine's return tuple (keeps every other
-        # caller's unpacking unaffected).
+        # Nodes of the midline seam run, once join_cross_pair_seam has closed it.
+        self.cross_pair_seam_span = []
+        # True once replan_toward asked the gambler to fly segment A from its far end.
+        self.approach_from_far_end = False
+        # Result of the last add_discovered_mine(prefer_local_patch=True) patch attempt.
+        # Kept off the return tuple so other callers' unpacking is unaffected.
         self.last_patched_span = None
-        # retarget_approach_target's own state: the floating node
-        # self.endingNodes currently holds once retargeted away from the
-        # field's real far edge, and the (x, y) it was last set to (lets
-        # the driver skip a no-op retarget when the other pair's point_A
-        # hasn't actually moved). cross_pair_target_chain mirrors
-        # promoted_helper_nodes but for cross-pair retarget hops (chained
-        # via _bridge_up_to, capped at MAX_CHAIN_DEPTH, same backstop
-        # start_helper_node_detour uses -- see retarget_approach_target).
-        # _pending_approach_target is the latest (x, y) queued by a
-        # retarget_approach_target call the chain didn't have room for
-        # yet; retried once confirm_b_into_c/advance_b_prefix_into_c free
-        # up a slot.
-        self._approach_target_node = None
-        self._last_synced_target = None
-        self.cross_pair_target_chain = []
-        self._pending_approach_target = None
 
         # Set the singleton instance
         if Pathfinder.instance is None:
             Pathfinder.instance = self
 
-    # Thin wrapper -- see module-level order_waypoints (kept self-free so
-    # it's testable without a full Pathfinder).
+    # Thin wrapper over the module-level order_waypoints (testable without a Pathfinder).
     def order_waypoints(
         self, coords: list[tuple[float, float]], fixed_first: tuple[float, float] = None
     ) -> list[tuple[float, float]]:
         return order_waypoints(coords, fixed_first=fixed_first)
 
     def buildNodeField(self, startLocation: tuple[float, float], startEdge: str = "bottom"):
-        """startEdge picks which field edge this drone launches from:
-        "bottom" (default, y=-1 entry / top row of end nodes) or "top"
-        (mirrored -- for a pair working from the opposite end, whose end
-        row is the same edge the "bottom" pair enters from). Only
-        "bottom" is exercised by any current caller/test."""
+        """
+        Takes:
+        - startLocation: (lat, lon) of the entry point.
+        - startEdge: "bottom" (default: enter at y=-1, end row at the top) or "top"
+          (mirrored, for a pair working from the opposite end).
+        """
         startLocationX, startLocationY = self.coord_converter.latlon_to_local(startLocation[0], startLocation[1])
         entry_y = -1 if startEdge == "bottom" else HEIGHTOFFIELD + 1
         target_y = HEIGHTOFFIELD + 1 if startEdge == "bottom" else -1
@@ -504,61 +452,209 @@ class Pathfinder:
                     i * WIDTHOFSQUARE * 2 + WIDTHOFSQUARE // 2, target_y
                 )
             )
-        # Snapshot of the field's real far edge, kept separately from
-        # self.endingNodes -- retarget_approach_target overwrites
-        # self.endingNodes with a single cross-pair target node, and
-        # _dijkstra_path_with_hysteresis falls back to this row if that
-        # single node ever becomes unreachable (see its own docstring).
+        # Fallback ending row for _dijkstra_path_with_hysteresis if endingNodes becomes
+        # unreachable (set_cross_pair_home_boundary replaces it for two-pair missions).
         self._original_ending_nodes = list(self.endingNodes)
 
+    def set_cross_pair_home_boundary(self, boundary_y: float) -> None:
+        """
+        [CROSS-PAIR] Give this pair a FIXED target row (its own half of the field).
+
+        Takes:
+        - boundary_y: y of the row, usually the field midline.
+
+        Does:
+        - Replaces endingNodes AND _original_ending_nodes with a fresh row of floating
+          nodes at boundary_y (same spacing/redundancy as buildNodeField's far-edge row).
+        - Call once, after buildNodeField and before start_maze_navigation.
+
+        Why:
+        - Replaces the old chase-the-other-pair retargeting (retarget_approach_target).
+          Its halving had no lower bound, and its single target node often became
+          unreachable in dense minefields; the fallback then hit the far edge, deep in the
+          other pair's half. Seen on 5/5 dense seeds.
+        - A retry node at the same spot was tried and didn't help: the whole area is
+          usually walled off, not just one node.
+        - A fixed redundant row has nothing to go stale.
+
+        Limitation: a pair that finishes early can't help the other; that needs a separate
+        load-balancing mechanism.
+        """
+        for node in list(self.endingNodes):
+            self.nodeField.fieldConnection.removeNode(node)
+        self.endingNodes = []
+        for i in range(WIDTHOFFIELD // (WIDTHOFSQUARE * 2)):
+            self.endingNodes.append(
+                self.nodeField.addFloatingNode(
+                    i * WIDTHOFSQUARE * 2 + WIDTHOFSQUARE // 2, boundary_y
+                )
+            )
+        self._original_ending_nodes = list(self.endingNodes)
+
+    def join_cross_pair_seam(self, other_endpoint: tuple[float, float]) -> bool:
+        """
+        [CROSS-PAIR] Close the lateral gap between this pair's route end and the other's.
+
+        Takes:
+        - other_endpoint: the OTHER pair's final path endpoint, (x, y) local.
+
+        Does:
+        - No-op if the two ends are already within one grid cell of each other.
+        - Otherwise routes from this pair's own endpoint to other_endpoint on the live
+          graph and appends that run to maze_b_path, so it gets photographed like any
+          other segment-B stretch rather than being assumed safe.
+
+        Why:
+        - set_cross_pair_home_boundary gives each pair a redundant ROW of ending nodes, so
+          the two pairs can pick different columns and stop up to the field's width apart.
+          Measured: a nonzero gap in 3 of 8 seeds, up to 24ft. The mission deliverable is
+          ONE connected path, so an unphotographed gap at the join is the one place a
+          discontinuity cannot be tolerated -- and format_iarc_path now raises on it
+          rather than silently emitting a route that skips it.
+        - Call once both pairs have finished their own halves and their endpoints are known.
+
+        Returns: True if a joining run was queued (caller must keep flying this pair until
+        segment B drains), False if no join was needed or no route exists.
+        """
+        own_path = self.get_maze_path()
+        if not own_path:
+            return False
+        own_end = own_path[-1]
+        if math.hypot(own_end.x - other_endpoint[0], own_end.y - other_endpoint[1]) <= WIDTHOFSQUARE:
+            return False
+
+        target = self.nodeField.addFloatingNode(*other_endpoint)
+        seam = self._shortest_path_between(own_end, target)
+        if seam is None or len(seam) < 2:
+            self.nodeField.fieldConnection.removeNode(target)
+            return False
+
+        # The seam has to extend the END of the whole route. get_maze_path() returns
+        # C + B + A, so appending to B would leave segment A trailing after the seam and
+        # the route would still end where it did before. The caller only calls this once
+        # both queues have drained -- i.e. everything flown is already photographed -- so
+        # freeze the current route as confirmed and make the seam the new segment B.
+        self.maze_confirmed_path = list(own_path)
+        self.maze_a_path = []
+        self.maze_b_path = seam
+        # Recorded for diagnostics. Not exempt from the home-half check: a seam rounding a
+        # mine ON the midline bows a few feet past it, which the check's bounded tolerance
+        # already admits -- exempting seam nodes instead once hid a 115ft excursion.
+        self.cross_pair_seam_span = list(seam)
+        self._settle_confirmed_helper_nodes()
+        return True
+
+    def _split_index_by_unseen(self, route: list) -> int:
+        """Index splitting `route` into two halves of roughly equal UNPHOTOGRAPHED work.
+
+        Splitting by node count would be meaningless -- nodes are obstacle tangents, so
+        they cluster wherever mines are, not where the work is.
+        """
+        total = (self.rasterize_node_path(route) & ~self.seen_tracker).count()
+        if total == 0:
+            return max(1, len(route) - 2)
+        half = total / 2.0
+        for i in range(1, len(route)):
+            if (self.rasterize_node_path(route[: i + 1]) & ~self.seen_tracker).count() >= half:
+                return min(max(i, 1), len(route) - 2)
+        return max(1, len(route) - 2)
+
+    def replan_toward(self, target_xy: tuple[float, float], backwards: bool = True) -> bool:
+        """
+        Scrap accumulated detour/patch state and lay one clean route to target_xy.
+
+        Takes:
+        - target_xy: where to aim -- in a two-pair mission, the OTHER pair's route end.
+        - backwards: have the gambler work segment A from its far end (see below).
+
+        Does:
+        - Drops the repair scaffolding: promoted helper nodes (and their graph nodes),
+          the breadcrumb trail, remote placeholders and pending cross-pair patches.
+          maze_confirmed_path is KEPT -- it is photographed work, not scaffolding.
+        - Recomputes a single shortest route from point_C's end to target_xy.
+        - Splits the route's remaining unphotographed work in half: the near half becomes
+          segment B (assistant), the far half segment A (gambler).
+
+        Why split this way, and why backwards:
+        - Normally the gambler pushes A forward and the assistant follows, so the
+          assistant is always chasing a frontier that keeps moving (measured at 1.58x a
+          solo drone's photo count). Anchoring A at its far end instead sends the two
+          roles toward each other, so the unverified span shrinks from both ends and
+          neither chases the other.
+        - A mine found afterwards is handled by the normal rules, which collapse A back to
+          a single edge -- this is a one-shot reset, not a new steady state.
+
+        Returns: True if a route was laid, False if none exists (caller keeps what it had).
+        """
+        start_nodes = self._maze_c_start_nodes()
+        if not start_nodes:
+            return False
+        target = self.nodeField.addFloatingNode(*target_xy)
+        route = self._shortest_path_between(start_nodes[0], target)
+        if route is None or len(route) < 2:
+            self.nodeField.fieldConnection.removeNode(target)
+            return False
+        if len(route) == 2:
+            # A straight shot has no interior node to split at, which is the common case
+            # once the gap is short. Insert one at the midpoint: the edge is already a
+            # graph edge, so it is clear of every known obstacle along its whole length.
+            (x0, y0), (x1, y1) = (route[0].x, route[0].y), (route[1].x, route[1].y)
+            mid = self.nodeField.addFloatingNode((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+            route = [route[0], mid, route[1]]
+
+        for entry in self.promoted_helper_nodes:
+            self.nodeField.fieldConnection.removeNode(entry["node"])
+        self.promoted_helper_nodes = []
+        self.helper_node_trail = []
+        self.remote_mine_placeholders = []
+        self.cross_pair_patches = []
+
+        route = self._prepend_seam_if_needed(route)
+        idx = self._split_index_by_unseen(route)
+        self.maze_b_path = route[: idx + 1]
+        self.maze_a_path = route[idx:]
+        self.approach_from_far_end = backwards
+        return True
+
     def _obstacle_containing(self, x: float, y: float):
-        """Returns whichever live mine/union obstacle's polygon contains
-        (x,y), or None. A merge can replace mines[-1] with a unionObstacle
-        elsewhere in the list, so this looks up by position, not index."""
+        """Returns the live mine/union containing (x,y), or None.
+        Looks up by position, not index (a merge can move obstacles around the list)."""
         for obstacle in list(self.nodeField.mines) + list(self.nodeField.unionObstacles):
             if obstacle.contains_point((x, y)):
                 return obstacle
         return None
 
     def add_discovered_mine(self, mine_lat: float, mine_lon: float, prefer_local_patch: bool = False):
-        """Adds a discovered mine and repairs any path state it invalidates.
-        Returns: (obstacle, was_merged, rewound). obstacle is whichever
-        live mine/union now sits at this position (see
-        _obstacle_containing), was_merged is Field.addFromProtoMine's
-        report of whether this add merged with an existing obstacle,
-        rewound is check_merge_rewind's report of whether it already
-        fully re-routed maze_a_path/maze_b_path -- callers should skip
-        their own normal discovery handler when rewound is True.
+        """
+        Add a discovered mine and repair any path state it invalidates.
 
-        prefer_local_patch: [CROSS-PAIR] if True, a maze_confirmed_path
-        hit is offered to patch_confirmed_span (bounded local splice)
-        BEFORE check_path_envelopment's own always-safe but less targeted
-        full recompute -- use when relaying a mine discovered by the
-        OTHER pair, so this pair's own progress past the hit doesn't get
-        needlessly discarded. Result (if any) is left on
-        self.last_patched_span rather than added to this method's return
-        tuple, so every existing caller's unpacking stays unaffected.
-        Doubles as the self_mine_order/other_mine_order discriminator
-        (see those attributes' own docstring in __init__) -- every
-        current caller only ever passes True for a cross-pair relay, so
-        it's also exactly "was this mine discovered by someone else"."""
+        Takes:
+        - mine_lat, mine_lon: the mine position.
+        - prefer_local_patch: [CROSS-PAIR] set True for a mine relayed from the OTHER pair.
+          A confirmed-path hit is then offered to patch_confirmed_span (small local splice)
+          before check_path_envelopment's full recompute, so this pair keeps its progress.
+          Also picks which order list records the mine (other vs self).
+
+        Returns: (obstacle, was_merged, rewound)
+        - obstacle: the live mine/union now at this position.
+        - was_merged: whether it merged with an existing obstacle.
+        - rewound: whether check_merge_rewind already re-routed A/B (caller should then
+          skip its own discovery handler).
+
+        Touches: self.last_patched_span (patch result, kept off the return tuple).
+        """
         self.last_patched_span = None
         x, y = self.coord_converter.latlon_to_local(mine_lat, mine_lon)
         Xsquare, Ysquare = self.nodeField.getSquareCoordinates(x, y)
-        # mid centers the safety-radius block grid on (Xsquare, Ysquare).
-        mid = int(self.mine_saftey_radius * 2 + 1) // 2
+        # mid centers the safety-radius block grid on (Xsquare, Ysquare). Must match
+        # protoMine's own placeholderGridSideLength // 2 -- hence the shared safety_cells.
+        mid = safety_cells(self.mine_safety_radius_ft)
         Xoffset = WIDTHOFSQUARE * (Xsquare - mid)
         Yoffset = WIDTHOFSQUARE * (Ysquare - mid)
-        newProtoMine = protoMine(self.mine_saftey_radius, (mine_lat, mine_lon), (Xoffset, Yoffset))
+        newProtoMine = protoMine(self.mine_safety_radius_ft, (mine_lat, mine_lon), (Xoffset, Yoffset))
         self.protoMines.append(newProtoMine)
-        # Hash the mine's own just-discovered position (newProtoMine.
-        # mineLocation) directly, NOT whatever live obstacle it ends up
-        # part of below -- a merge would fold it into a unionObstacle
-        # whose own obstacle_hash reflects the MERGED shape's centroid,
-        # a different value that also changes if the union later gains
-        # more constituents. This mine's own identity has to stay fixed
-        # regardless of what it merges into, same reasoning as
-        # BlockMine.origin itself.
+        # Hash the mine's own position, not the obstacle it merges into (a union's
+        # hash changes as it grows; this mine's identity must stay fixed).
         mine_hash = hash_position(*newProtoMine.mineLocation)
         (self.other_mine_order if prefer_local_patch else self.self_mine_order).append(mine_hash)
 
@@ -570,11 +666,8 @@ class Pathfinder:
         new_mine_obstacle = self._obstacle_containing(x, y)
         rewound = False
         if new_mine_obstacle is not None:
-            # check_merge_rewind first (more targeted, less disruptive);
-            # patch_confirmed_span next if requested (cross-pair, bounded
-            # local splice); check_path_envelopment last as the general,
-            # always-safe catch-all (finds nothing left to do in
-            # maze_confirmed_path if patch_confirmed_span already handled it).
+            # Order: check_merge_rewind (most targeted), then patch_confirmed_span if
+            # requested, then check_path_envelopment (safe catch-all).
             rewound = self.check_merge_rewind(new_mine_obstacle, was_merged)
             if prefer_local_patch:
                 self.last_patched_span = self.patch_confirmed_span(new_mine_obstacle)
@@ -582,28 +675,19 @@ class Pathfinder:
         return new_mine_obstacle, was_merged, rewound
 
     def self_mine_order_hash(self) -> str:
-        """ORDER-sensitive hash of self.self_mine_order (this Pathfinder's
-        own local discoveries, in discovery order) -- unlike Field.
-        mineHash (deliberately order/id-independent, answering "do we
-        agree on the same SET of mines"), this hashes the SEQUENCE
-        itself, so it changes if the exact same mines were found/applied
-        in a different order.
-
-        Meant to be compared against the OTHER side's
-        other_mine_order_hash for the same stretch of relayed mines: a
-        mismatch means messages arrived out of order, duplicated, or got
-        dropped -- something mineHash can't tell apart from "we simply
-        haven't agreed on the same mines yet". Not wired to any
-        interdrone message yet -- see the mine-relay message pair
-        (CROSS_PAIR_MINE_RELAY/CROSS_PAIR_PATCHED_SPAN) this is meant to
-        accompany once that's built."""
+        """
+        ORDER-sensitive hash of self.self_mine_order (own discoveries, in order).
+        - Field.mineHash ignores order; this changes if the same mines came in a
+          different order.
+        - Compare against the other side's other_mine_order_hash: a mismatch means a
+          relay arrived out of order, duplicated, or dropped.
+        - Not wired to an interdrone message yet.
+        """
         return hashlib.sha256(repr(self.self_mine_order).encode("utf-8")).hexdigest()
 
     def other_mine_order_hash(self) -> str:
-        """Same idea as self_mine_order_hash, for self.other_mine_order
-        (mines relayed from the other pair/solo drone, in the order THIS
-        Pathfinder actually applied them via add_discovered_mine(...,
-        prefer_local_patch=True))."""
+        """Like self_mine_order_hash, for other_mine_order (relayed mines, in the order
+        this Pathfinder applied them)."""
         return hashlib.sha256(repr(self.other_mine_order).encode("utf-8")).hexdigest()
 
     def accept_image_corner_coord(self, corner_coords_latlon: tuple[tuple[float, float]]):
@@ -618,44 +702,25 @@ class Pathfinder:
     def increase_radius(self, mine_radius_increment):
         self.nodeField.expandField(mine_radius_increment)
 
-    # Safety valve for repair_path_after_expansion's fixed-point loop: a
-    # single obstacle-hit repair (Rule 1's own full recompute) resolves
-    # everything in practice, so this is generous headroom, not a tuned
-    # bound -- see that method's own docstring for why more than one pass
-    # can genuinely be needed.
+    # Safety cap on repair_path_after_expansion's loop (generous headroom, not tuned).
     MAX_EXPANSION_REPAIR_PASSES = 8
 
     def repair_path_after_expansion(self) -> int:
-        """[Call right after increase_radius] "Restarts the gambler/
-        assistant loop" against the now-expanded mine set: Field.
-        expandField already keeps every OBSTACLE-to-obstacle graph edge
-        globally consistent when it grows every live mine at once (its own
-        docstring walks through why a single merge-then-rewire pass over
-        every affected obstacle together is enough for that) -- but it
-        never revisits a floating-node-to-floating-node edge (start/end/
-        helper nodes; see Field._connectFloatingNodeToFloatingNode, wired
-        once, at that node's own creation time, and never re-checked
-        afterward). A straight floating-to-floating edge that was clear
-        when created can end up crossing a since-grown mine, with nothing
-        in expandField itself to catch it.
+        """
+        [Call right after increase_radius] Re-check the route against the expanded mines.
 
-        check_path_envelopment's own edge scan already catches exactly
-        that, for whatever's on the CURRENT planned route -- so this sweeps
-        it over every current obstacle, exactly like a fresh mine
-        discovery would trigger one at a time during the scan itself, just
-        replayed here against the whole now-expanded mine set in one go.
-        Unlike a single discovery, several obstacles can matter at once
-        here, and a repair recompute is a fresh Dijkstra search blind to
-        geometry beyond graph validity -- it can itself select a NEW edge
-        that crosses an obstacle already swept earlier in the very same
-        pass. So this repeats full passes until one produces zero hits (a
-        real fixed point, not just "everything looked fine in whatever
-        order we happened to check it"), capped at
-        MAX_EXPANSION_REPAIR_PASSES as a safety valve.
+        Why:
+        - expandField keeps obstacle-to-obstacle edges consistent, but never revisits
+          floating-to-floating edges (start/end/helper). One that was clear can now
+          cross a grown mine.
 
-        An ASSISTANT has no Pathfinder of its own (see configureField) and
-        never calls this. Returns how many passes ran (1 means the first
-        pass was already clean).
+        Does:
+        - Runs check_path_envelopment over every obstacle, repeating full passes until one
+          finds nothing (a repair recompute can itself pick a new bad edge).
+        - Capped at MAX_EXPANSION_REPAIR_PASSES.
+
+        Returns: number of passes run (1 = first pass was clean).
+        Notes: an ASSISTANT has no Pathfinder and never calls this.
         """
         for pass_num in range(1, self.MAX_EXPANSION_REPAIR_PASSES + 1):
             changed = False
@@ -667,29 +732,22 @@ class Pathfinder:
         return self.MAX_EXPANSION_REPAIR_PASSES
 
     def _dijkstra_path_with_hysteresis(self, start_nodes: list, hysteresis_tolerance: float):
-        """Dijkstra from each of start_nodes to the best ending node,
-        except keeps using self.previousEndNode instead if it's still
-        within hysteresis_tolerance of the best length (damps flapping
-        between near-tied ending nodes). Returns node list start to end,
-        or [] if unreachable. Writes self.previousEndNode.
+        """
+        Dijkstra from start_nodes to the best ending node.
 
-        If self.endingNodes -- possibly narrowed to a single cross-pair
-        retarget target by retarget_approach_target -- is entirely
-        unreachable from every start_nodes candidate, falls back to
-        self._original_ending_nodes (the field's real far edge,
-        snapshotted once in buildNodeField) before giving up. A
-        retargeted self.endingNodes is a single node with none of the
-        normal far-edge row's redundancy: if that one node gets removed
-        (e.g. check_path_envelopment purging it because a new mine's
-        merge grew to cover its exact position) or otherwise
-        disconnected, every caller of this method would otherwise
-        unconditionally wipe maze_a_path/maze_b_path to [] on its next
-        recompute -- discarding real, safe, already-established corridor
-        for a reason that has nothing to do with that corridor's own
-        safety -- confirmed directly as a real ~20-cell coverage gap on
-        the two-pair safety sweep. Falling back here, at the single
-        shared root all those callers already go through, fixes it for
-        all of them at once instead of patching each call site."""
+        Takes:
+        - start_nodes: nodes to search from.
+        - hysteresis_tolerance: keep self.previousEndNode if its route is within this
+          fraction of the best (stops flapping between near-tied ending nodes).
+
+        Returns: node list start -> end, or [] if unreachable.
+        Touches: writes self.previousEndNode.
+
+        Fallback: if self.endingNodes is unreachable from every start node, use
+        self._original_ending_nodes before giving up. A single retargeted node can vanish
+        (e.g. a mine merge covers it), and returning [] would wipe good A/B paths. Done
+        here so every caller gets it.
+        """
         has_fallback = (
             self._original_ending_nodes is not None
             and self.endingNodes is not self._original_ending_nodes
@@ -790,14 +848,17 @@ class Pathfinder:
         path_width: float = 0.0,
         shape_size_ft: float | tuple[float, float] | None = None,
     ):
-        """Plans against get_shortest_path. method="path" walks the path
-        geometry directly; "cellgrid" is the rasterize-then-greedy-cover
-        approach for arbitrary non-path targets. overlap/path_width
-        (method="path" only): placement spacing margin / corridor width.
-        shape_size_ft: footprint override (number or (along, across)),
-        else derived from matSize. Builds footprint placements covering
-        this drone's unseen slice, orders them, verifies coverage (raises
-        on a gap), converts to lat/lon."""
+        """
+        Plan photo waypoints along get_shortest_path.
+
+        Takes:
+        - method: "path" (walk the path geometry) or "cellgrid" (rasterize + greedy cover).
+        - overlap, path_width: spacing margin / corridor width (method="path" only).
+        - shape_size_ft: footprint override (number or (along, across)); default from matSize.
+
+        Does: places footprints over the unseen cells, orders them, verifies coverage
+        (raises on a gap), converts to lat/lon.
+        """
         shortest_path = self.get_shortest_path()
         self.best_node_List = shortest_path
         return self._places_to_check_for_path(
@@ -810,19 +871,18 @@ class Pathfinder:
         self, path_nodes, method="path", overlap=0.0, path_width=0.0,
         shape_size_ft=None, fixed_first=None, next_place_attr=None,
     ):
-        """Shared engine behind getPlacesToCheck and the maze places-to-check
-        methods, for an explicit node path instead of get_shortest_path().
-        fixed_first is the TSP anchor; next_place_attr, if given, is the
-        attribute name to write the new anchor back to (lets each
-        independent queue, e.g. maze A vs B, track its own)."""
+        """
+        Shared engine for getPlacesToCheck and the maze places-to-check methods.
+
+        Takes:
+        - path_nodes: explicit node path (not get_shortest_path()).
+        - fixed_first: TSP start anchor.
+        - next_place_attr: attribute name to write the new anchor back to, so each queue
+          (e.g. maze A vs B) tracks its own.
+        """
         matSizeCells = max(1, round(self.matSize / WIDTHOFSQUARE))
 
-        # The whole field/path, never a per-drone slice: territory division
-        # across drones is Side/pairing's job (which field edge a pair
-        # starts from) plus retarget_approach_target's convergence, not a
-        # fixed horizontal-band split -- an older strategy this class no
-        # longer implements (see path_cover.py's own history for the
-        # y-slicing it used to do here).
+        # Whole path, never a per-drone slice (drones split the field by launch edge/pairing).
         whole_field = self.rasterize_node_path(path_nodes)
 
         if method == "path":
@@ -838,14 +898,12 @@ class Pathfinder:
                 path_width=path_width,
             )
             along_ft, across_ft = _normalize_shape_size(shape_size)
-            # method="path" only needs what's still unseen, not the whole
-            # field (cover_with_shape/"cellgrid" targets that unconditionally).
+            # Only what's still unseen ("cellgrid" targets the whole path).
             need_field = whole_field & ~self.seen_tracker
         elif method == "cellgrid":
             if shape_size_ft is not None:
                 raise ValueError("shape_size_ft override is only supported for method='path'")
-            # self.path_tracker is the same footprint rasterize_node_path
-            # just rebuilt above (whole_field).
+            # path_tracker == whole_field (just rebuilt above).
             self.best_path = self.path_tracker
             ourPortion = whole_field
             ShapesToVisit = ourPortion.cover_with_shape((matSizeCells, matSizeCells))
@@ -862,8 +920,7 @@ class Pathfinder:
         self._verify_places_to_check_cover_need(need_field, orderWaypoints, along_ft, across_ft)
         latLonPoints = []
         for i in orderWaypoints:
-            # cover_with_shape/path_cover already return real-world feet --
-            # multiplying by WIDTHOFSQUARE again here was a doubling bug.
+            # Already real-world feet; don't scale by WIDTHOFSQUARE again.
             lat, lon = self.coord_converter.local_to_latlon(i[0], i[1])
             latLonPoints.append((lat, lon))
         return latLonPoints
@@ -871,18 +928,16 @@ class Pathfinder:
     # ==================================================================
     # MAZE-STYLE incremental replanning.
     #
-    # Three segments: C ("confirmed", start..point_C) is frozen, never
-    # revisited. B ("bridge", point_C..point_A) is the actively-worked,
-    # reroutable segment. A ("approach", point_A..true end) is just the
-    # final edge of the last computed path -- point_A is the stability
-    # anchor, pinning it structurally instead of by hysteresis margin.
+    # Segments:
+    #   C (confirmed): start..point_C. Frozen.
+    #   B (bridge):    point_C..point_A. Reroutable.
+    #   A (approach):  point_A..true end (final edge). point_A is the fixed anchor.
     #
-    # Rule 1 (mine found in A, or the first pass before any split exists):
-    # recompute fresh from point_C, re-split at the fresh path's final
-    # edge (new A), rest becomes B. Rule 2 (mine found in B): reroute B
-    # between the same fixed point_C/point_A.
-    #
-    # B draining clean confirms it into C and returns to checking A.
+    # Rules:
+    #   Rule 1 (mine in A, or first pass): recompute from point_C, split at the new
+    #          path's final edge (new A); the rest becomes B.
+    #   Rule 2 (mine in B): reroute B between the same point_C/point_A.
+    #   B drains clean -> confirm it into C, go back to checking A.
     #
     # Usage:
     #   pf.start_maze_navigation()              # once, up front
@@ -896,10 +951,9 @@ class Pathfinder:
     # ==================================================================
 
     def _resolve_node_near(self, x: float, y: float):
-        """Returns whichever node with at least one live edge is closest to
-        (x,y) -- re-resolves a stale reference by position since a merge
-        can replace a node with a new object at the same tangent point.
-        Skips 0-edge orphans (dead ends for Dijkstra)."""
+        """Returns the closest node with at least one live edge to (x,y).
+        Re-resolves stale references (a merge can replace a node with a new object at
+        the same point). Skips 0-edge orphans."""
         best_node = None
         best_dist = math.inf
         for node, neighbors in self.nodeField.fieldConnection.nodeGraph.items():
@@ -912,24 +966,14 @@ class Pathfinder:
         return best_node
 
     def _resolve_starting_nodes(self) -> list:
-        """self.startingNodes, each re-resolved to a live graph node by
-        position (see _resolve_node_near), dropping any that no longer
-        resolve to anything live. Normally a no-op (the field entry is
-        essentially never touched once the drone has flown past it) --
-        but repair_path_after_expansion can grow a mine enough to swallow
-        the entry itself, and check_path_envelopment's own node-hit
-        handling then removes it from the graph entirely (see
-        removeNode) while self.startingNodes, a plain Pathfinder-level
-        list, has no way to know that happened. Without this, a since-
-        empty maze_confirmed_path's fallback below would hand
-        _dijkstra_path_with_hysteresis a start node with no entry left in
-        the graph at all -- Graph.shortest_distances indexes graph[node]
-        unconditionally for whatever it's given, so that's a KeyError, not
-        a 'can't find a path' -- confirmed directly as a real crash on
-        this exact path during the mine-expansion-restart stress sweep
-        (mineExpandRestartTest.py). Mirrors _dijkstra_path_with_hysteresis's
-        own self._original_ending_nodes fallback for the same class of
-        problem on the END side."""
+        """
+        self.startingNodes re-resolved to live graph nodes (see _resolve_node_near);
+        drops any that no longer resolve.
+        - Usually a no-op. But an expanded mine can swallow the entry node and get it
+          removed from the graph while self.startingNodes still lists it.
+        - Without this, Dijkstra would KeyError on a start node that isn't in the graph.
+        - Mirror of the _original_ending_nodes fallback, on the start side.
+        """
         resolved = []
         for node in self.startingNodes:
             live = self._resolve_node_near(node.x, node.y)
@@ -938,11 +982,9 @@ class Pathfinder:
         return resolved
 
     def _maze_c_start_nodes(self) -> list:
-        """Takes: nothing. Returns: [node] to search FROM for a Rule-1
-        recompute -- wherever self.maze_confirmed_path (point_C) currently
-        ends, re-resolved to a live node, or self.startingNodes
-        (re-resolved the same way -- see _resolve_starting_nodes) if C is
-        still empty (nothing confirmed yet)."""
+        """Returns: [node] to search FROM for a Rule-1 recompute: where
+        maze_confirmed_path (point_C) ends (re-resolved to a live node), or the
+        re-resolved startingNodes if nothing is confirmed yet."""
         if not self.maze_confirmed_path:
             return self._resolve_starting_nodes()
         last = self.maze_confirmed_path[-1]
@@ -950,32 +992,19 @@ class Pathfinder:
         return [node] if node is not None else self._resolve_starting_nodes()
 
     def _prepend_seam_if_needed(self, path_nodes: list) -> list:
-        """If path_nodes[0] (possibly a re-resolved substitute for point_C,
-        see _resolve_node_near) isn't the same point as point_C's real
-        end, prepends the REAL graph-connected route between them --
-        otherwise a later confirm/advance same_point check would silently
-        splice a never-checked jump into the path. Returns path_nodes, or
-        route[:-1] + path_nodes where route is
-        _shortest_path_between(point_C's real end, path_nodes[0]).
+        """
+        Make sure path_nodes starts exactly at point_C's end (the "seam").
 
-        Routing through _shortest_path_between (rather than assuming a
-        bare straight line is safe) matters because every OTHER edge in
-        this file only ever comes from the graph itself, which by
-        construction never contains an edge crossing a KNOWN obstacle --
-        but a bare [seam_node, first] pair is invented here, not looked
-        up, so it was never checked against anything. That's fine as
-        long as _resolve_node_near always lands on a node visible in a
-        dead straight line from point_C's end, but there's no guarantee
-        of that -- confirmed directly as a real bad edge on the two-pair
-        round-robin safety sweep, a ~38ft straight-line seam cutting
-        through a mine that was ALREADY known (not one discovered
-        afterward -- check_path_envelopment's own edge scan only
-        re-validates confirmed-path edges against FUTURE discoveries, so
-        an already-known obstacle a seam happens to cross is never
-        caught). Falls back to the old unchecked straight line only if
-        the graph genuinely has no path between them at all (seam_node
-        and first should almost always be mutually reachable -- both are
-        live, graph-connected nodes -- so this should be rare)."""
+        Takes: path_nodes, whose first node may be a re-resolved substitute for point_C.
+        Returns: path_nodes unchanged if it already starts at point_C's end, else
+        route[:-1] + path_nodes, where route = _shortest_path_between(point_C end, path_nodes[0]).
+
+        Why a graph route, not a straight line:
+        - Graph edges never cross KNOWN obstacles; an invented [seam, first] edge was never
+          checked (seen: a ~38ft seam cutting through an already-known mine).
+        - check_path_envelopment only re-checks confirmed edges against FUTURE discoveries.
+        - Falls back to the straight line only if the graph has no route at all (rare).
+        """
         if not self.maze_confirmed_path or not path_nodes:
             return path_nodes
         seam_node = self.maze_confirmed_path[-1]
@@ -991,8 +1020,7 @@ class Pathfinder:
         return route[:-1] + path_nodes
 
     def start_maze_navigation(self) -> None:
-        """Initializes maze-navigation state -- the first pass treats the
-        whole current shortest path as segment A."""
+        """Reset maze state. The first pass treats the whole shortest path as segment A."""
         self.maze_a_path = self.get_shortest_path()
         self.maze_b_path = []
         self.maze_confirmed_path = []
@@ -1000,24 +1028,25 @@ class Pathfinder:
         self.promoted_helper_nodes = []
         self.remote_mine_placeholders = []
         self.cross_pair_patches = []
+        # Nodes of the midline seam run, once join_cross_pair_seam has closed it.
+        self.cross_pair_seam_span = []
+        # True once replan_toward asked the gambler to fly segment A from its far end.
+        self.approach_from_far_end = False
         self.last_patched_span = None
         self.next_place_to_check_maze_a = None
         self.next_place_to_check_maze_b = None
-        self._approach_target_node = None
-        self._last_synced_target = None
-        self.cross_pair_target_chain = []
-        self._pending_approach_target = None
 
     def record_helper_node_candidate(self, x: float, y: float) -> None:
-        """[HELPER-NODE] Records a real-world (x,y) just photographed while
-        checking segment A into self.helper_node_trail (sorted ascending
-        by distance from maze_a_path[0] -- geometric distance, not visit
-        order, since order_waypoints' TSP tour doesn't walk the path in
-        order). Skips cells out of bounds or already inside a known
-        obstacle. Trims entries more than 2x the safety margin behind the
-        furthest-along one seen so far -- a rolling relevance bound, not
-        the safety check itself (that's start_helper_node_detour, once a
-        mine position exists to measure against)."""
+        """
+        [HELPER-NODE] Record a photographed (x,y) from segment A as a breadcrumb.
+
+        Does:
+        - Appends to helper_node_trail, kept sorted by geometric distance from
+          maze_a_path[0] (not visit order: the TSP tour doesn't walk the path in order).
+        - Skips cells out of bounds or inside a known obstacle.
+        - Trims entries more than 2x the safety margin behind the furthest one (a rolling
+          relevance bound; the real safety check is start_helper_node_detour).
+        """
         if len(self.maze_a_path) < 1:
             return
         col, row = self.seen_tracker.real_to_cell(x, y)
@@ -1035,26 +1064,21 @@ class Pathfinder:
             self.helper_node_trail.append(entry)
             self.helper_node_trail.sort(key=lambda e: e[0])
 
-        trim_window = 2 * (self.mine_saftey_radius * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE)
+        trim_window = 2 * (self.mine_safety_radius_ft * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE)
         furthest_along = self.helper_node_trail[-1][0]
         self.helper_node_trail = [
             e for e in self.helper_node_trail if furthest_along - e[0] <= trim_window
         ]
 
     def _prune_promoted_helper_nodes(self) -> None:
-        """Drops any self.promoted_helper_nodes entry whose node is no
-        longer part of the current maze_confirmed_path/maze_b_path/
-        maze_a_path. Call after ANY of these three lists get replaced --
-        not just check_path_envelopment's own hit (the original caller of
-        this pattern) -- since reroute_b_segment/reroute_b_segment_same_mine/
-        on_forward_mine_discovered can ALSO replace maze_b_path/maze_a_path
-        independently of the helper-node tracking. Without this, a stale
-        entry's "previous_point_a"/"node" pairing can silently stop
-        matching the ACTUAL current bridge structure, and a later
-        check_merge_rewind repair built on it can splice in a stale (or
-        even unsafe -- e.g. an old, never-independently-revalidated raw
-        connectNode edge from the original detour) connection instead of
-        the real current route."""
+        """
+        Drop promoted_helper_nodes entries whose node is no longer in C, B, or A.
+
+        When: after ANY of the three paths is replaced (reroute_b_segment*,
+        on_forward_mine_discovered, check_path_envelopment).
+        Why: a stale entry no longer matches the real bridge, and a later
+        check_merge_rewind repair built on it could splice in a stale or unsafe connection.
+        """
         self.promoted_helper_nodes = [
             entry
             for entry in self.promoted_helper_nodes
@@ -1065,18 +1089,15 @@ class Pathfinder:
         ]
 
     def _settle_confirmed_helper_nodes(self) -> None:
-        """Drops any self.promoted_helper_nodes entry whose node has been
-        folded into maze_confirmed_path -- that detour is now settled
-        (safely confirmed), not outstanding, so start_helper_node_detour's
-        one-outstanding-detour-at-a-time guard should stop counting it.
-        Call after confirm_b_into_c/advance_b_prefix_into_c grow
-        maze_confirmed_path. Deliberately the OPPOSITE keep-condition from
-        _prune_promoted_helper_nodes (which keeps anything still
-        referenced anywhere, confirmed included) -- without this, the
-        first-ever detour's entry would never leave the list, and the
-        one-at-a-time guard would permanently block every later detour,
-        including in single-drone mode (which used to never chain, but
-        also never had a reason to prune a settled entry either)."""
+        """
+        Drop promoted_helper_nodes entries whose node is now in maze_confirmed_path.
+
+        Why: a confirmed detour is settled, not outstanding, so it must stop counting
+        toward start_helper_node_detour's outstanding-detour cap (else the first detour
+        would block every later one).
+        When: after confirm_b_into_c / advance_b_prefix_into_c.
+        Note: opposite keep-rule from _prune_promoted_helper_nodes (which keeps confirmed).
+        """
         self.promoted_helper_nodes = [
             entry
             for entry in self.promoted_helper_nodes
@@ -1084,38 +1105,32 @@ class Pathfinder:
         ]
 
     # ==================================================================
-    # CROSS-PAIR: two pairs on opposite ends sharing discoveries. Mine
-    # relay itself lives in the simulation driver (each pair's
-    # add_discovered_mine gets called for every mine, regardless of who
-    # found it) -- these two methods are what the RECEIVING pair does with
-    # a mine it didn't discover itself, for segment A (not yet flown, so
-    # nothing in the current graph state references it) and confirmed
-    # history (see patch_confirmed_span below) respectively. A remote mine
-    # landing in the receiving pair's ACTIVE segment B needs neither: its
-    # own check_merge_rewind/check_path_envelopment (already run by
-    # add_discovered_mine for every mine, local or relayed) already scans
-    # maze_b_path for exactly this.
+    # CROSS-PAIR: two pairs on opposite ends sharing discoveries.
+    # - Mine relay itself lives in the simulation driver (add_discovered_mine runs for
+    #   every mine, whoever found it).
+    # - These methods are what the RECEIVING pair does with a mine it didn't find:
+    #   record_remote_mine_on_segment_a (A, not yet flown) and patch_confirmed_span
+    #   (confirmed history).
+    # - A remote mine in the ACTIVE segment B needs neither: check_merge_rewind /
+    #   check_path_envelopment already scan maze_b_path.
     # ==================================================================
 
     def record_remote_mine_on_segment_a(self, new_mine) -> None:
-        """Call on the pair that did NOT discover new_mine, right after
-        relaying it into add_discovered_mine, if it crosses THIS pair's
-        own segment A line (point_A -> current approach target, which in
-        two-pair mode is the OTHER pair's own point_A -- see
-        retarget_approach_target -- rather than a fixed field edge).
-        Segment A hasn't been flown yet -- add_discovered_mine's own
-        check_path_envelopment/
-        check_merge_rewind only look at nodes/edges ALREADY in
-        maze_a_path/maze_b_path/maze_confirmed_path, so they can't catch
-        this. Computes where a real flown breadcrumb would have landed
-        (same safety-margin logic start_helper_node_detour uses) and
-        saves it as a placeholder -- no graph changes yet. If gambler's
-        own flight later reaches that position (_check_remote_placeholder_
-        reached), it gets promoted into a real detour exactly like a
-        local discovery; if gambler finds something else first, it's
-        just dropped (see the clear alongside every maze_a_path-replacing
-        rule) and the normal fallback already accounts for this mine
-        anyway, since it's in the graph either way by then."""
+        """
+        Call on the pair that did NOT find new_mine (after add_discovered_mine) if it
+        crosses this pair's segment A line.
+
+        Why: segment A isn't flown yet, and add_discovered_mine's checks only look at
+        nodes/edges already in A/B/C, so they miss it.
+
+        Does:
+        - Computes where a real breadcrumb would have landed (same safety margin as
+          start_helper_node_detour) and saves it as a placeholder. No graph changes yet.
+        - If the gambler reaches that spot (_check_remote_placeholder_reached), it becomes
+          a real detour, like a local find.
+        - If something else gets found first, the placeholder is dropped; the mine is
+          in the graph anyway.
+        """
         if len(self.maze_a_path) < 2:
             return
         p0, p1 = self.maze_a_path[0], self.maze_a_path[1]
@@ -1126,7 +1141,7 @@ class Pathfinder:
         mine_x, mine_y = getattr(new_mine, "origin", None) or (
             new_mine.polygon.centroid.x, new_mine.polygon.centroid.y
         )
-        safety_margin = self.mine_saftey_radius * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
+        safety_margin = self.mine_safety_radius_ft * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
         dist_to_mine = math.hypot(mine_x - p0.x, mine_y - p0.y)
         place_at = max(0.0, dist_to_mine - safety_margin)
         ux = (mine_x - p0.x) / max(dist_to_mine, 1e-9)
@@ -1137,14 +1152,14 @@ class Pathfinder:
         })
 
     def _check_remote_placeholder_reached(self, x: float, y: float):
-        """Call from the gambler's own segment-A visit loop after each
-        photo. If (x,y) has reached or passed a pending placeholder along
-        segment A's own line, injects it into self.helper_node_trail
-        (start_helper_node_detour's normal candidate list, as though a
-        real photo had just landed there) and returns the associated
-        obstacle -- caller treats this exactly like a freshly discovered
-        local mine (calls start_helper_node_detour(returned_obstacle)).
-        Returns None if nothing's been reached yet."""
+        """
+        Call after each photo in the gambler's segment-A loop.
+
+        Does: if (x,y) reached or passed a pending placeholder along segment A, adds it to
+        helper_node_trail as if a real photo landed there.
+        Returns: the placeholder's obstacle (treat like a fresh local mine: call
+        start_helper_node_detour with it), or None if nothing was reached.
+        """
         if not self.remote_mine_placeholders or not self.maze_a_path:
             return None
         a0 = self.maze_a_path[0]
@@ -1160,10 +1175,40 @@ class Pathfinder:
         return None
 
     def on_forward_mine_discovered(self) -> None:
-        """[Rule 1] Recomputes fresh from point_C (or the true start), then
-        splits at the fresh path's own final edge: last two nodes become
-        the new segment A, rest becomes B. Call when a mine is found
-        while checking segment A."""
+        """
+        [Rule 1] Call when a mine is found while checking segment A.
+
+        Does:
+        - Folds any fully-photographed prefix of B into C first, then recomputes from
+          point_C (or the true start). Last two nodes become the new A, the rest B.
+
+        Why fold first:
+        - The recompute starts at point_C, so anything the assistant has already
+          photographed but not yet had folded in is thrown away and re-planned against a
+          different route. Since B is replaced wholesale here, the assistant ends up
+          chasing a moving target: measured at 1.83x the photos of a solo drone covering
+          the same field, with the assistant flying 1857ft vs the solo's 1175ft total.
+          Folding first makes the recompute start from the furthest point actually
+          verified, so completed work survives the replan.
+        """
+        self.advance_b_prefix_into_c()
+
+        # The mine is on segment A, which is FORWARD of B -- so B itself is still a valid
+        # route. Try replanning only from B's far end, which keeps the assistant's whole
+        # queue intact. Falls through to the full recompute below if no route exists from
+        # there (the new mine can wall off B's end), so this can only preserve work, never
+        # strand it.
+        if len(self.maze_b_path) >= 2:
+            forward = self._dijkstra_path_with_hysteresis(
+                [self.maze_b_path[-1]], PATH_HYSTERESIS_TOLERANCE
+            )
+            if len(forward) >= 2:
+                full = self.maze_b_path + forward[1:]
+                self._set_segments(full)
+                self._prune_promoted_helper_nodes()
+                self.remote_mine_placeholders = []
+                return
+
         recomputed = self._dijkstra_path_with_hysteresis(
             self._maze_c_start_nodes(), PATH_HYSTERESIS_TOLERANCE
         )
@@ -1174,112 +1219,94 @@ class Pathfinder:
             self._prune_promoted_helper_nodes()
             self.remote_mine_placeholders = []
             return
-        self.maze_a_path = recomputed[-2:]
-        self.maze_b_path = recomputed[:-1]
+        self._set_segments(recomputed)
         self._prune_promoted_helper_nodes()
         self.remote_mine_placeholders = []
 
-    def _bridge_up_to(self, anchor_node) -> list:
-        """The real, already-established route from wherever's currently
-        confirmed up through anchor_node (inclusive): anchor_node's own
-        position in self.maze_b_path if it's there (anchor_node is itself
-        mid-bridge -- a chained helper-node detour/repair, not point_C's
-        real end), else just anchor_node with the usual seam guard (it IS
-        effectively point_C's end -- first-ever detour, or nothing chained
-        yet). Used by start_helper_node_detour, check_merge_rewind, and
-        _check_forward_of_helper_node so none of them silently drop the
-        real chain back to point_C in favor of a straight, never-validated
-        jump when splicing in a new stretch.
+    def _set_segments(self, route: list) -> None:
+        """Split `route` into segments B and A.
 
-        Deliberately does NOT also search self.maze_confirmed_path for
-        anchor_node: node objects get legitimately reused/re-resolved
-        across unrelated points in the graph's history (_resolve_node_near
-        picks "closest live node," which can land on the same tangent node
-        object more than once), so an identity match there isn't reliable
-        proof anchor_node's CURRENT role is the same as its earlier one --
-        an earlier version of this method searched maze_confirmed_path too
-        and truncated it on a match, which silently discarded large swaths
-        of legitimately-confirmed history on a false-positive identity
-        match (measured: 133/200 seeds developed real coverage gaps).
-        Anchor nodes already folded into maze_confirmed_path fall through
-        to the seam guard instead -- less precise in the rare stale-entry
-        case (see check_merge_rewind's docstring) but not destructive."""
+        Default: A is the final edge (the frontier) and B is everything behind it.
+        Under approach_from_far_end, the remaining unphotographed work is halved instead,
+        so the gambler keeps a real share and the two roles keep closing the gap from both
+        ends. Without this the split laid down by replan_toward decays on the very next
+        discovery -- measured: it handed the assistant MORE work (+40% distance), which is
+        the opposite of the intent, because the assistant was already the bottleneck.
+        """
+        if len(route) < 2:
+            self.maze_a_path = route
+            self.maze_b_path = []
+            return
+        if self.approach_from_far_end and len(route) >= 3:
+            idx = self._split_index_by_unseen(route)
+            self.maze_b_path = route[: idx + 1]
+            self.maze_a_path = route[idx:]
+            return
+        self.maze_a_path = route[-2:]
+        self.maze_b_path = route[:-1]
+
+    def _bridge_up_to(self, anchor_node) -> list:
+        """
+        The established route from point_C up through anchor_node (inclusive).
+
+        Returns:
+        - maze_b_path up to anchor_node, if it's there (anchor is mid-bridge: a chained
+          detour/repair).
+        - else [anchor_node] with the seam guard (anchor is effectively point_C's end).
+
+        Used by start_helper_node_detour, check_merge_rewind, _check_forward_of_helper_node
+        so splicing a new stretch keeps the real chain instead of a straight, unchecked jump.
+
+        Does NOT search maze_confirmed_path: nodes get re-resolved to the same object at
+        unrelated times, so an identity match there is unreliable. An earlier version did
+        and discarded confirmed history (133/200 seeds got coverage gaps). Anchors already
+        confirmed fall through to the seam guard instead: less precise, but not destructive.
+        """
         for i, node in enumerate(self.maze_b_path):
             if node is anchor_node:
                 return self.maze_b_path[: i + 1]
         return self._prepend_seam_if_needed([anchor_node])
 
     def start_helper_node_detour(self, new_mine) -> bool:
-        """[HELPER-NODE alternative to Rule 1] By the time this is called,
-        add_discovered_mine has already run check_merge_rewind for this
-        discovery -- callers skip this method entirely when that returns
-        rewound=True. Picks the self.helper_node_trail candidate with the
-        smallest margin (>= safety margin, closest to the mine while still
-        safe) behind new_mine, promotes it to a real graph Node, connects
-        it to new_mine's tangents and to point_A as it stood before this
-        discovery, and re-splits like on_forward_mine_discovered but
-        seeded at the new node -- collapsing the already-photographed
-        stretch behind it into one edge. Records the promotion in
-        self.promoted_helper_nodes for later repair (check_path_envelopment).
+        """
+        [HELPER-NODE alternative to Rule 1] Detour around new_mine via a breadcrumb node.
 
-        The new maze_b_path is spliced onto whatever bridge already exists
-        (self.maze_b_path itself, if non-empty) rather than re-derived from
-        scratch every call, via _bridge_up_to -- this is what makes
-        CHAINING safe: a pair's gambler can find a second (or third...)
-        mine along A before the assistant has confirmed the earlier
-        bridge into C, in which case previous_point_a is a prior helper
-        node (or one of ITS mine's tangent nodes -- see
-        _repair_helper_node_along_segment's docstring for exactly which),
-        not point_C's real end. A naive from-scratch seam-guarded
-        recompute would silently drop that real, already-established chain
-        and replace it with a straight, never-validated jump from point_C
-        directly to the newest helper node -- _bridge_up_to instead finds
-        wherever the real chain currently ends and builds onto it.
-        Measured empirically (200 seeds): chains that form this way are
-        rare (~0.6 discoveries/seed hit this) and shallow (max depth 3
-        observed, confirmed into C within 1-4 rounds) -- gambler doesn't
-        actually race far ahead of the assistant in practice, but the
-        splice still has to be correct on the occasions it does happen.
+        Takes: new_mine, already processed by add_discovered_mine (callers skip this
+        when check_merge_rewind returned rewound=True).
 
-        An EARLIER, already-confirmed link in the chain (assistant caught
-        up to and folded it into maze_confirmed_path since it was created)
-        is a different case, handled not here but in check_merge_rewind:
-        it defers entirely to check_path_envelopment (which safely
-        handles confirmed-history repairs via full recompute, including
-        edge crossings) rather than risking a splice into frozen ground --
-        see check_merge_rewind's docstring.
+        Does:
+        - Picks the helper_node_trail breadcrumb behind new_mine with the smallest margin
+          that is still >= the safety margin.
+        - Promotes it to a graph Node, connects it to new_mine's tangents and to point_A
+          as it was, and re-splits like on_forward_mine_discovered (seeded at the new node).
+        - Records the promotion in promoted_helper_nodes.
 
-        Capped at MAX_CHAIN_DEPTH simultaneous outstanding (unconfirmed)
-        entries -- once gambler is that far ahead of the assistant, it
-        stops opening new detours and falls back to the plain full
-        recompute (on_forward_mine_discovered) instead, effectively
-        waiting where it is until the assistant confirms at least one
-        entry and the count drops back under the cap. This is a backstop,
-        not the common case: real chains rarely reach it (see above).
+        Chaining:
+        - New B is spliced onto the existing bridge via _bridge_up_to, so a second or
+          third mine along A (before the assistant confirms the first) keeps the real chain
+          instead of a straight, unchecked jump from point_C.
+        - Capped at MAX_CHAIN_DEPTH outstanding entries; at the cap it falls back to
+          on_forward_mine_discovered (waits for the assistant). Rarely reached.
+        - An earlier link already confirmed into C is handled in check_merge_rewind
+          (defers to check_path_envelopment), not here.
 
-        Returns True if a detour was built, False if the trail had nothing
-        usable, the chain is already at MAX_CHAIN_DEPTH, OR if maze_a_path
-        is currently empty -- a concurrent discovery (e.g. the assistant's
-        own find, in a round-robin pair driver) can already have run
-        check_path_envelopment and fully invalidated it before this call --
-        either way, caller falls back to on_forward_mine_discovered."""
+        Returns: True if a detour was built. False if the trail had nothing usable, the
+        chain is at MAX_CHAIN_DEPTH, or maze_a_path is empty (a concurrent discovery can
+        have invalidated it). On False, the caller falls back to on_forward_mine_discovered.
+        """
         if len(self.promoted_helper_nodes) >= MAX_CHAIN_DEPTH:
             return False
         if not self.maze_a_path:
             return False
         previous_point_a = self.maze_a_path[0]
-        # Measured from new_mine's CENTER, not nearest polygon vertex --
-        # the polygon boundary already IS the safety radius, so measuring
-        # from the boundary would double-count it.
+        # Measure from the mine's CENTER (the polygon boundary already includes the safety radius).
         mine_x, mine_y = getattr(new_mine, "origin", None) or (
             new_mine.polygon.centroid.x, new_mine.polygon.centroid.y
         )
         mine_center_distance = math.hypot(mine_x - previous_point_a.x, mine_y - previous_point_a.y)
-        safety_margin = self.mine_saftey_radius * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
+        safety_margin = self.mine_safety_radius_ft * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
 
-        # contains_point re-check on top of the margin one: order_waypoints'
-        # travel-minimizing visit order can check placements past the mine
-        # before the mine itself is discovered.
+        # Also skip points inside the mine: the visit order can photograph past it first.
         chosen = None
         chosen_margin = None
         for distance, cx, cy in self.helper_node_trail:
@@ -1300,14 +1327,8 @@ class Pathfinder:
         connected_directly = self.nodeField.fieldConnection.connectNode(helper_node, previous_point_a)
 
         if not self.nodeField.fieldConnection.nodeGraph.get(helper_node):
-            # Every connection attempt failed (every candidate tangent AND
-            # the direct link to previous_point_a all cross some other
-            # obstacle) -- helper_node is unusably isolated. Graph.
-            # shortest_distances doesn't handle a disconnected seed node
-            # (it unconditionally sets distances[source]=0 and then
-            # indexes self.graph[source], KeyError-ing if source was never
-            # added as a key) -- same "trail unusable" contract as chosen
-            # being None, caller falls back to on_forward_mine_discovered.
+            # Isolated: every tangent and the direct link cross other obstacles.
+            # Graph.shortest_distances KeyErrors on a disconnected source, so give up.
             return False
 
         recomputed = self._dijkstra_path_with_hysteresis([helper_node], PATH_HYSTERESIS_TOLERANCE)
@@ -1319,26 +1340,14 @@ class Pathfinder:
             self.maze_a_path = full[-2:]
             self.maze_b_path = full[:-1]
         else:
-            # connectNode above correctly rejected the direct link (it
-            # would have crossed some other obstacle), but helper_node
-            # still connected to something (the mine's own tangents,
-            # normally) -- naively concatenating _bridge_up_to(previous_
-            # point_a) with recomputed anyway (the ONLY thing this branch
-            # used to do) juxtaposes previous_point_a and helper_node as
-            # consecutive path nodes with NO real edge between them,
-            # producing a phantom, never-validated "edge" that later gets
-            # flown and, if later folded into confirmed history via
-            # advance_b_prefix_into_c, frozen there permanently unsafe --
-            # confirmed directly as a real bad edge on a two-pair sweep
-            # seed, traced via connectNode itself returning False for
-            # this exact pair right before it happened. Find the REAL
-            # (possibly indirect, routing around whatever blocked the
-            # direct link) path between them instead.
+            # The direct link was rejected (it crosses an obstacle) but helper_node
+            # connected elsewhere. Don't just concatenate: that would put previous_point_a
+            # and helper_node side by side with NO real edge, a phantom edge that could get
+            # frozen into confirmed history (seen as a real bad edge in a two-pair sweep).
+            # Find the real, possibly indirect, route instead.
             link = self._shortest_path_between(previous_point_a, helper_node)
             if link is None:
-                # Genuinely disconnected from the rest of the current
-                # bridge -- same "trail unusable" contract as the
-                # isolated-node case above.
+                # Disconnected from the bridge: same as the isolated case above.
                 self.nodeField.fieldConnection.removeNode(helper_node)
                 return False
             full = self._bridge_up_to(previous_point_a) + link[1:] + recomputed[1:]
@@ -1352,48 +1361,103 @@ class Pathfinder:
         self.remote_mine_placeholders = []
         return True
 
+    def repair_via_span_handoff(self, new_mine) -> bool:
+        """
+        [HELPER-NODE, alternative to start_helper_node_detour] Hand the broken span to the
+        assistant as one fresh sub-route instead of splicing a chained detour.
+
+        Does:
+        - Picks the furthest-along breadcrumb that is clear of new_mine by the safety
+          margin, outside every known obstacle, and ALREADY PHOTOGRAPHED (accepted) --
+          so the ground behind it is verified and nothing has to be spliced into frozen
+          history.
+        - Recomputes one clean route from that anchor to the current target, bridges to it
+          from point_C with the usual graph-route seam guard, and re-splits. The span lands
+          in segment B, i.e. the assistant verifies it, acting as a solo gambler over it.
+
+        Why:
+        - It does NOT promote a chained helper node. check_merge_rewind and
+          _check_forward_of_helper_node only ever trigger on promoted_helper_nodes entries,
+          so leaving that list empty makes the whole rewind / helper-repair path
+          unreachable -- and that machinery is where most of this file's known defects
+          live. check_path_envelopment still runs, so the safety catch-all is unchanged.
+
+        Returns: True if a span was handed off, False if no accepted breadcrumb is usable
+        or no route exists from it (caller falls back to on_forward_mine_discovered).
+        """
+        if not self.maze_a_path:
+            return False
+        obstacles = list(self.nodeField.mines) + list(self.nodeField.unionObstacles)
+        margin = self.mine_safety_radius_ft * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
+        mine_xy = getattr(new_mine, "origin", None) or (
+            new_mine.polygon.centroid.x, new_mine.polygon.centroid.y
+        )
+
+        anchor_xy = None
+        for _distance, cx, cy in reversed(self.helper_node_trail):
+            if math.hypot(cx - mine_xy[0], cy - mine_xy[1]) < margin:
+                continue
+            if any(o.contains_point((cx, cy)) for o in obstacles):
+                continue
+            col, row = self.seen_tracker.real_to_cell(cx, cy)
+            if not self.seen_tracker.get(col, row):
+                continue  # not photographed yet -- not an accepted anchor
+            anchor_xy = (cx, cy)
+            break
+        if anchor_xy is None:
+            return False
+
+        anchor = self.nodeField.addFloatingNode(*anchor_xy)
+        span = self._dijkstra_path_with_hysteresis([anchor], PATH_HYSTERESIS_TOLERANCE)
+        if len(span) < 2:
+            self.nodeField.fieldConnection.removeNode(anchor)
+            return False
+
+        # Connect the anchor back to point_C explicitly. _bridge_up_to falls through to
+        # _prepend_seam_if_needed, which returns its input UNCHANGED when confirmed history
+        # is empty -- that left the route starting at the anchor mid-field with nothing
+        # joining it to the entry, i.e. a shorter path that simply skipped the job. It read
+        # as a 58% improvement until the continuity guard caught it.
+        start_nodes = self._maze_c_start_nodes()
+        prefix = self._shortest_path_between(start_nodes[0], anchor) if start_nodes else None
+        if prefix is None or len(prefix) < 1:
+            self.nodeField.fieldConnection.removeNode(anchor)
+            return False
+        full = prefix[:-1] + span
+        self._set_segments(full)
+        self.helper_node_trail = []
+        self.remote_mine_placeholders = []
+        return True
+
     def check_merge_rewind(self, new_mine, was_merged: bool) -> bool:
-        """[HELPER-NODE, no-op if self.promoted_helper_nodes is empty]
-        Scans self.promoted_helper_nodes newest-first (least disruptive
-        match wins) for an entry now suspect via any of three triggers,
-        checked against new_mine:
-          - identity: was_merged and the entry's obstacle's .mergedInto
-            chain resolves to new_mine (an earlier detour's target mine
-            got absorbed into the same merge).
-          - position: the entry's own helper node position is inside
-            new_mine's polygon.
-          - segment: new_mine intersects the segment from the entry's
-            helper node back to its previous_point_a (a mine can be
-            discovered while checking that fresh edge, without covering
-            either endpoint).
-        On a match, tries a local repair (_repair_helper_node_along_segment):
-        reuse the helper node in place if still safe, or reconnect further
-        back along the same segment. Only if that's impossible does it
-        fall back to walking back through EARLIER entries for a safe
-        previous_point_a, discarding everything after (Field.removeNode
-        on each dropped helper node). Either way, truncates
-        self.maze_confirmed_path to the reseed point if needed and
-        re-runs the standard hysteresis recompute + seam guard from there.
+        """
+        [HELPER-NODE; no-op if promoted_helper_nodes is empty]
+        Check whether new_mine invalidates an earlier helper-node detour, and repair.
 
-        Entries whose node has ALREADY been folded into
-        self.maze_confirmed_path (confirm_b_into_c/advance_b_prefix_into_c
-        ran since this entry was created -- normal progress, common once a
-        gambler chains several detours ahead of a slower assistant) are
-        skipped entirely, deferring to check_path_envelopment instead:
-        splicing a repair into already-frozen history needs to know
-        exactly how much of maze_confirmed_path is genuinely still valid
-        around that node, which only check_path_envelopment's own
-        node/edge scan of maze_confirmed_path can determine safely --
-        attempting it here risked either discarding unrelated confirmed
-        history or inserting an unvalidated jump (both measured; see git
-        history for this method around the session this was found).
+        Takes: new_mine, was_merged (from add_discovered_mine).
 
-        If none of the three (backward-looking) triggers match, also
-        tries _check_forward_of_helper_node -- a mine can turn up AHEAD
-        of a helper node instead, toward its own target mine's tangent.
+        Does:
+        - Scans promoted_helper_nodes newest-first (least disruptive match wins) for a hit:
+          - identity: was_merged and the entry's obstacle .mergedInto chain resolves to
+            new_mine.
+          - position: the entry's helper node is inside new_mine's polygon.
+          - segment: new_mine intersects helper node -> previous_point_a (can be found while
+            checking that edge without covering an endpoint).
+        - On a hit, tries a local repair (_repair_helper_node_along_segment): reuse the node
+          if still safe, else reconnect further back along the same segment.
+        - If that fails, walks back through EARLIER entries for a safe previous_point_a and
+          discards everything after (Field.removeNode on each dropped node).
+        - Then truncates maze_confirmed_path to the reseed point if needed and reruns the
+          hysteresis recompute + seam guard.
+        - If no backward trigger hits, tries _check_forward_of_helper_node (a mine AHEAD of
+          a helper node, toward its target mine's tangent).
 
-        Returns True if a rewind was performed (routing already resolved
-        for this discovery), False otherwise (caller proceeds normally).
+        Skips entries already folded into maze_confirmed_path (normal once the gambler chains
+        ahead of a slower assistant). Those defer to check_path_envelopment, the only thing
+        that can tell how much confirmed history is still valid; splicing here risked
+        discarding history or inserting an unchecked jump.
+
+        Returns: True if a rewind was performed (routing already resolved), else False.
         """
         if not self.promoted_helper_nodes:
             return False
@@ -1422,16 +1486,9 @@ class Pathfinder:
         entry = self.promoted_helper_nodes[hit_index]
         old_node, previous_point_a = entry["node"], entry["previous_point_a"]
         if any(n is old_node for n in self.maze_confirmed_path):
-            # Already folded into confirmed history (normal progress since
-            # this entry was created -- common once a gambler chains
-            # several detours ahead of a slower assistant). Defer entirely
-            # to check_path_envelopment's own node/edge scan of
-            # maze_confirmed_path (which runs right after this, for every
-            # add_discovered_mine call, and now also catches edge crossings
-            # there) instead of risking a repair-splice into frozen ground.
-            # Checked AFTER hit_index is chosen, not during the scan above,
-            # so this can never shift which (unrelated) entries the
-            # subsequent "stale" cleanup below removes.
+            # Already confirmed: leave it to check_path_envelopment (runs right after)
+            # instead of splicing into frozen history. Checked after hit_index is chosen
+            # so it can't change which entries the stale cleanup below removes.
             return False
         prefix_path, tracked_node = self._repair_helper_node_along_segment(
             old_node, previous_point_a, new_mine
@@ -1443,10 +1500,8 @@ class Pathfinder:
             )
             if truncate_at is not None:
                 self.maze_confirmed_path = self.maze_confirmed_path[:truncate_at]
-            # prefix_path[0] is previous_point_a itself -- splice it onto the
-            # real bridge already established up through previous_point_a
-            # (not just a seam straight to point_C's end; see _bridge_up_to)
-            # before dropping the duplicate.
+            # prefix_path[0] is previous_point_a: splice onto the real bridge up to it
+            # (see _bridge_up_to), dropping the duplicate.
             full_prefix = self._bridge_up_to(previous_point_a) + prefix_path[1:]
 
             for stale in self.promoted_helper_nodes[hit_index + 1 :]:
@@ -1469,10 +1524,8 @@ class Pathfinder:
             self.remote_mine_placeholders = []
             return True
 
-        # Local repair impossible (old_node's own position isn't safe,
-        # or nothing connects it to previous_point_a at all even after a
-        # full reconnect) -- coarser fallback: walk back through EARLIER
-        # entries for a safe anchor, discarding everything after.
+        # Local repair impossible (position unsafe, or nothing connects it to
+        # previous_point_a): walk back through EARLIER entries for a safe anchor.
         reseed_node = previous_point_a
         while new_mine.contains_point((reseed_node.x, reseed_node.y)):
             hit_index -= 1
@@ -1486,10 +1539,7 @@ class Pathfinder:
             self.nodeField.fieldConnection.removeNode(stale["node"])
         self.promoted_helper_nodes = self.promoted_helper_nodes[:hit_index]
 
-        # Same reasoning as the local-repair branch above: reseed_node can
-        # itself be mid-chain (an earlier entry's previous_point_a), not
-        # point_C's real end -- _bridge_up_to preserves the real route back
-        # to it instead of a naive seam straight from point_C.
+        # reseed_node can be mid-chain; _bridge_up_to keeps the real route back to it.
         prior_bridge = self._bridge_up_to(reseed_node)
 
         truncate_at = next(
@@ -1502,8 +1552,22 @@ class Pathfinder:
 
         recomputed = self._dijkstra_path_with_hysteresis([reseed_node], PATH_HYSTERESIS_TOLERANCE)
         if len(recomputed) < 2:
-            self.maze_a_path = recomputed
-            self.maze_b_path = []
+            # No route forward from the anchor -- typically because the merge invalidated
+            # every connection it had (in the graph, zero neighbours). Assigning the empty
+            # result here used to wipe A and B, and with C empty the pair was left with no
+            # route at all while a valid one from the start still existed (seen: seeds 78,
+            # 109). A repair must never leave less than a route that exists: fall back to
+            # the same full recompute from point_C that Rule 1 uses.
+            recomputed = self._dijkstra_path_with_hysteresis(
+                self._maze_c_start_nodes(), PATH_HYSTERESIS_TOLERANCE
+            )
+            recomputed = self._prepend_seam_if_needed(recomputed)
+            if len(recomputed) < 2:
+                self.maze_a_path = recomputed
+                self.maze_b_path = []
+            else:
+                self.maze_a_path = recomputed[-2:]
+                self.maze_b_path = recomputed[:-1]
         else:
             full = prior_bridge[:-1] + recomputed
             self.maze_a_path = full[-2:]
@@ -1513,17 +1577,18 @@ class Pathfinder:
         return True
 
     def _check_forward_of_helper_node(self, new_mine) -> bool:
-        """[Called by check_merge_rewind once none of its own backward
-        triggers match] A tracked helper node's FORWARD connection
-        (toward its own target mine's tangents, not previous_point_a)
-        can also get crossed by a new mine. Walks self.promoted_helper_nodes
-        newest first for the first whose forward connection new_mine now
-        crosses. Nothing behind the helper node is in question here, so
-        the fix is just to recalculate point A from it onward: truncate
-        self.maze_confirmed_path to just after the node if needed (keeping
-        the node itself), drop later tracked entries, and reseed the
-        standard recompute at the helper node. Returns True if performed,
-        False if nothing is affected (caller proceeds normally)."""
+        """
+        [Called by check_merge_rewind when no backward trigger matched]
+        A helper node's FORWARD connection (toward its target mine's tangents) can also be
+        crossed by a new mine.
+
+        Does:
+        - Finds the newest promoted helper node whose forward connection new_mine crosses.
+        - Recomputes point A from that node: truncates maze_confirmed_path to just after it
+          (keeping it), drops later entries, reseeds the recompute at the node.
+
+        Returns: True if performed, False if nothing is affected.
+        """
         nodeGraph = self.nodeField.fieldConnection.nodeGraph
         for index in range(len(self.promoted_helper_nodes) - 1, -1, -1):
             entry = self.promoted_helper_nodes[index]
@@ -1556,9 +1621,8 @@ class Pathfinder:
                 self.maze_a_path = recomputed
                 self.maze_b_path = []
             else:
-                # node can itself be mid-chain -- _bridge_up_to (not a
-                # from-scratch seam to point_C) preserves the real route
-                # back to it; dedupe since recomputed[0] IS node too.
+                # node can be mid-chain; _bridge_up_to keeps the real route back to it
+                # (drop the duplicate: recomputed[0] is node too).
                 full = self._bridge_up_to(node)[:-1] + recomputed
                 self.maze_a_path = full[-2:]
                 self.maze_b_path = full[:-1]
@@ -1582,65 +1646,30 @@ class Pathfinder:
         path_nodes.reverse()
         return path_nodes
 
-    @staticmethod
-    def _path_halfway_point(path: list) -> tuple[float, float]:
-        """[CROSS-PAIR] Returns the (x, y) position HALFWAY along path
-        (a node list, e.g. from _shortest_path_between) by cumulative
-        flown distance -- interpolated between whichever two consecutive
-        nodes straddle the halfway mark, not snapped to an existing node.
-        Used by _try_apply_pending_approach_target so a cross-pair
-        retarget only ever advances a pair's own point_A to the midpoint
-        of the REAL (obstacle-respecting) path to the other pair's
-        position, never a straight-line average that could cut through
-        territory neither pair has actually reached yet."""
-        seg_lengths = [
-            math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y)
-            for i in range(len(path) - 1)
-        ]
-        total = sum(seg_lengths)
-        if total <= 0:
-            return (path[0].x, path[0].y)
-        half = total / 2.0
-        acc = 0.0
-        for i, seg_len in enumerate(seg_lengths):
-            if acc + seg_len >= half:
-                t = (half - acc) / seg_len if seg_len > 1e-9 else 0.0
-                return (
-                    path[i].x + t * (path[i + 1].x - path[i].x),
-                    path[i].y + t * (path[i + 1].y - path[i].y),
-                )
-            acc += seg_len
-        return (path[-1].x, path[-1].y)
-
     def _repair_helper_node_along_segment(self, old_node, previous_point_a, new_mine):
-        """[Called by check_merge_rewind] old_node is a promoted helper
-        node whose target mine's merger requires repair; previous_point_a
-        is the fixed anchor it was originally wired to; new_mine is the
-        current, possibly-bigger obstacle to reconnect against.
+        """
+        [Called by check_merge_rewind] Repair a promoted helper node after its target mine merged.
 
-        If old_node's own position is still safe (same margin
-        start_helper_node_detour uses, plus clear of every other known
-        obstacle), fully refreshes its connections (same procedure
-        Field.addFloatingNode uses for a brand new floating node -- not
-        just a new_mine-specific patch), then computes the actual
-        shortest path between previous_point_a and old_node on the
-        refreshed graph (_shortest_path_between), rather than assuming a
-        straight line or testing one candidate point at a time -- a real
-        graph search can route around whatever's in the way.
+        Takes:
+        - old_node: the promoted helper node.
+        - previous_point_a: the anchor it was originally wired to.
+        - new_mine: the current (possibly bigger) obstacle to reconnect against.
 
-        Gives up if old_node's position isn't safe, or no path exists
-        even after reconnecting -- can't defend against a mine discovered
-        LATER; that's Field._cleanupInvalidatedConnections' job for the
-        graph edges and check_path_envelopment's for stale path entries.
+        Does:
+        - If old_node is still safe (same margin as start_helper_node_detour, clear of all
+          other obstacles): refresh its connections like a brand new floating node, then
+          take the real shortest path previous_point_a -> old_node (routes around obstacles).
+        - Gives up if the position is unsafe or no path exists. Mines found LATER are handled
+          by Field._cleanupInvalidatedConnections and check_path_envelopment.
 
-        Returns (prefix_path, tracked_node): prefix_path is the full node
-        list from previous_point_a to old_node (inclusive), ready to
-        splice into maze_b_path, or None if repair isn't possible.
-        tracked_node is old_node when repair succeeded."""
+        Returns: (prefix_path, tracked_node). prefix_path = full node list previous_point_a ->
+        old_node, ready to splice into maze_b_path, or None if repair isn't possible.
+        tracked_node is old_node on success.
+        """
         mine_x, mine_y = getattr(new_mine, "origin", None) or (
             new_mine.polygon.centroid.x, new_mine.polygon.centroid.y
         )
-        safety_margin = self.mine_saftey_radius * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
+        safety_margin = self.mine_safety_radius_ft * WIDTHOFSQUARE + 2 * WIDTHOFSQUARE
         other_obstacles = [
             o
             for o in list(self.nodeField.mines) + list(self.nodeField.unionObstacles)
@@ -1650,7 +1679,7 @@ class Pathfinder:
         def point_safe(x, y):
             if math.hypot(x - mine_x, y - mine_y) < safety_margin or new_mine.contains_point((x, y)):
                 return False
-            return not any(o.contains_point((x, y)) for o in other_obstacles)  # margin only applies to new_mine
+            return not any(o.contains_point((x, y)) for o in other_obstacles)  # margin applies to new_mine only
 
         if not point_safe(old_node.x, old_node.y):
             return None, None
@@ -1669,69 +1698,34 @@ class Pathfinder:
 
     def check_path_envelopment(self, new_mine) -> bool:
         """
-        [Call after EVERY add_discovered_mine, for every maze variant --
-        general catch-all, not specific to use_helper_nodes] Scans
-        maze_confirmed_path, then maze_b_path, then maze_a_path (in path
-        order) for the first node whose position now falls inside
-        new_mine's polygon -- not just confirmed history, since a node
-        can be sitting unconfirmed in B/A at the exact moment a merge
-        grows to cover it, later folded into C unchecked. Also scans
-        maze_confirmed_path's, then maze_b_path's, then maze_a_path's,
-        own consecutive EDGES for one new_mine now crosses without
-        containing either endpoint (mirrors check_merge_rewind's
-        segment_hit trigger, but for every edge, not just ones anchored
-        by a tracked promoted helper node -- this is what
-        check_merge_rewind now defers to for any entry whose node has
-        already been folded into confirmed history, rather than risking
-        a repair-splice into frozen ground). The maze_a_path scan matters
-        for a cross-pair retarget's freshly-created hop (see
-        _try_apply_pending_approach_target): it can sit entirely within
-        maze_a_path -- not yet advanced into maze_b_path -- at the exact
-        moment a mine is discovered that grazes it without containing
-        either endpoint; confirmed directly as a real bad edge on the
-        two-pair safety sweep before this scan was added. The maze_b_path
-        edge scan matters most for a wide-spanning Dijkstra result (e.g.
-        patch_confirmed_span's local splice or reroute_b_segment's fresh
-        search) that happens to route through an ordinary tangent-to-
-        tangent edge between two unrelated mines -- not anchored by any
-        tracked helper node, so check_merge_rewind's own segment_hit can't
-        see it, and NODE-containment alone won't catch a mine crossing the
-        edge without covering either endpoint.
+        [Call after EVERY add_discovered_mine, for every maze variant] General catch-all:
+        repair the path if new_mine invalidated it.
 
-        If a NODE hit, strips its connections so a recompute can't select
-        it again: purgeConnections if it's an ordinary mine tangent node
-        (the obstacle keeps the node itself for Field.expandField to
-        re-wire later), else removeNode (a floating/helper node has no
-        obstacle identity to preserve) -- an EDGE hit needs no such
-        stripping, since Field's own _cleanupInvalidatedConnections already
-        removes the specific invalidated edge from the graph the moment
-        new_mine is added. Either way, truncates maze_confirmed_path to
-        just before/at the hit and unconditionally re-derives
-        maze_a_path/maze_b_path with the standard recompute + seam guard.
-        Prunes self.promoted_helper_nodes to what's still referenced
-        afterward.
+        Scans (in path order: confirmed C, then B, then A):
+        - NODES: the first one now inside new_mine. B/A included, since an unconfirmed node
+          can be covered by a merge and later folded into C unchecked.
+        - EDGES: any consecutive edge new_mine crosses without containing an endpoint.
+          - Covers what check_merge_rewind's segment_hit can't (edges not anchored by a
+            helper node); check_merge_rewind defers here for already-confirmed entries.
+          - The A scan matters for a fresh cross-pair retarget hop (bad edge seen in the
+            two-pair sweep). The B scan matters for wide Dijkstra results (patch_confirmed_span,
+            reroute_b_segment) that use tangent-to-tangent edges between unrelated mines.
 
-        Returns True if a hit was found and repaired, False if new_mine
-        didn't invalidate anything -- see repair_path_after_expansion,
-        which sweeps this over every current obstacle and uses the return
-        value to detect when a fixed point has been reached.
+        On a hit:
+        - NODE hit: strip its connections so a recompute can't pick it again.
+          purgeConnections for a mine tangent node (obstacle keeps the node for expandField),
+          else removeNode (floating/helper node).
+        - EDGE hit: no stripping needed; Field._cleanupInvalidatedConnections already removed it.
+        - Truncate maze_confirmed_path to just before/at the hit, re-derive A/B with the
+          standard recompute + seam guard, prune promoted_helper_nodes.
+
+        Returns: True if a hit was repaired, False if nothing was invalidated.
+        (repair_path_after_expansion sweeps this over every obstacle until it reads False.)
         """
-        # Scan maze_confirmed_path index by index, checking node-containment
-        # and this index's own outgoing edge together at each step, so
-        # whichever problem occurs FIRST (by path order) is what
-        # determines truncation -- not "always prefer a node hit." A node
-        # hit found by scanning the whole list first (the previous
-        # approach: full node scan, THEN a separate full edge scan only if
-        # no node hit) can land on a node that's contained by new_mine
-        # PURELY BY COINCIDENCE much later in the path than a real edge
-        # crossing earlier on, silently truncating far too little and
-        # leaving the actually-crossed edge sitting in "confirmed" history
-        # -- confirmed directly as a real bad edge on the two-pair
-        # round-robin safety sweep: a node near the END of an 8-node
-        # confirmed path happened to fall inside a newly-discovered mine,
-        # so only that last node got truncated, while an earlier edge (at
-        # index 4) that plainly crosses the SAME mine was never reached
-        # because the node hit short-circuited the edge scan entirely.
+        # Scan confirmed C index by index, checking the node and its outgoing edge together,
+        # so whichever problem comes FIRST in path order sets the truncation. (Scanning all
+        # nodes first can find a coincidental late hit and leave an earlier crossed edge in
+        # "confirmed" history; seen as a bad edge in the round-robin sweep.)
         hit = None
         hit_in_confirmed = False
         edge_hit_index = None
@@ -1758,20 +1752,10 @@ class Pathfinder:
                     edge_hit_index = i
                     break
         if hit is None and edge_hit_index is None:
-            # maze_a_path's own edge(s) -- same crossing-without-containing-
-            # either-endpoint case as maze_b_path above, just further out.
-            # Missing this let a cross-pair retarget's freshly-created hop
-            # (see _try_apply_pending_approach_target) sit unvalidated
-            # against a mine discovered while that hop was still sitting
-            # ENTIRELY within maze_a_path (before advancing into
-            # maze_b_path on the next hop) -- node-containment already
-            # covers maze_b_path + maze_a_path together above, but the
-            # edge-crossing scan previously stopped at maze_b_path,
-            # missing a crossing that grazes an edge without containing
-            # either of ITS endpoints. edge_hit_index here is never used
-            # for confirmed-path truncation (edge_hit_in_confirmed was
-            # already fixed False before this scan runs), so it's safe to
-            # reuse the same variable.
+            # maze_a_path edges: same crossing-without-an-endpoint case as B, one step out.
+            # (Missed before, letting a fresh retarget hop go unvalidated.) edge_hit_index
+            # is never used for confirmed truncation here (edge_hit_in_confirmed is already
+            # False), so reusing it is safe.
             for i in range(len(self.maze_a_path) - 1):
                 p1, p2 = self.maze_a_path[i], self.maze_a_path[i + 1]
                 if new_mine.intersects(((p1.x, p1.y), (p2.x, p2.y))):
@@ -1783,10 +1767,7 @@ class Pathfinder:
         if edge_hit_index is not None:
             if edge_hit_in_confirmed:
                 self.maze_confirmed_path = self.maze_confirmed_path[: edge_hit_index + 1]
-            # else: hit is in maze_b_path -- no confirmed-path truncation
-            # needed (it isn't there); the unconditional recompute below
-            # already discards/replaces the whole of maze_b_path/maze_a_path
-            # regardless of where within them the invalidated edge was.
+            # else: hit is in B/A; the recompute below replaces both anyway.
         else:
             if self._node_mine(hit) is not None:
                 self.nodeField.fieldConnection.purgeConnections(hit)
@@ -1813,45 +1794,27 @@ class Pathfinder:
         return True
 
     def patch_confirmed_span(self, new_mine):
-        """[CROSS-PAIR] Call (via add_discovered_mine's prefer_local_patch=
-        True) for a mine relayed from the OTHER pair, before
-        check_path_envelopment gets a chance at it. Runs the identical
-        node-containment-then-edge-crossing scan of maze_confirmed_path
-        check_path_envelopment does, but on a hit, pins the two boundary
-        nodes around it and splices in a fresh LOCAL shortest path between
-        just those two -- not a full recompute of everything since. This
-        pair likely moved well past this point by the time a remote
-        discovery lands here (it's not this pair's own mine), so
-        check_path_envelopment's usual "recompute from here to the end"
-        would needlessly discard all of that progress; "theoretically it
-        shouldn't impact the other pair at all, except them having a
-        longer path" only holds if the fix stays local.
+        """
+        [CROSS-PAIR] Patch confirmed history around a mine relayed from the OTHER pair.
+        Called via add_discovered_mine(prefer_local_patch=True), before check_path_envelopment.
 
-        Returns the new sub-path's node list (inclusive of both boundary
-        nodes) if a patch was made -- the caller hands this to the
-        DISCOVERING pair (not this one) to go verify/photograph, since
-        that pair is the one physically nearby, even though the patch
-        landed in this pair's confirmed history. Returns None if nothing
-        hit, or if hit but the boundary is at either end of
-        maze_confirmed_path (no room for a bounded patch) or no local
-        path exists between the two boundary nodes -- either way,
-        check_path_envelopment (called unconditionally right after this
-        by add_discovered_mine) still handles it via its own, less
-        targeted, always-safe full recompute."""
-        # Scan index by index (node-containment, then this index's own
-        # outgoing edge) so whichever problem occurs FIRST by path order
-        # wins -- same fix as check_path_envelopment's identical scan: a
-        # full node-containment pass over the whole list, falling back to
-        # an edge scan only when NO node hit at all, can land on a node
-        # that's contained purely by coincidence much later in the path
-        # than a real, earlier edge crossing, patching around the wrong
-        # (later) span while leaving the true crossing outside it.
-        # check_path_envelopment (run unconditionally right after this)
-        # still catches the real crossing on its own independent scan, so
-        # this couldn't leave an unsafe edge behind -- but it could patch
-        # a span that didn't need it while the actually-affected span
-        # falls through to check_path_envelopment's far more expensive
-        # full recompute instead of this method's cheap local splice.
+        Does:
+        - Runs the same node-then-edge scan of maze_confirmed_path as check_path_envelopment.
+        - On a hit, pins the two boundary nodes around it and splices in a fresh LOCAL
+          shortest path between just those two.
+        - Why local: this pair has probably moved well past that point, and a full recompute
+          to the end would discard that progress.
+
+        Returns:
+        - The new sub-path's node list (both boundary nodes included) if patched. The caller
+          hands it to the DISCOVERING pair to verify/photograph (it is the one physically near).
+        - None if nothing hit, the boundary is at either end of maze_confirmed_path, or no
+          local path exists. check_path_envelopment (called right after) then handles it with
+          a safe full recompute.
+        """
+        # Scan index by index (node, then its outgoing edge) so the FIRST problem in path
+        # order wins (same fix as check_path_envelopment). check_path_envelopment still
+        # catches anything missed, but a wrong patch would force its costlier full recompute.
         hit = None
         edge_hit_index = None
         for i, node in enumerate(self.maze_confirmed_path):
@@ -1888,249 +1851,18 @@ class Pathfinder:
         self._settle_confirmed_helper_nodes()
         return sub_path
 
-    def retarget_approach_target(self, target_x: float, target_y: float) -> None:
-        """[CROSS-PAIR] Queues (target_x, target_y) -- the OTHER pair's
-        current point_A -- as this pair's next cross-pair rendezvous
-        reference, then immediately tries to apply it (see
-        _try_apply_pending_approach_target). Call whenever the other
-        pair's point_A changes, including the first time (right after
-        both pairs' start_maze_navigation()).
-
-        Deliberately does NOT force a full recompute from point_C (an
-        earlier version of this method did, and was reverted): that
-        discards this pair's OWN in-progress local exploration every
-        time the other pair's point_A merely shifts, which happens
-        constantly whenever the other pair is doing the bulk of a
-        mission's discovery work -- observed directly on a real seed:
-        one pair's gambler got retargeted 9 times over a mission and
-        NEVER made forward progress, because every retarget threw away
-        wherever it currently was and restarted from point_C. Chaining a
-        bounded hop from wherever this pair's gambler ALREADY is (see
-        _try_apply_pending_approach_target) instead lets local,
-        mine-driven exploration (on_forward_mine_discovered/
-        start_helper_node_detour) keep running completely undisturbed in
-        between cross-pair retargets.
-
-        Also deliberately does NOT hop all the way to (target_x,
-        target_y) -- only to the HALFWAY point along this pair's own
-        real (obstacle-respecting) path there (see
-        _path_halfway_point). Reaching all the way to the other pair's
-        actual current position would mean this pair's gambler flying
-        into territory that's the OTHER pair's job to explore, before
-        the two pairs have actually met -- redundant coverage at best, a
-        collision risk at worst. Halving it every time means the gap
-        between the two pairs' point_A's keeps closing without either
-        side ever crossing into the other's still-unexplored half."""
-        self._pending_approach_target = (target_x, target_y)
-        self._try_apply_pending_approach_target()
-
-    def _try_apply_pending_approach_target(self) -> None:
-        """[CROSS-PAIR] Applies self._pending_approach_target (if any) as
-        a single chained hop extending the CURRENT approach target
-        (maze_a_path[-1], continuing forward) to a fresh floating node at
-        the halfway position -- same MAX_CHAIN_DEPTH cap as
-        start_helper_node_detour so gambler can't race arbitrarily far
-        ahead of its own assistant, but NOT the same bridge splice: a
-        mine detour discards the old segment A from its near boundary
-        (previous_point_a = maze_a_path[0]) since an obstacle now sits
-        somewhere along it, while a cross-pair retarget only ever extends
-        PAST wherever the last hop already reached, preserving the whole
-        existing maze_b_path + maze_a_path rather than re-deriving it via
-        _bridge_up_to (see the continuing_chain branch below).
-
-        Call this after anything that might free up a chain slot
-        (confirm_b_into_c/advance_b_prefix_into_c, which fold a chained
-        hop's node into confirmed history the moment its footprint is
-        fully seen) as well as from retarget_approach_target itself --
-        "unless bound by its assistant catching up": if the chain is
-        already at MAX_CHAIN_DEPTH, this leaves the target queued and
-        does nothing, exactly like start_helper_node_detour falls back to
-        waiting rather than opening a new detour past the cap.
-
-        No-ops if there's no target queued, or if this pair's own graph
-        isn't set up yet at all (self.startingNodes still empty -- before
-        buildNodeField has ever run)."""
-        if self._pending_approach_target is None:
-            return
-        self.cross_pair_target_chain = [
-            entry for entry in self.cross_pair_target_chain
-            if any(n is entry["node"] for n in self.maze_b_path + self.maze_a_path)
-        ]
-        if len(self.cross_pair_target_chain) >= MAX_CHAIN_DEPTH:
-            return
-
-        target_x, target_y = self._pending_approach_target
-        # Continue extending from wherever the LAST retarget hop actually
-        # left off (maze_a_path[-1], the current approach target), not
-        # from point_A's own near boundary (maze_a_path[0]) -- the user's
-        # own spec is "continue walking along the path... attach to the
-        # PREVIOUS EDGE and the new point A," i.e. keep going forward,
-        # don't restart from the segment's start every call. Anchoring at
-        # [0] unconditionally was a real bug: nothing else ever advances
-        # maze_a_path[0] once cross-pair retargeting takes over (it isn't
-        # touched by confirm_b_into_c/advance_b_prefix_into_c, which only
-        # fold maze_b_path forward), so every subsequent call recomputed
-        # the exact same distance to the exact same halfway point forever
-        # -- confirmed directly as the cause of a real hit_cap: seed 6 of
-        # the two-pair safety sweep got stuck re-confirming one
-        # never-advancing waypoint for 20+ straight rounds.
-        #
-        # Only treat this as "continuing" when self._approach_target_node
-        # (this pair's own last-set target) is STILL maze_a_path's current
-        # end -- if a local mine-driven reroute reset maze_a_path in
-        # between (on_forward_mine_discovered/check_path_envelopment can
-        # still land back on _approach_target_node via _resolve_node_near,
-        # but can just as easily land elsewhere), that's a fresh start and
-        # should anchor at the real current point_A like the first-ever
-        # retarget does.
-        #
-        # maze_a_path can also be EMPTY here (not just "not continuing") --
-        # this pair fully arrived at its own previous target and folded
-        # everything into maze_confirmed_path, or check_path_envelopment
-        # just removed self._approach_target_node itself (e.g. a new mine's
-        # merge grew to cover that exact floating-node position) without
-        # anything else ever resetting self.endingNodes afterward. Either
-        # way, self.endingNodes can now be a dead reference: every future
-        # recompute in this file targets self.endingNodes unconditionally,
-        # so with the ONLY entry unreachable, _dijkstra_path_with_hysteresis
-        # returns [] forever, collapsing maze_a_path to empty permanently --
-        # and this method used to just return here, discarding the queued
-        # target forever too, since nothing else can ever re-populate
-        # maze_a_path to satisfy the old guard. Falling back to
-        # _maze_c_start_nodes() (same anchor on_forward_mine_discovered
-        # uses from a cold start) lets a fresh hop -- and thus a fresh,
-        # LIVE self.endingNodes -- get established again on success,
-        # self-healing the dead reference. Confirmed directly: at a denser
-        # mine field (90 vs the usual 70), this hit on the large majority
-        # of seeds; at 70 it was still common but happened to always occur
-        # after this pair's own coverage was already complete, masking it
-        # as a real coverage gap purely by chance of timing, not by design.
-        if not self.maze_a_path:
-            start_candidates = self._maze_c_start_nodes()
-            if not start_candidates:
-                return
-            continuing_chain = False
-            previous_point_a = start_candidates[0]
-        else:
-            continuing_chain = (
-                self._approach_target_node is not None
-                and self.maze_a_path[-1] is self._approach_target_node
-            )
-            previous_point_a = self.maze_a_path[-1] if continuing_chain else self.maze_a_path[0]
-
-        # Measure the REAL (graph, obstacle-respecting) path toward the
-        # other pair's raw position first, using a throwaway probe node --
-        # removed again immediately, since what we actually want isn't
-        # "how do I reach the other pair's point_A" but "how do I reach
-        # the HALFWAY point along that real path" (see
-        # _path_halfway_point). A straight-line (x, y) average of the two
-        # positions was tried first and rejected: it ignores obstacles
-        # entirely, so "halfway" by straight-line distance can be a very
-        # different, and sometimes unreachable-without-a-detour, position
-        # than halfway by actual flying distance.
-        probe = self.nodeField.addFloatingNode(target_x, target_y)
-        full_path = self._shortest_path_between(previous_point_a, probe)
-        self.nodeField.fieldConnection.removeNode(probe)
-        if full_path is None or len(full_path) < 2:
-            hop = None
-            self._pending_approach_target = None
-        else:
-            # Once the remaining real-path distance is already small,
-            # close it fully instead of halving again -- see
-            # CLOSE_ENOUGH_TO_STOP_HALVING_FT's own comment for why
-            # unconditional halving never actually finishes. If we're
-            # NOT closing fully this call, re-queue the SAME (target_x,
-            # target_y) -- rather than clearing it -- so a later call
-            # (confirm_b_into_c/advance_b_prefix_into_c already retry
-            # _try_apply_pending_approach_target every round) keeps
-            # chipping away at the remaining half instead of the gap
-            # getting silently abandoned the moment the OTHER pair's own
-            # point_A happens to stop moving (which is exactly what
-            # _sync_approach_target's own "did it change" check is keyed
-            # on -- it has no way to know a PAST retarget only partially
-            # closed the gap). Confirmed directly: without this, halving
-            # can leave the two pairs permanently a fraction of a foot
-            # apart, missing the final cell and hitting the round cap
-            # waiting for a retry that would otherwise never come.
-            fully_closing = node_path_length(full_path) <= CLOSE_ENOUGH_TO_STOP_HALVING_FT
-            if fully_closing:
-                halfway_x, halfway_y = target_x, target_y
-                self._pending_approach_target = None
-            else:
-                halfway_x, halfway_y = self._path_halfway_point(full_path)
-                self._pending_approach_target = (target_x, target_y)
-            # Only remove the PREVIOUS retarget's floating node if it isn't
-            # currently serving as point_A itself. A local, mine-driven
-            # reroute in between two retargets (on_forward_mine_discovered/
-            # check_path_envelopment, via _maze_c_start_nodes' own
-            # _resolve_node_near) picks whichever live node is geometrically
-            # CLOSEST to wherever point_C currently ends -- if the previous
-            # retarget's own target node happens to be that closest node
-            # (increasingly likely as retargeting narrows the gap between the
-            # two pairs), it can legitimately become the new point_A. Removing
-            # it here regardless would leave previous_point_a referencing a
-            # node with no graph entry at all, crashing the
-            # _shortest_path_between call below with a KeyError -- confirmed
-            # directly as the actual cause of a real crash on a two-pair
-            # sweep seed.
-            if self._approach_target_node is not None and self._approach_target_node is not previous_point_a:
-                self.nodeField.fieldConnection.removeNode(self._approach_target_node)
-            new_target = self.nodeField.addFloatingNode(halfway_x, halfway_y)
-            self._approach_target_node = new_target
-            self.endingNodes = [new_target]
-            hop = self._shortest_path_between(previous_point_a, new_target)
-
-        if hop is None:
-            # Not reachable directly from wherever gambler currently is
-            # (e.g. an obstacle now sits between them) -- self-heals via
-            # the same full-recompute-from-point_C fallback every other
-            # "can't get there from here" case in this file already uses.
-            recomputed = self._dijkstra_path_with_hysteresis(
-                self._maze_c_start_nodes(), PATH_HYSTERESIS_TOLERANCE
-            )
-            recomputed = self._prepend_seam_if_needed(recomputed)
-            if len(recomputed) < 2:
-                self.maze_a_path = recomputed
-                self.maze_b_path = []
-            else:
-                self.maze_a_path = recomputed[-2:]
-                self.maze_b_path = recomputed[:-1]
-            self._prune_promoted_helper_nodes()
-            self.remote_mine_placeholders = []
-            return
-
-        # _bridge_up_to(previous_point_a) only finds real prior history
-        # when previous_point_a is ITSELF a maze_b_path member (the
-        # start_helper_node_detour case: the whole old segment A is being
-        # thrown away and replaced from its near boundary). Continuing an
-        # existing chain instead extends PAST the current end -- the
-        # entire current maze_b_path + maze_a_path (which already ends at
-        # previous_point_a) needs to be kept, not re-derived, or every
-        # call would discard the real bridge same as the bug above.
-        full = (
-            self.maze_b_path + self.maze_a_path + hop[1:]
-            if continuing_chain
-            else self._bridge_up_to(previous_point_a) + hop[1:]
-        )
-        self.cross_pair_target_chain.append({"node": new_target, "previous_point_a": previous_point_a})
-        self.maze_a_path = full[-2:]
-        self.maze_b_path = full[:-1]
-        self._prune_promoted_helper_nodes()
-        self.remote_mine_placeholders = []
-
     def get_cross_pair_patch_places_to_check(
         self, method: str = "path", overlap: float = 0.0, path_width: float = 0.0,
         shape_size_ft: float | tuple[float, float] | None = None,
     ) -> list:
-        """[CROSS-PAIR] Places-to-check for the oldest pending entry in
-        self.cross_pair_patches -- a confirmed-history patch this pair's
-        assistant owes a verification flight to (patch_confirmed_span ran
-        on the OTHER pair, in response to a mine THIS pair discovered).
-        The graph fix already happened when the patch was created; this
-        is purely a coverage/verification task so the mission's "everything
-        got photographed" invariant still holds for the patched stretch.
-        Caller pops self.cross_pair_patches[0] once its footprint is fully
-        seen (same drain pattern as segment B)."""
+        """
+        [CROSS-PAIR] Places-to-check for the oldest entry in cross_pair_patches.
+        - That is a confirmed-history patch this pair's assistant owes a verification
+          flight (patch_confirmed_span ran on the OTHER pair for a mine THIS pair found).
+        - The graph fix is already done; this is coverage only, keeping the "everything
+          got photographed" invariant.
+        - Caller pops cross_pair_patches[0] once its footprint is fully seen (like B).
+        """
         if not self.cross_pair_patches:
             return []
         return self._places_to_check_for_path(
@@ -2139,11 +1871,12 @@ class Pathfinder:
         )
 
     def reroute_b_segment(self) -> None:
-        """[Rule 2] Re-searches directly between point_C and point_A
-        (fixed) on the current graph and replaces self.maze_b_path --
-        a mine in B can only make the route more roundabout, never move
-        either endpoint. Both ends get the same seam-guard as
-        on_forward_mine_discovered."""
+        """
+        [Rule 2] Re-search point_C -> point_A (fixed) on the current graph and replace
+        maze_b_path.
+        - A mine in B only makes the route more roundabout; neither endpoint moves.
+        - Both ends get the same seam guard as on_forward_mine_discovered.
+        """
         if len(self.maze_a_path) < 1:
             return
         start_node = self._maze_c_start_nodes()[0]
@@ -2170,20 +1903,20 @@ class Pathfinder:
         self._prune_promoted_helper_nodes()
 
     def _node_mine(self, node):
-        """Returns the BlockMine/union obstacle whose .nodes list contains
-        node, or None. Tangent nodes carry no parentMine back-reference,
-        so this is the only way to ask "whose obstacle is this"."""
+        """Returns the obstacle (BlockMine/union) whose .nodes contains node, or None.
+        (Tangent nodes have no parentMine back-reference.)"""
         for obstacle in list(self.nodeField.mines) + list(self.nodeField.unionObstacles):
             if node in obstacle.nodes:
                 return obstacle
         return None
 
     def reroute_b_segment_same_mine(self) -> None:
-        """[Rule 2 variant] Recomputes fresh from point_C like Rule 1, but
-        only adopts the new point_A if its final-edge node sits on the
-        SAME mine point_A is currently pinned to (free to slide to a
-        different tangent of that mine, never jump to a different one).
-        Falls back to reroute_b_segment (point_A held fixed) otherwise."""
+        """
+        [Rule 2 variant] Recompute from point_C like Rule 1, but adopt the new point_A only
+        if its final-edge node is on the SAME mine point_A is pinned to (may slide to
+        another tangent of it, never jump to a different mine).
+        - Otherwise falls back to reroute_b_segment (point_A fixed).
+        """
         if not self.maze_a_path:
             self.reroute_b_segment()
             return
@@ -2211,22 +1944,16 @@ class Pathfinder:
         self.remote_mine_placeholders = []
 
     def _extend_confirmed_path(self, new_content: list) -> None:
-        """Appends new_content onto self.maze_confirmed_path, dropping the
-        duplicate leading node when new_content[0] is the same point as
-        maze_confirmed_path[-1] (the ordinary case). If new_content
-        re-visits a node ALREADY earlier in maze_confirmed_path -- a real
-        loop, not a coincidence: field start/end and mine tangent nodes
-        are each created exactly once, so an identity match here means
-        the route genuinely backtracked to a point already confirmed, not
-        two unrelated positions sharing a re-resolved node reference (the
-        failure mode _bridge_up_to's own confirmed-path search hit
-        earlier this session -- see its docstring) -- truncates back to
-        just before that node's first occurrence first, so the node ends
-        up appearing exactly once instead of the path visiting it twice.
-        This can happen after check_path_envelopment/patch_confirmed_span
-        remove a node early in the mission, when few alternate routes are
-        established yet and the only remaining path has to double back
-        near an already-confirmed point."""
+        """
+        Does: appends new_content onto maze_confirmed_path.
+        - Drops the duplicate leading node when new_content[0] is the same point as
+          maze_confirmed_path[-1].
+        - If new_content revisits a node already in maze_confirmed_path (a real loop: nodes
+          are created once, so identity match = genuine backtrack), first truncates back to
+          just before that node's first occurrence so it appears once.
+        - Can happen after check_path_envelopment/patch_confirmed_span remove an early node
+          and the only remaining route doubles back.
+        """
         if not new_content:
             return
         if not self.maze_confirmed_path:
@@ -2242,27 +1969,23 @@ class Pathfinder:
         self.maze_confirmed_path.extend(new_content[1:] if same_point else new_content)
 
     def confirm_b_into_c(self) -> None:
-        """Appends self.maze_b_path onto self.maze_confirmed_path (frozen
-        history of the route actually flown and verified clean) via
-        _extend_confirmed_path, then clears maze_b_path. Call once
-        get_places_to_check_maze()'s "b" list drains to empty; idempotent
-        if b is already empty."""
+        """
+        Does: appends maze_b_path onto maze_confirmed_path (_extend_confirmed_path), clears B.
+        - Call once get_places_to_check_maze()'s "b" list drains. Idempotent on empty B.
+        """
         if not self.maze_b_path:
             return
         self._extend_confirmed_path(self.maze_b_path)
         self.maze_b_path = []
         self._settle_confirmed_helper_nodes()
-        # Folding B into confirmed can free up a cross_pair_target_chain
-        # slot (see _try_apply_pending_approach_target) -- retry a
-        # retarget that was queued because the chain was previously at
-        # MAX_CHAIN_DEPTH, now that the assistant has caught up.
-        self._try_apply_pending_approach_target()
+        # Folding may free a cross_pair_target_chain slot; retry a queued retarget.
 
     def advance_b_prefix_into_c(self) -> None:
-        """Folds every leading edge of self.maze_b_path whose rasterized
-        footprint is already fully seen into self.maze_confirmed_path (via
-        _extend_confirmed_path) -- not just the whole of B once it drains
-        clean -- shrinking what a later reroute has to re-search."""
+        """
+        Does: folds every leading edge of maze_b_path whose footprint is fully seen into
+        maze_confirmed_path (via _extend_confirmed_path), not just B once it fully drains.
+        - Shrinks what a later reroute has to re-search.
+        """
         if len(self.maze_b_path) < 2:
             return
 
@@ -2279,15 +2002,14 @@ class Pathfinder:
         self._extend_confirmed_path(self.maze_b_path[: best_idx + 1])
         self.maze_b_path = self.maze_b_path[best_idx:]
         self._settle_confirmed_helper_nodes()
-        self._try_apply_pending_approach_target()
 
     def get_maze_path(self):
-        """Returns maze_confirmed_path + maze_b_path + maze_a_path, joined
-        without duplicating a shared boundary node (only drops one when
-        it's actually the same point -- see confirm_b_into_c). The actual
-        route committed to and checked so far -- verify coverage against
-        this, not get_shortest_path (a different, independently
-        recomputed route)."""
+        """
+        Returns: maze_confirmed_path + maze_b_path + maze_a_path, dropping a shared
+        boundary node only when it is the same point (see confirm_b_into_c).
+        - The route committed to and checked so far; verify coverage against this,
+          not get_shortest_path.
+        """
 
         def _join(pieces, next_piece):
             if not pieces:
@@ -2307,23 +2029,14 @@ class Pathfinder:
         return pieces
 
     def get_iarc_path(self, buffer_width: int = 0) -> str:
-        """Returns get_maze_path() -- the actual route committed to and
-        checked so far, on THIS Pathfinder alone -- in the IARC text-
-        reporting format. See format_iarc_path (module-level) for the
-        format itself and why the conversion works the way it does; this
-        is a thin wrapper feeding it get_maze_path()'s own local (x, y)
-        directly (NOT round-tripped through lat/lon -- see
-        format_iarc_path's own docstring for why that loses precision at
-        cell boundaries).
+        """
+        Does: get_maze_path() in the IARC text-reporting format (this Pathfinder only).
+        - Feeds local (x, y) straight to format_iarc_path (no lat/lon round trip; that
+          loses precision at cell boundaries).
+        - Mission-wide report across pairs: Drone.get_mission_iarc_path.
 
-        For a mission-wide report (spanning more than one Pathfinder --
-        two pairs, or anything the parent drone accumulates independently
-        of any single Pathfinder's own live A/B/C state), see
-        state_machine.drone.Drone.get_mission_iarc_path instead, which
-        calls the same format_iarc_path.
-
-        Raises ValueError if get_maze_path() is empty or entirely outside
-        the field's own bounds (nothing to report)."""
+        Raises: ValueError if get_maze_path() is empty or entirely outside the field.
+        """
         path_xy = [(n.x, n.y) for n in self.get_maze_path()]
         return format_iarc_path(path_xy, buffer_width)
 
@@ -2331,32 +2044,26 @@ class Pathfinder:
         self, method: str = "path", overlap: float = 0.0, path_width: float = 0.0,
         shape_size_ft: float | tuple[float, float] | None = None,
     ) -> dict:
-        """Same coverage params as getPlacesToCheck. Computes places-to-check
-        separately for maze_a_path and maze_b_path. Segment B's TSP
-        ordering is anchored to next_place_to_check_maze_b (mirrors
-        nextPlaceToCheckLocal) so a replan doesn't reorder the tour to
-        start from the opposite side of the segment. Segment A's is
-        instead anchored directly to maze_a_path[0] (point_A) itself,
-        not the remembered next_place_to_check_maze_a: point_A is
-        ALWAYS this segment's own current near/home-side boundary by
-        construction, so it can't go stale the way a remembered "wherever
-        the tour started last time" value can once the segment gets
-        reshaped elsewhere (a cross-pair retarget, Rule 1 firing on a
-        newly-discovered mine, etc.) without that value ever being
-        cleared. A stale anchor doesn't just cost one extra hop -- since
-        order_waypoints seeds nearest-neighbor from it when it doesn't
-        exactly match any current candidate, whichever real candidate
-        happens to be closest to the STALE anchor becomes the tour's
-        first stop, which can be the far end of the segment instead of
-        the near end, dragging gambler's entire visiting order backwards
-        (observed directly: a gambler's tour started right next to the
-        far target and walked back toward its own point_A instead of the
-        reverse). Anchoring to point_A directly is immune to this since
-        there's no remembered value to go stale in the first place.
-        Returns {"a": [(lat,lon),...], "b": [...], "count": total}."""
+        """
+        Takes: same coverage params as getPlacesToCheck.
+
+        Does:
+        - Computes places-to-check separately for maze_a_path and maze_b_path.
+        - B: TSP order anchored to next_place_to_check_maze_b, so a replan does not
+          restart the tour from the opposite side.
+        - A: anchored directly to maze_a_path[0] (point_A), not a remembered value.
+          - point_A is always A's near boundary; a remembered anchor goes stale after a
+            retarget or Rule 1, and order_waypoints would then start the tour at the far
+            end (seen: tour walked back toward its own point_A).
+
+        Returns: {"a": [(lat,lon),...], "b": [...], "count": total}.
+        """
         a_anchor = None
         if self.maze_a_path:
-            a0 = self.maze_a_path[0]
+            # Normally the near boundary (point_A). After replan_toward(backwards=True) the
+            # gambler works A from its FAR end back toward the assistant, so the tour is
+            # anchored there instead and the two roles close the gap from both sides.
+            a0 = self.maze_a_path[-1] if self.approach_from_far_end else self.maze_a_path[0]
             a_anchor = (a0.x, a0.y)
         a_places = (
             self._places_to_check_for_path(

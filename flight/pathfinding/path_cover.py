@@ -359,7 +359,7 @@ def path_cover(
     path -- same shape as cover_with_shape's return value. Used to cover
     the whole path in one pass -- no per-drone slicing (that was an
     artifact of an old multi-drone-field-division strategy since replaced
-    by Side/pairing + retarget_approach_target's convergence -- see
+    by Side/pairing + the fixed midline boundary -- see
     Pathfinder.__init__'s droneID/former numOfDrones).
     """
     return place_along_runs([path_points], shape_size, overlap=overlap, path_width=path_width)

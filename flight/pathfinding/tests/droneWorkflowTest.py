@@ -30,7 +30,9 @@ see the addFloatingNode fix in nodeField/field.py this test depends on.
 """
 
 import math
+import os
 import random
+import tempfile
 
 from shapely.geometry import Point
 
@@ -41,11 +43,15 @@ from matplotlib import pyplot as plt
 from matplotlib.patches import Circle, Polygon as MplPolygon
 
 from flight.pathfinder import Pathfinder, WIDTHOFFIELD, HEIGHTOFFIELD, WIDTHOFSQUARE, path_length
+from flight.pathfinding.protoMine import protoMine, safety_cells
 
-SCRATCH_DIR = (
-    r"C:\Users\harpe\AppData\Local\Temp\claude\c--Users-harpe-Multirotor-IARC-10"
-    r"\2567942b-0ada-473d-af3b-214803e7410d\scratchpad"
+# Where the renderers below write diagrams/GIFs. Override with IARC_SCRATCH_DIR;
+# otherwise a per-user temp dir, created on demand. This used to be one developer's
+# absolute path, which meant nobody else could run the renderers at all.
+SCRATCH_DIR = os.environ.get("IARC_SCRATCH_DIR") or os.path.join(
+    tempfile.gettempdir(), "iarc10_scratch"
 )
+os.makedirs(SCRATCH_DIR, exist_ok=True)
 
 _BASE_LAT, _BASE_LON = 36.0, -95.9
 _M_PER_LAT = 111320.0
@@ -467,7 +473,8 @@ def simulate_one_drone_maze(pf, true_mines, overlap=0.1, path_width=0.0, shape_s
     }
 
 
-def simulate_one_pair_maze(pf, true_mines, overlap=0.1, path_width=0.0, shape_size_ft=None, max_steps=300, max_waypoints=3000, point_a_mode="pinned", granular_confirm=False, record_frames=False, use_helper_nodes=True):
+def simulate_one_pair_maze(pf, true_mines, overlap=0.1, path_width=0.0, shape_size_ft=None, max_steps=300, max_waypoints=3000, point_a_mode="pinned", granular_confirm=False, record_frames=False, use_helper_nodes=True,
+                          repair_mode="detour"):
     """
     Sibling to simulate_one_drone_maze, but for a GAMBLER/ASSISTANT pair
     sharing one Pathfinder (one node graph, one seen_tracker, one mine list
@@ -638,7 +645,13 @@ def simulate_one_pair_maze(pf, true_mines, overlap=0.1, path_width=0.0, shape_si
             if last_rewound_a:
                 pass  # add_discovered_mine's check_merge_rewind already re-routed
             elif use_helper_nodes and last_added_obstacle_a is not None:
-                if not pf.start_helper_node_detour(last_added_obstacle_a):
+                # "handoff": recompute the broken span from the last ACCEPTED breadcrumb
+                # and give it to the assistant, instead of promoting a chained helper node
+                # (see Pathfinder.repair_via_span_handoff for why that kills off the whole
+                # rewind/helper-repair path). Both fall back to Rule 1.
+                repair = (pf.repair_via_span_handoff if repair_mode == "handoff"
+                          else pf.start_helper_node_detour)
+                if not repair(last_added_obstacle_a):
                     pf.on_forward_mine_discovered()  # fallback: trail unusable
             else:
                 pf.on_forward_mine_discovered()  # Rule 1
@@ -1004,15 +1017,24 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
     clears and rewrites every call -- sharing it would have one pair's call
     clobber the other's mid-use).
 
-    Each pair's segment A targets the OTHER pair's current point_A (see
-    Pathfinder.retarget_approach_target), not the field's far edge -- so the
-    two pairs converge toward a meeting point roughly in the middle instead
-    of each redundantly traversing the whole field. _sync_approach_target
-    (below) keeps that retargeting in sync: once right after both pairs'
-    start_maze_navigation() (bootstrapped against the real far edge first,
-    since neither pair has a point_A yet to aim at), then again after every
-    step_pair() call in the main loop, so a mine-driven reroute that moves
-    one pair's own point_A propagates to the other within one round.
+    Each pair's segment A targets a FIXED row at the field's true midline
+    (Pathfinder.set_cross_pair_home_boundary, called right after
+    build_empty_pathfinder and before start_maze_navigation), not the
+    field's far edge -- so each pair only has to cover roughly its own
+    half instead of each redundantly traversing the whole field. This
+    replaced an earlier dynamic-convergence design (each pair's segment A
+    chasing wherever the OTHER pair's current point_A was, via
+    Pathfinder.retarget_approach_target) that had no lower bound on how
+    far the chase could go: a pair stalled near its own start in a dense
+    minefield would keep pulling the OTHER pair's own target toward it by
+    repeated halving, with nothing to stop it short of the stalled pair's
+    own home half -- confirmed directly as a common (not rare) real bug,
+    reproducing on every one of 5 different dense-minefield seeds tried,
+    twice all the way to the field's literal opposite edge. A fixed
+    boundary, set once, has no dynamic target to go stale in the first
+    place. Known limitation, not solved by this: if one pair finishes its
+    own half well before the other, it has no way to help cover the
+    slower pair's remaining territory.
 
     Each super-round: pf1's gambler+assistant round-robin step, then pf2's
     (same per-pair body as simulate_one_pair_maze, just factored so it runs
@@ -1059,51 +1081,22 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
         shape_along_ft, shape_across_ft = shape_size_ft, shape_size_ft
     half_along, half_across = shape_along_ft / 2.0, shape_across_ft / 2.0
 
-    def _sync_approach_target(pf_self, pf_other):
-        """If pf_self's own point_A has moved since pf_other was last
-        aimed at it, relays that position to pf_other via
-        retarget_approach_target -- which (see its own docstring) no
-        longer walks the whole way there in one hop; it only advances
-        pf_other's point_A to the HALFWAY point along pf_other's own
-        real path toward pf_self's position, so pf_other's gambler can
-        never chain its way across the frontier into pf_self's
-        still-unexplored territory before the two pairs actually meet
-        there.
-
-        No-ops if nothing moved (avoids forcing a recompute + floating-
-        node churn on pf_other every round when nothing changed -- point_A
-        only actually moves on a mine-driven reroute or a prior retarget,
-        not on ordinary flight progress). Also no-ops while pf_self's own
-        point_A is still literally its un-advanced starting position --
-        see retarget_approach_target's own docstring for why relaying a
-        still-degenerate position is worse than useless."""
-        if not pf_self.maze_a_path:
-            return
-        a0 = pf_self.maze_a_path[0]
-        pos = (a0.x, a0.y)
-        if any(
-            abs(pos[0] - s.x) < 1e-6 and abs(pos[1] - s.y) < 1e-6
-            for s in pf_self.startingNodes
-        ):
-            return
-        last = pf_other._last_synced_target
-        if last is not None and abs(last[0] - pos[0]) < 1e-6 and abs(last[1] - pos[1]) < 1e-6:
-            return
-        pf_other.retarget_approach_target(pos[0], pos[1])
-        pf_other._last_synced_target = pos
-
+    # Each pair's own segment-A search targets a FIXED row at the
+    # field's true midline (set_cross_pair_home_boundary), not a moving
+    # target that chases wherever the other pair currently is. Replaces
+    # the earlier dynamic-convergence design (retarget_approach_target,
+    # driven by a _sync_approach_target closure called repeatedly as the
+    # mission progressed) -- see set_cross_pair_home_boundary's own
+    # docstring for why: that design's halving-toward-a-possibly-stalled
+    # target had no lower bound, and confirmed directly as a common (not
+    # rare) real bug, one pair's own gambler crossed the field's true
+    # midline on every one of 5 different dense-minefield seeds tried,
+    # twice all the way to the literal opposite edge.
+    midline_y = HEIGHTOFFIELD / 2.0
+    pf1.set_cross_pair_home_boundary(midline_y)
+    pf2.set_cross_pair_home_boundary(midline_y)
     pf1.start_maze_navigation()
     pf2.start_maze_navigation()
-    # Both pairs start out aimed at the field's real far edge (an empty
-    # field's own point_A is just each pair's un-advanced starting
-    # position -- nothing meaningful to sync yet, see
-    # _sync_approach_target's own-start guard). These calls are no-ops
-    # until either pair's point_A first moves via a real reroute; kept
-    # here (rather than assuming that always happens inside the main
-    # loop below) so a caller that never enters the loop still ends up
-    # in a consistent state.
-    _sync_approach_target(pf1, pf2)
-    _sync_approach_target(pf2, pf1)
 
     discovered = {}
     visited = []
@@ -1115,6 +1108,10 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
         1: {"last_added_obstacle_a": None, "last_rewound_a": False, "last_rewound_b": False, "done": False},
         2: {"last_added_obstacle_a": None, "last_rewound_a": False, "last_rewound_b": False, "done": False},
     }
+    # Flying the seam can itself discover a mine and reroute, moving the endpoint and
+    # reopening the gap -- so retry, bounded. One shot left 2/8 seeds still gapped.
+    seam_attempts = 0
+    MAX_SEAM_ATTEMPTS = 4
     pfs = {1: pf1, 2: pf2}
 
     def visit_one(pair_id, lat, lon, label):
@@ -1184,28 +1181,6 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
         ) if pf_self.cross_pair_patches else []
         a_places = places["a"]
         b_places = patch_places + places["b"]
-        if not a_places and not b_places:
-            # confirm_b_into_c/advance_b_prefix_into_c only retry a
-            # queued cross-pair retarget (_try_apply_pending_approach_target)
-            # as part of actually confirming/advancing something -- if
-            # THIS pair's own queue is already empty, neither ever runs,
-            # so a still-pending retarget (halved short of the
-            # CLOSE_ENOUGH_TO_STOP_HALVING_FT threshold, re-queued rather
-            # than dropped -- see retarget_approach_target) would never
-            # get another chance once this pair marks itself done and
-            # stops being ticked at all. Retry explicitly here, before
-            # declaring done, so a genuinely unfinished convergence keeps
-            # being worked on instead of silently stalling.
-            if pf_self._pending_approach_target is not None:
-                pf_self._try_apply_pending_approach_target()
-                places = pf_self.get_places_to_check_maze(
-                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
-                )
-                patch_places = pf_self.get_cross_pair_patch_places_to_check(
-                    overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
-                ) if pf_self.cross_pair_patches else []
-                a_places = places["a"]
-                b_places = patch_places + places["b"]
         if not a_places and not b_places:
             pf_self.confirm_b_into_c()
             if pf_self.cross_pair_patches and not patch_places:
@@ -1319,14 +1294,22 @@ def simulate_two_pairs_maze(pf1, pf2, true_mines, overlap=0.1, path_width=0.0, s
         step_pair(1)
         if hit_cap:
             break
-        _sync_approach_target(pf1, pf2)
         step_pair(2)
         if hit_cap:
             break
-        _sync_approach_target(pf2, pf1)
         if record_frames:
             frames.append(_snapshot_two_pair_frame(pf1, pf2, rounds, discovered, visited))
         if pair_state[1]["done"] and pair_state[2]["done"]:
+            # Both halves are covered, but the pairs can stop in different columns of the
+            # midline row, leaving an unphotographed gap at the one point the combined
+            # answer has to be continuous (see join_cross_pair_seam). Close it once, then
+            # keep flying pair 1 until that stretch drains.
+            if seam_attempts < MAX_SEAM_ATTEMPTS:
+                seam_attempts += 1
+                other_end = pf2.get_maze_path()[-1] if pf2.get_maze_path() else None
+                if other_end is not None and pf1.join_cross_pair_seam((other_end.x, other_end.y)):
+                    pair_state[1]["done"] = False
+                    continue
             break
 
     gambler1_distance = path_length([(x, y) for x, y, _r, label, pid in visited if label == "A" and pid == 1])
@@ -1361,6 +1344,7 @@ def simulate_two_pairs_maze_round_robin(
     pf1, pf2, true_mines, overlap=0.1, path_width=0.0, shape_size_ft=None,
     max_steps=300, max_waypoints=6000, point_a_mode="pinned",
     granular_confirm=False, record_frames=False, use_helper_nodes=True,
+    endgame_replan_ft=None,
 ):
     """
     Same setup, mine-relay, and per-queue reroute logic as
@@ -1396,26 +1380,14 @@ def simulate_two_pairs_maze_round_robin(
         shape_along_ft, shape_across_ft = shape_size_ft, shape_size_ft
     half_along, half_across = shape_along_ft / 2.0, shape_across_ft / 2.0
 
-    def _sync_approach_target(pf_self, pf_other):
-        if not pf_self.maze_a_path:
-            return
-        a0 = pf_self.maze_a_path[0]
-        pos = (a0.x, a0.y)
-        if any(
-            abs(pos[0] - s.x) < 1e-6 and abs(pos[1] - s.y) < 1e-6
-            for s in pf_self.startingNodes
-        ):
-            return
-        last = pf_other._last_synced_target
-        if last is not None and abs(last[0] - pos[0]) < 1e-6 and abs(last[1] - pos[1]) < 1e-6:
-            return
-        pf_other.retarget_approach_target(pos[0], pos[1])
-        pf_other._last_synced_target = pos
-
+    # Fixed home-half boundary, not a moving cross-pair-chase target --
+    # see set_cross_pair_home_boundary's own docstring and
+    # simulate_two_pairs_maze's identical setup for the full rationale.
+    midline_y = HEIGHTOFFIELD / 2.0
+    pf1.set_cross_pair_home_boundary(midline_y)
+    pf2.set_cross_pair_home_boundary(midline_y)
     pf1.start_maze_navigation()
     pf2.start_maze_navigation()
-    _sync_approach_target(pf1, pf2)
-    _sync_approach_target(pf2, pf1)
 
     discovered = {}
     visited = []
@@ -1427,6 +1399,12 @@ def simulate_two_pairs_maze_round_robin(
         1: {"last_added_obstacle_a": None, "last_rewound_a": False, "last_rewound_b": False, "done": False},
         2: {"last_added_obstacle_a": None, "last_rewound_a": False, "last_rewound_b": False, "done": False},
     }
+    # Flying the seam can itself discover a mine and reroute, moving the endpoint and
+    # reopening the gap -- so retry, bounded. One shot left 2/8 seeds still gapped.
+    seam_attempts = 0
+    MAX_SEAM_ATTEMPTS = 4
+    replanned = {1: False, 2: False}
+    endgame_stats = {1: None, 2: None}
     pfs = {1: pf1, 2: pf2}
 
     def visit_one(pair_id, lat, lon, label):
@@ -1490,6 +1468,31 @@ def simulate_two_pairs_maze_round_robin(
             break
         pair_state[1]["done"] = pair_state[2]["done"] = False
 
+        # [TRIAL] Endgame reset: once a pair's frontier is within endgame_replan_ft of its
+        # boundary, throw away the accumulated detour/patch scaffolding and lay one clean
+        # route to the OTHER pair's current route end, split so the gambler works it
+        # backwards from the far end while the assistant works forward. One shot per pair;
+        # a mine found afterwards reverts to the normal rules. Off unless asked for.
+        if endgame_replan_ft is not None:
+            for pid, pf_self, pf_other in ((1, pf1, pf2), (2, pf2, pf1)):
+                if replanned[pid] or not pf_self.maze_a_path:
+                    continue
+                # Measure progress by the CONFIRMED frontier. Segment A always ends at
+                # the boundary by construction (it targets the ending row), so using A's
+                # far end fires on round 1, before any work exists to re-split.
+                _sy, _by = _home_half_bounds(pf_self)
+                _front = (pf_self.maze_confirmed_path[-1] if pf_self.maze_confirmed_path
+                          else pf_self.startingNodes[0])
+                if abs(_front.y - _by) > endgame_replan_ft:
+                    continue
+                other_path = pf_other.get_maze_path()
+                if not other_path:
+                    continue
+                replanned[pid] = True
+                endgame_stats[pid] = pf_self.replan_toward(
+                    (other_path[-1].x, other_path[-1].y), backwards=True
+                )
+
         queues = {}
         # Snapshot each pair's OWN maze_b_path identity (not content -- a
         # reroute always replaces the list object wholesale, see
@@ -1522,24 +1525,6 @@ def simulate_two_pairs_maze_round_robin(
             a_places = places["a"]
             b_places = patch_places + places["b"]
             b_path_snapshot[pair_id] = pf_self.maze_b_path
-            if not a_places and not b_places:
-                # See the matching comment in simulate_two_pairs_maze's
-                # step_pair: a still-queued cross-pair retarget only ever
-                # gets retried inside confirm_b_into_c/advance_b_prefix_into_c,
-                # both of which no-op when this pair's own queue is already
-                # empty -- so retry it explicitly before declaring done, or
-                # a genuinely unfinished convergence goes permanently idle.
-                if pf_self._pending_approach_target is not None:
-                    pf_self._try_apply_pending_approach_target()
-                    places = pf_self.get_places_to_check_maze(
-                        overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
-                    )
-                    patch_places = pf_self.get_cross_pair_patch_places_to_check(
-                        overlap=overlap, path_width=path_width, shape_size_ft=shape_size_ft
-                    ) if pf_self.cross_pair_patches else []
-                    a_places = places["a"]
-                    b_places = patch_places + places["b"]
-                    b_path_snapshot[pair_id] = pf_self.maze_b_path
             if not a_places and not b_places:
                 pf_self.confirm_b_into_c()
                 if pf_self.cross_pair_patches and not patch_places:
@@ -1578,6 +1563,15 @@ def simulate_two_pairs_maze_round_robin(
                 queues[(pair_id, "B")] = b_places
 
         if pair_state[1]["done"] and pair_state[2]["done"]:
+            # Both halves covered. The pairs can stop in different columns of the midline
+            # row, leaving an unphotographed gap at the one point the combined answer must
+            # be continuous (see join_cross_pair_seam). Retry-bounded, because flying the
+            # seam can itself discover a mine and move the endpoint again.
+            if seam_attempts < MAX_SEAM_ATTEMPTS:
+                seam_attempts += 1
+                other_end = pf2.get_maze_path()[-1] if pf2.get_maze_path() else None
+                if other_end is not None and pf1.join_cross_pair_seam((other_end.x, other_end.y)):
+                    continue
             break
 
         idx = {key: 0 for key in queues}
@@ -1683,11 +1677,11 @@ def simulate_two_pairs_maze_round_robin(
             if not reacted[pair_id]:
                 _react(pair_id)
 
-        _sync_approach_target(pf1, pf2)
-        _sync_approach_target(pf2, pf1)
-
         if record_frames:
             frames.append(_snapshot_two_pair_frame(pf1, pf2, rounds, discovered, visited))
+        # `done` is only ever set while the queues are built at the top of this loop,
+        # so the seam join lives there (see the matching block above). This is just the
+        # ordinary end-of-round fallthrough.
         if pair_state[1]["done"] and pair_state[2]["done"]:
             break
 
@@ -1716,6 +1710,7 @@ def simulate_two_pairs_maze_round_robin(
         "total_distance": gambler1_distance + assistant1_distance + gambler2_distance + assistant2_distance,
         "hit_cap": hit_cap,
         "frames": frames,
+        "endgame_replan": dict(endgame_stats),
     }
 
 
@@ -1904,6 +1899,169 @@ def test_leader_follower_terminates_cleanly(shape_size_ft=None, record_frames=Fa
         f"hit_cap={result['hit_cap']} -> {'PASS' if ok else 'FAIL'}"
     )
     return ok, pf, true_mines, result
+
+
+def test_mine_grid_alignment():
+    """
+    A mine's modeled danger zone sits centred on the competition square it was reported in.
+
+    protoMine sizes its own block grid from protoMine.safety_cells; Pathfinder.
+    add_discovered_mine derives that grid's origin offset (`mid`) from the SAME helper.
+    If the two ever diverge, every mine's node field AND cell mask land off-centre --
+    a real regression this caught at -2ft (grid sized ceil(r/2) cells while mid still
+    used int(r*2+1)//2), which no other test in this file would have noticed.
+
+    Pure arithmetic against real protoMine objects; no simulation, runs instantly.
+    """
+    bad = []
+    for radius in (1, 3, 4.92, 6):
+        mid = safety_cells(radius)
+        for Xsquare, Ysquare in ((10, 10), (25, 40), (3, 111)):
+            mine = protoMine(
+                radius, (0.0, 0.0),
+                (WIDTHOFSQUARE * (Xsquare - mid), WIDTHOFSQUARE * (Ysquare - mid)),
+            )
+            want = (Xsquare * WIDTHOFSQUARE + WIDTHOFSQUARE / 2,
+                    Ysquare * WIDTHOFSQUARE + WIDTHOFSQUARE / 2)
+            got = tuple(mine.mineLocation)
+            if abs(got[0] - want[0]) > 1e-9 or abs(got[1] - want[1]) > 1e-9:
+                bad.append((radius, (Xsquare, Ysquare), got, want))
+    ok = not bad
+    print(f"test_mine_grid_alignment: cases=12 misaligned={len(bad)} -> {'PASS' if ok else 'FAIL'}")
+    for radius, square, got, want in bad:
+        print(f"    r={radius} square={square} got={got} want={want}")
+    # Assert, don't just return: a function that returns False still counts as a PASS
+    # under pytest (it warns and moves on). Every other test_* in this directory has
+    # that shape, which is why pointing pytest here reports green unconditionally.
+    assert ok, f"{len(bad)} mine grid misalignments: {bad}"
+    return ok
+
+
+# How far a pair's route may sit past its own home-half boundary before that counts as a
+# crossing. A mine centred ON the midline has a hull reaching ~5ft from its centre
+# (safety_cells(3) -> a 5x5-cell grid), so rounding it to reach the midline row puts tangent
+# nodes up to ~5ft over; a merged pair of midline mines roughly doubles that. 12ft admits
+# those detours and still fails the failure mode this check exists for -- the old
+# chase-the-other-pair bug crossed 100+ft. Applied to EVERY node, seam included: an earlier
+# version excluded seam nodes instead, and that exclusion let a 115ft excursion pass silently.
+HOME_HALF_TOLERANCE_FT = 12.0
+
+
+def _home_half_bounds(pf):
+    """
+    (start_y, boundary_y) for pf's own half of the field.
+
+    Both come from pf's own buildNodeField-time state -- startingNodes[0] (its launch
+    edge) and _original_ending_nodes[0] (the row set_cross_pair_home_boundary installed)
+    -- so this needs no field-dimension constants and works for either edge assignment.
+    Shared by test_pair_stays_in_home_half and sweep_two_pairs so they can't drift apart.
+    """
+    return pf.startingNodes[0].y, pf._original_ending_nodes[0].y
+
+
+def test_pair_stays_in_home_half(pf, tolerance=HOME_HALF_TOLERANCE_FT):
+    """
+    Every node on pf's committed route stays within `tolerance` of its own home half.
+
+    The concrete form of "two pairs split the field instead of each crossing all of it".
+    Only meaningful after set_cross_pair_home_boundary; for a single-pair run the
+    boundary is the field's far edge, so this passes trivially. See
+    HOME_HALF_TOLERANCE_FT for why the tolerance is what it is and applies to all nodes.
+    """
+    start_y, boundary_y = _home_half_bounds(pf)
+    worst = 0.0
+    count = 0
+    for n in pf.get_maze_path():
+        over = (n.y - boundary_y) if boundary_y >= start_y else (boundary_y - n.y)
+        worst = max(worst, over)
+        if over > tolerance:
+            count += 1
+    ok = count == 0
+    print(
+        f"test_pair_stays_in_home_half: boundary_y={boundary_y:.1f} violations={count} "
+        f"worst_over={max(worst, 0.0):.1f}ft (tolerance {tolerance:.0f}ft) "
+        f"-> {'PASS' if ok else 'FAIL'}"
+    )
+    assert ok, f"{count} nodes more than {tolerance}ft past the home-half boundary"
+    return ok
+
+
+def sweep_two_pairs(driver="rr", n_seeds=25, n_mines=NUM_TRUE_MINES, first_seed=1,
+                    shape_size_ft=(6.0, 4.0), verbose=True):
+    """
+    Two-pair safety sweep: the permanent replacement for the ad-hoc throwaway scripts.
+
+    Takes:
+    - driver: "rr" for simulate_two_pairs_maze_round_robin, "seq" for simulate_two_pairs_maze.
+    - n_seeds / first_seed / n_mines: minefield range to sweep.
+
+    Does: fresh pf1("bottom")/pf2("top") per seed with ONE shared seen_tracker and
+    mineFieldTracker (same physical field), runs the driver, and tallies the five
+    counters that actually indicate a defect.
+
+    Returns: {"exceptions", "hit_cap", "coverage_fail", "bad_edges", "home_half",
+    "worst_over", "seeds"}. A clean run is every counter 0 -- treat anything else as a
+    real finding and track it down to a seed before trusting the code.
+
+    Why a real sweep and not a single seed: a bug that reproduces ~40% of the time was
+    once invisible across 200 seeds because it always resolved benignly by timing.
+    Cross-check a denser n_mines before concluding a path is unreachable.
+    """
+    sim = simulate_two_pairs_maze_round_robin if driver == "rr" else simulate_two_pairs_maze
+    totals = {"exceptions": 0, "hit_cap": 0, "coverage_fail": 0, "bad_edges": 0,
+              "home_half": 0, "empty_path": 0, "worst_over": 0.0, "seeds": n_seeds}
+
+    for seed in range(first_seed, first_seed + n_seeds):
+        try:
+            pf1 = build_empty_pathfinder("bottom")
+            pf2 = build_empty_pathfinder("top")
+            pf2.seen_tracker = pf1.seen_tracker
+            pf2.mineFieldTracker = pf1.mineFieldTracker
+            result = sim(pf1, pf2, generate_true_minefield(n=n_mines, seed=seed),
+                         shape_size_ft=shape_size_ft)
+        except Exception as exc:  # a crash is itself the finding -- keep sweeping
+            totals["exceptions"] += 1
+            if verbose:
+                print(f"  seed {seed:>3}: EXCEPTION {type(exc).__name__}: {exc}")
+            continue
+
+        hit_cap = bool(result["hit_cap"])
+        # A pair ending with NO route passes every other counter vacuously (nothing to be
+        # unsafe or unseen), so it has to be counted on its own.
+        empty = sum(1 for pf in (pf1, pf2) if not pf.get_maze_path())
+        bad_edges = unseen = home_half = 0
+        worst = 0.0
+        for pf in (pf1, pf2):
+            path = pf.get_maze_path()
+            bad_edges += _bad_edge_count(pf, path)
+            unseen += (pf.rasterize_node_path(path) & ~pf.seen_tracker).count()
+            start_y, boundary_y = _home_half_bounds(pf)
+            for n in path:
+                over = (n.y - boundary_y) if boundary_y >= start_y else (boundary_y - n.y)
+                if over > HOME_HALF_TOLERANCE_FT:
+                    home_half += 1
+                    worst = max(worst, over)
+
+        totals["hit_cap"] += hit_cap
+        totals["coverage_fail"] += unseen > 0
+        totals["bad_edges"] += bad_edges
+        totals["home_half"] += home_half
+        totals["empty_path"] += empty
+        totals["worst_over"] = max(totals["worst_over"], worst)
+        if verbose:
+            flag = "  <-- FLAG" if (hit_cap or unseen or bad_edges or home_half or empty) else ""
+            print(f"  seed {seed:>3}: hit_cap={int(hit_cap)} unseen={unseen} "
+                  f"bad_edges={bad_edges} home_half={home_half} empty_path={empty}{flag}", flush=True)
+
+    clean = not any(totals[k] for k in
+                    ("exceptions", "hit_cap", "coverage_fail", "bad_edges", "home_half", "empty_path"))
+    print(
+        f"sweep_two_pairs[{driver}]: seeds={n_seeds} n_mines={n_mines} "
+        + " ".join(f"{k}={totals[k]}" for k in
+                   ("exceptions", "hit_cap", "coverage_fail", "bad_edges", "home_half", "empty_path"))
+        + f" worst_over={totals['worst_over']:.1f}ft -> {'CLEAN' if clean else 'NOT CLEAN'}"
+    )
+    return totals
 
 
 def render_workflow_diagram(pf, true_mines, result, save_path):
@@ -2676,18 +2834,45 @@ def main():
     # square, and record per-replan snapshots for the GIF below.
     shape_size_ft = (6.0, 4.0)
 
+    # Cheapest check first: pure arithmetic, and a failure here invalidates every
+    # simulation result below it (mine positions would all be off-centre).
+    results = [test_mine_grid_alignment()]
+
     t0 = time.perf_counter()
     term_ok, pf, true_mines, result = test_workflow_terminates_cleanly(
         shape_size_ft=shape_size_ft, record_frames=True
     )
     elapsed = time.perf_counter() - t0
 
-    results = [
+    results += [
         term_ok,
         test_final_queue_is_empty(pf),
         test_seen_covers_final_path(pf),
         test_discovered_mines_match_true_mines_found(pf, true_mines, result),
     ]
+
+    # Single pair, then both two-pair drivers. A few seeds each keeps the default run
+    # usable (~20s/seed); the real gate is a wider sweep_two_pairs(n_seeds=150+) run
+    # explicitly after any change to the maze or cross-pair logic.
+    print()
+    pair_ok, pair_pf, _pair_mines, _pair_result = test_pair_terminates_cleanly(
+        shape_size_ft=shape_size_ft
+    )
+    results += [
+        pair_ok,
+        test_pair_seen_covers_final_path(pair_pf),
+        test_pair_flown_path_is_safe(pair_pf),
+        test_pair_stays_in_home_half(pair_pf),
+    ]
+
+    print()
+    for driver in ("seq", "rr"):
+        totals = sweep_two_pairs(driver=driver, n_seeds=3, shape_size_ft=shape_size_ft)
+        results.append(not any(
+            totals[k] for k in
+            ("exceptions", "hit_cap", "coverage_fail", "bad_edges", "home_half", "empty_path")
+        ))
+
     print()
     print(f"{sum(results)}/{len(results)} passed")
     print(

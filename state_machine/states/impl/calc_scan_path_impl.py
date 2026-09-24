@@ -88,6 +88,29 @@ OVERLAP = 0.1
 ASSISTANT_IDLE_TIMEOUT_S = 30.0
 
 
+def _check_no_valid_path(self: CalcScanPath, pf: Pathfinder) -> None:
+    """Call right after start_maze_navigation(). get_shortest_path() (what
+    seeds maze_a_path there) returns [] rather than raising if no route
+    connects any startingNode to any endingNode at all -- see
+    _dijkstra_path_with_hysteresis's own docstring. Left unchecked, that
+    silently looks IDENTICAL to a genuinely finished scan by the time
+    get_places_to_check_maze runs (both are "a_places and b_places are
+    both empty"), so a completely mine-blocked field would report
+    calc_scan_path_complete and fly home having covered nothing, with no
+    distinguishing signal anywhere. Sets Drone.no_valid_path_found so
+    AppShare's own path file/push can say so explicitly instead of
+    reporting an empty path the same way a real "nothing left to cover"
+    completion does."""
+    if not pf.maze_a_path:
+        self.drone.no_valid_path_found = True
+        flight_log.event("no_valid_path_found", role=self.flight_settings.role.name)
+        logging.error(
+            "drone %d: no path exists from the field entry to any ending node -- "
+            "field may be fully mine-blocked",
+            self.flight_settings.current_drone_ID,
+        )
+
+
 def _maze_started(pf: Pathfinder) -> bool:
     """Whether start_maze_navigation() has already run for this mission --
     calling it again would silently wipe out real progress (maze_
@@ -192,40 +215,6 @@ async def _drain_photo_reports(self: CalcScanPath, pf: Pathfinder) -> None:
                 pf.reroute_b_segment()
 
 
-def _apply_point_a_sync(self: CalcScanPath, pf: Pathfinder) -> None:
-    """Applies a staged CROSS_PAIR_POINT_A_SYNC (see Drone.
-    pending_point_a_sync's own docstring), retargeting this pair's
-    segment-A search onto the other pair's current point_A instead of
-    the field's fixed far edge -- see Pathfinder.retarget_approach_
-    target's own docstring for the mechanism, and
-    flight/pathfinding/tests/droneWorkflowTest.py's _sync_approach_target
-    for the pathfinder-only reference version of this same idea."""
-    sync = self.drone.pending_point_a_sync
-    self.drone.pending_point_a_sync = None
-    if sync is None:
-        return
-    lat, lon = sync
-    x, y = pf.coord_converter.latlon_to_local(lat, lon)
-    pf.retarget_approach_target(x, y)
-
-
-async def _send_point_a_sync_if_changed(self: CalcScanPath, pf: Pathfinder) -> None:
-    """Sends this pair's own current point_A (maze_a_path[0]) to the
-    other pair/solo drone via CROSS_PAIR_POINT_A_SYNC, but only if it
-    actually moved since the last send -- point_A only changes as a side
-    effect of a mine-driven reroute (including a retarget_approach_target
-    of our own), so most rounds are a no-op here, same as
-    _sync_approach_target's own epsilon guard."""
-    partner_id = self.flight_settings.cross_pair_partner_id
-    if partner_id is None or not pf.maze_a_path:
-        return
-    a0 = pf.maze_a_path[0]
-    pos = pf.coord_converter.local_to_latlon(a0.x, a0.y)
-    last = self.drone.last_synced_point_a
-    if last is not None and abs(last[0] - pos[0]) < 1e-9 and abs(last[1] - pos[1]) < 1e-9:
-        return
-    await self.interdrone.send_cross_pair_point_a_sync(pos[0], pos[1], (partner_id,))
-    self.drone.last_synced_point_a = pos
 
 
 def _drain_verification_waypoints(self: CalcScanPath) -> list[Waypoint]:
@@ -251,9 +240,9 @@ async def _run_sologambler(self: CalcScanPath) -> State:
     pf = Pathfinder.instance
     if not _maze_started(pf):
         pf.start_maze_navigation()
+        _check_no_valid_path(self, pf)
 
     await _drain_cross_pair_mines(self, pf)
-    _apply_point_a_sync(self, pf)
     verification_waypoints = _drain_verification_waypoints(self)
 
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
@@ -270,7 +259,6 @@ async def _run_sologambler(self: CalcScanPath) -> State:
         return ExpandNodes(self.drone, self.flight_settings, self.interdrone)
 
     self.drone.resetWaypoints(_build_waypoints(self.drone.id, a_places, b_places) + verification_waypoints)
-    await _send_point_a_sync_if_changed(self, pf)
     return Scan(self.drone, self.flight_settings, self.interdrone)
 
 
@@ -286,10 +274,10 @@ async def _run_gambler(self: CalcScanPath) -> State:
     pf = Pathfinder.instance
     if not _maze_started(pf):
         pf.start_maze_navigation()
+        _check_no_valid_path(self, pf)
 
     await _drain_cross_pair_mines(self, pf)
     await _drain_photo_reports(self, pf)
-    _apply_point_a_sync(self, pf)
     verification_waypoints = _drain_verification_waypoints(self)
 
     places = pf.get_places_to_check_maze(overlap=OVERLAP, shape_size_ft=SHAPE_SIZE_FT)
@@ -321,7 +309,6 @@ async def _run_gambler(self: CalcScanPath) -> State:
         b_places = []
 
     self.drone.resetWaypoints(_build_waypoints(self.drone.id, a_places, b_places) + verification_waypoints)
-    await _send_point_a_sync_if_changed(self, pf)
     return Scan(self.drone, self.flight_settings, self.interdrone)
 
 

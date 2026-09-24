@@ -10,9 +10,27 @@ to their respective fields at their global location
 Yes it is intended behavior to generate vertices outside the given bounds, nodegraph handles out of bounds checking
 """
 
+import math
+
 from flight.pathfinding.blockField.field_grid import *
 
 SQUARE_SIDE_LENGTH_FT = 2
+
+
+def safety_cells(radius_ft: float) -> int:
+    """
+    Cells from a mine's centre cell out to the edge of its safety radius.
+
+    - ceil, not round: a radius that isn't a whole number of cells must never have its
+      outer edge clipped by an undersized grid.
+    - The one derivation of this count. placeholderGridSideLength below and
+      Pathfinder.add_discovered_mine's `mid` offset BOTH come from here -- they have to
+      agree, or a mine's grid ends up centred on a different cell than its offset assumes
+      (that drift put every mine's danger zone 2ft off-target).
+    """
+    return math.ceil(radius_ft / SQUARE_SIDE_LENGTH_FT)
+
+
 from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Circle
@@ -73,8 +91,16 @@ class protoMine:
     def __init__(self, safteyRadius, mineLatLon, centerGridOffset):
         self.mineLatLon = mineLatLon
         self.centerGridOffset = centerGridOffset
-        self.safteyBlockRadius = round(safteyRadius)
-        self.placeholderGridSideLength = safteyRadius * 2 + 1
+        # The real, continuous danger-zone radius in feet -- passed straight
+        # to circle_rect_intersects below (its own signature already takes
+        # r: float), not quantized to a whole number of grid cells. Used to
+        # be `round(safteyRadius)`, silently snapping any fractional-foot
+        # safety radius (e.g. 1.5m == 4.92ft) to the nearest whole foot
+        # before it ever reached the actual geometry test.
+        self.safteyRadius = safteyRadius
+        # Grid must be a whole number of cells (it backs a numpy array). Cell count comes
+        # from safety_cells, shared with add_discovered_mine's `mid` -- see its docstring.
+        self.placeholderGridSideLength = safety_cells(safteyRadius) * 2 + 1
         self.blockMatrix = np.zeros(
             (self.placeholderGridSideLength, self.placeholderGridSideLength), dtype=int
         ).tolist()
@@ -106,7 +132,7 @@ class protoMine:
                     protoMine.circle_rect_intersects(
                         self.mineLocation[0],
                         self.mineLocation[1],
-                        self.safteyBlockRadius,
+                        self.safteyRadius,
                         xCoord,
                         yCoord,
                         SQUARE_SIDE_LENGTH_FT,
@@ -173,7 +199,7 @@ class protoMine:
         ax.add_patch(
             Circle(
                 (self.mineLocation[0], self.mineLocation[1]),
-                self.safteyBlockRadius,
+                self.safteyRadius,
                 color="green",
                 alpha=0.5,
             )

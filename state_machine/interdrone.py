@@ -891,32 +891,6 @@ class Interdrone:
 
         return
 
-    async def send_cross_pair_point_a_sync(
-        self, point_a_lat: float, point_a_lon: float, drones_to_send_data: tuple[int, ...]
-    ) -> None:
-        """
-        Message ID = 604
-        Tells the other pair/solo drone where this pair's segment-A search
-        currently ends (Pathfinder.maze_a_path[0]), so it can retarget its
-        own approach onto this point instead of the field's far edge (see
-        Pathfinder.retarget_approach_target). Not acked, not resent on
-        failure -- same reasoning as report_position: a continuous stream
-        where a dropped one is superseded by the next point_A move.
-        """
-        point_a_sync_message: Message = Message.create(
-            id=MessageType.CROSS_PAIR_POINT_A_SYNC,
-            drones_to_send_data=drones_to_send_data,
-            sender_id=self.flight_settings.current_drone_ID,
-            data={
-                "point_a_lat": point_a_lat,
-                "point_a_lon": point_a_lon,
-            },
-        )
-
-        self.send(point_a_sync_message)
-
-        return
-
     async def send_paths_to_app(self, path: str, map_data_ready: bool = True) -> None:
         """
         Message ID = 420
@@ -1998,22 +1972,6 @@ class Interdrone:
                                 message.sender_id,
                                 message.data["mine_obstacle_hash"][:12],
                             )
-                        case MessageType.CROSS_PAIR_POINT_A_SYNC:
-                            # Same stage-+-flag rule as CROSS_PAIR_MINE_RELAY
-                            # -- Pathfinder.retarget_approach_target touches
-                            # the live graph (adds/removes a floating node,
-                            # recomputes maze_a_path/maze_b_path), so it can
-                            # only run synchronously from CalcScanPath (see
-                            # its own _apply_point_a_sync), never from this
-                            # loop's own concurrent task. A single slot, not
-                            # a queue -- see Drone.pending_point_a_sync's own
-                            # docstring for why only the latest matters. Not
-                            # acked (see send_cross_pair_point_a_sync).
-                            self.drone.pending_point_a_sync = (
-                                message.data["point_a_lat"],
-                                message.data["point_a_lon"],
-                            )
-                            self.drone.replan_needed = "cross_pair_point_a_sync"
                         case MessageType.EMERGENCY_LAND:
                             # Duplicates are expected, not exceptional: drone 1
                             # fans the command out, the client loops
