@@ -1,7 +1,7 @@
 """
 Deep-analysis testbench: drives the REAL state machine (Start -> Takeoff ->
 CalcScanPath -> Scan -> DroneShare -> ... -> ExpandNodes -> EndRun ->
-AppShare -> Recall -> Land) through a simulated one-drone (SOLOGAMBLER)
+AppShare -> Recall -> Land) through a simulated one-drone
 mission, to answer "does a one-drone configuration actually work" by
 running it, not just reading it.
 
@@ -51,7 +51,7 @@ from vision.common.detection import Detection
 from vision.common.drone_coordinates import DronePose, GimbalPose
 from vision.common.image import Image as VisionImage
 
-from flight.pathfinder import Pathfinder, WIDTHOFFIELD, HEIGHTOFFIELD
+from flight.pathfinding.iarc_report import format_iarc_path
 
 from state_machine.drone import Drone, RANGEFINDER3_MAVLINK_ID
 from state_machine.flight_settings import FlightSettings, SimMode
@@ -71,6 +71,9 @@ _BASE_LAT, _BASE_LON = 36.0, -95.9
 _M_PER_LAT = 111320.0
 _M_PER_LON = 111320.0 * math.cos(math.radians(_BASE_LAT))
 _FT_TO_M = 0.3048
+# The simulated field, in feet: 80 x 300 (the IARC field).
+WIDTHOFFIELD = 80.0
+HEIGHTOFFIELD = 300.0
 
 
 def _local_to_latlon(x_ft: float, y_ft: float) -> tuple[float, float]:
@@ -360,7 +363,9 @@ async def _autopilot(interdrone: MockInterdrone) -> None:
 # ======================================================================
 # Driver
 # ======================================================================
-async def run_simulation(true_mines_local: list[tuple[float, float]], timeout_s: float = 240.0):
+async def run_simulation(
+    true_mines_local: list[tuple[float, float]], timeout_s: float = 240.0
+):
     corners = _field_corners()
     start_lat, start_lon = _local_to_latlon(WIDTHOFFIELD / 2, 0)
     true_mines_latlon = [_local_to_latlon(x, y) for x, y in true_mines_local]
@@ -425,7 +430,29 @@ async def run_simulation(true_mines_local: list[tuple[float, float]], timeout_s:
     }
 
 
-def _report(result: dict) -> None:
+def check_reported_route(planner, mission_path) -> list[str]:
+    """Problems with a reported route (empty if none): it must be continuous in the
+    strict IARC format, run from one field edge to the other, and avoid every mine this
+    planner knows about."""
+    if not mission_path:
+        return ["no route reported"]
+    problems = []
+    pts = [planner.latlon_to_local(lat, lon) for lat, lon in mission_path]
+    try:
+        format_iarc_path(pts, strict=True, field_w=planner.field_w, field_h=planner.field_h)
+    except ValueError as exc:
+        problems.append(f"not continuous: {exc}")
+    ys = sorted((pts[0][1], pts[-1][1]))
+    if ys[0] > 0.01 or abs(ys[1] - planner.field_h) > 0.01:
+        problems.append(f"does not span the field: ends at y={pts[0][1]:.2f} and y={pts[-1][1]:.2f}")
+    if planner.planner.zones.crosses(pts):
+        problems.append("crosses a known mine")
+    return problems
+
+
+def _report(result: dict) -> bool:
+    """Prints the report. Returns True iff the run completed (and, path-node, the reported
+    route checks out)."""
     print()
     print("=" * 70)
     print("ONE-DRONE STATE MACHINE SIMULATION -- REPORT")
@@ -437,38 +464,40 @@ def _report(result: dict) -> None:
     else:
         print("ERROR                 : none -- ran to completion")
 
-    pf = Pathfinder.instance
-    if pf is not None:
-        discovered = len(pf.protoMines)
+    ok = result["error"] is None
+    drone = result["drone"]
+    planner = drone.planner
+    if planner is not None:
         true_count = len(result["true_mines_latlon"])
-        print(f"mines: discovered={discovered} / true={true_count}")
+        print(f"mines: discovered={len(planner.planner.discovered)} / true={true_count}")
+        print(f"reported route        : {len(drone.mission_path)} points")
         try:
-            path = pf.get_maze_path()
-            print(f"final route length    : {len(path)} nodes")
             print("iarc path (first 5 lines):")
-            for line in pf.get_iarc_path(buffer_width=1).splitlines()[:5]:
+            for line in drone.get_mission_iarc_path(buffer_width=1).splitlines()[:5]:
                 print(f"    {line}")
         except Exception as exc:  # noqa: BLE001
-            print(f"get_iarc_path/get_maze_path failed: {exc}")
-        print(f"seen cells            : {pf.seen_tracker.count()}")
+            print(f"get_mission_iarc_path failed: {exc}")
+        problems = check_reported_route(planner, drone.mission_path)
+        print(f"route check           : {'; '.join(problems) if problems else 'ok'}")
+        ok = ok and not problems
     else:
-        print("mines: Pathfinder.instance is None -- configureField never ran")
+        print("no planner -- configureField never ran")
+        ok = False
 
-    camera = result["drone"].camera
+    camera = drone.camera
     if camera is not None:
         print(f"camera captures taken : {camera.capture_count}")
     print("=" * 70)
+    return ok
 
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING)
     # A handful of true mines spread through the field so DroneShare's
-    # detection/integration path (Rule 1 and Rule 2 both) gets exercised,
-    # not just the pure-coverage sweep.
+    # detection/integration path gets exercised, not just the pure-coverage sweep.
     true_mines_local = [(20.0, 40.0), (55.0, 120.0), (35.0, 220.0)]
     result = asyncio.run(run_simulation(true_mines_local))
-    _report(result)
-    if result["error"] is not None:
+    if not _report(result):
         sys.exit(1)
 
 

@@ -1,0 +1,23 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+flight        7       6       1      0     312s     532s
+pytest        1       0       0      1      21s      21s
+TOTAL         8                            312s
+
+FAILURES (1):
+--- flight multi-4-dense: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       error       : none
+       mines found : 41 / 60 true
+       seen cells  : 2186
+       captures    : 181
+    -- drone 4 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 41 / 60 true
+       seen cells  : 2192
+       captures    : 1339
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\t1\verify_logs

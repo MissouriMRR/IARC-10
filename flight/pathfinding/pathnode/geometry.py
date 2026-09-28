@@ -76,19 +76,35 @@ class ZoneMap:
         self.vertices = np.zeros((0, 2))
         self.vertex_gid = []
         self._adj = []            # per vertex: list of (neighbour index, length)
+        self._merged_into = {}    # gid -> the gid of the group it was merged into
+        self.last_added = None
 
     # -- zones ---------------------------------------------------------------------
     def add_mine(self, x, y):
         """Add a mine, merging it with any group it overlaps or touches. Returns its gid."""
-        z = mine_zone(x, y)
+        return self.add_zone(mine_zone(x, y))
+
+    def add_zone(self, z):
+        """Add any zone polygon (a mine's, or a blocked square), merging it with any group it
+        overlaps or touches. Returns its gid. self.last_added is the new zone grown by the
+        margin: what just became off limits."""
         grown = z.buffer(VISIBILITY_MARGIN_FT)
         merged = [gid for gid, g in self.groups.items()
                   if g.buffer(VISIBILITY_MARGIN_FT).intersects(grown)]
-        geom = unary_union([z] + [self.groups.pop(gid) for gid in merged])
+        geom = unary_union([z] + [self.groups.pop(g) for g in merged])
         gid = self._next_gid
         self._next_gid += 1
+        for g in merged:
+            self._merged_into[g] = gid
         self.groups[gid] = geom
+        self.last_added = grown
         self._rebuild()
+        return gid
+
+    def resolve(self, gid):
+        """The group a (possibly since merged) gid belongs to now."""
+        while gid in self._merged_into:
+            gid = self._merged_into[gid]
         return gid
 
     def contains(self, x, y):

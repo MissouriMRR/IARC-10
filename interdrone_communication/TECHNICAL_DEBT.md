@@ -20,6 +20,12 @@ the source when this file was written.
 Line numbers are from the working tree on branch `poif-test` at the recording date and will
 drift; treat them as starting points, not addresses.
 
+**Update 2026-09-24.** The legacy maze planner (`flight/pathfinder.py`) has been taken out of
+the flight code and archived under `archive/legacy_planner/`. Findings 9, 11, 18 and 19 were
+about mechanisms that existed only for it and no longer exist -- marked RESOLVED below. Where
+other findings name `Pathfinder.instance`, read "the drone's planner" (`Drone.planner`); line
+numbers throughout are now further out of date.
+
 ---
 
 ## P0 — Safety-relevant
@@ -187,8 +193,8 @@ Concrete duplication:
 
 Error handling is inconsistent in three independent ways: a missing `DroneState` is a bare
 `print` in 4 cases and a silent skip in ~10; `message.data` access is defensive in 2 and
-unguarded in ~25; `Pathfinder.instance is None` is guarded in `FIELD_CHECKSUM` (`:1932`) and
-nowhere else.
+unguarded in ~25; a missing planner (`Drone.planner is None`) is guarded in `FIELD_CHECKSUM`
+and nowhere else.
 
 There is **no `case _:` default**, so an unhandled or `UNKNOWN` message is swallowed with zero
 logging. That is what allowed `MessageType.PING` to have no case at all until the multi-drone
@@ -200,6 +206,9 @@ harness happened to surface it.
 parameterised entry.
 
 ### 9. Verification waypoints can be silently discarded mid-flight after being acked
+**RESOLVED (2026-09-24)** — verification waypoints and `CROSS_PAIR_PATCHED_SPAN` existed only
+for the legacy planner and were removed with it.
+
 `VERIFIED` — `interdrone.py:1989` → `states/impl/calc_scan_path_impl.py:254-267`, `:296`/`:348`
 
 `_drain_verification_waypoints` empties `Drone.pending_verification_waypoints` and returns
@@ -231,6 +240,9 @@ same shape.
 `last_sent_segment_b` only on a send that actually happened.
 
 ### 11. `CROSS_PAIR_POINT_A_SYNC` forces a replan despite being documented as best-effort
+**RESOLVED** — the point-A sync pipeline is gone. Its replacement, `CROSS_PAIR_POINT_A` (604),
+is staged and applied on the next CalcScanPath pass and sets no replan flag.
+
 `VERIFIED` — `interdrone.py:2001-2016`
 
 The message is documented three times as an un-acked, un-retried continuous stream where "a
@@ -306,8 +318,9 @@ The resend-on-failure set lives in the transport, ack expectations live in the h
 "deliberately unacked" rationale lives in docstrings. They disagree:
 
 - `SEND_SEGMENT_B_WAYPOINTS` hands an ASSISTANT its entire workload, is **not** in the resend
-  set, and has **no ack** — one dropped send leaves the ASSISTANT idle until
-  `ASSISTANT_IDLE_TIMEOUT_S` fires.
+  set, and has **no ack** — one dropped send leaves the ASSISTANT idle until its gambler's
+  claims next change (the assistant now finishes on `PAIR_SCAN_DONE`, which *is* in the resend
+  set; the old `ASSISTANT_IDLE_TIMEOUT_S` is gone).
 - `SHARE_PHOTOS`, `FIELD_CHECKSUM` and all five `CROSS_PAIR_*` types define and send acks, but no
   sender tracks or retries on a missing one. The code admits it: `interdrone.py:1974-1976`, "No
   resend-on-timeout mechanism exists yet for `CROSS_PAIR_MINE_RELAY` to cancel." Those ack fields
@@ -351,16 +364,18 @@ interleaved, which makes this a comparatively cheap split.
 
 Boundary violations worth naming:
 - **Handlers reach three levels into flight state** — `:1597` `drone.vehicle.armed = False`,
-  `:2115` `drone._vehicle.parameters[...]` (private), `:1931` `Pathfinder.instance` read from the
-  receive task, `:1778` `drone.resetWaypoints(...)`, `:1736` `drone.checkForCollision(...)`. The
+  `:2115` `drone._vehicle.parameters[...]` (private), the `FIELD_CHECKSUM` case reading the
+  planner from the receive task, `:1778` `drone.resetWaypoints(...)`, `:1736`
+  `drone.checkForCollision(...)`. The
   `pending_*` staging attributes exist to prevent exactly this and are used for 4 of these; the
   other 5 bypass the pattern.
 - **Transport leaks into protocol** — `:1495-1497` inlines
   `networking.try_get_server_message(timeout=0.02)` instead of calling its own `read()` at
   `:1456`, which consequently has zero callers and is dead.
-- **`Pathfinder.instance` is read from a second concurrent task** — an accepted-but-documented gap
-  per `multi_drone_sim_test.py:47-54`, which only exists because handlers touch flight state
-  directly.
+- **The planner is read from a second concurrent task** (`FIELD_CHECKSUM`'s `mine_hash()`) —
+  harmless while it is a pure read, but it only exists because handlers touch flight state
+  directly. (The old `Pathfinder.instance` process-wide singleton is gone: each drone now owns
+  `Drone.planner`.)
 
 **Direction.** Extract cheapest-first, each independently safe: console input → `CMD_MSG` +
 helpers → state-machine control (1265–1454) → handler table (finding 8) → transport adapter.
@@ -371,6 +386,10 @@ That leaves an `interdrone.py` of a few hundred lines.
 ## P4 — Superseded design and stale comments
 
 ### 18. The cross-pair point-A sync design is documented as superseded, but production still runs it
+**RESOLVED** — both designs belonged to the legacy planner, which is archived. The path-node
+planner's gamblers aim at each other's point A (`CROSS_PAIR_POINT_A`), and drone 1 joins the two
+routes (`CROSS_PAIR_CHAIN`).
+
 `VERIFIED` — `flight/pathfinder.py:447-470`, `:1615`; `calc_scan_path_impl.py:232`
 
 `Pathfinder.set_cross_pair_home_boundary`'s docstring says it *replaces* the old
@@ -394,6 +413,8 @@ point-A-sync pipeline. Deletion set:
   their four call sites (`:280`, `:297`, `:317`, `:349`)
 
 ### 19. Comments describing the superseded design as live
+**RESOLVED** — the code and comments named here were removed with the legacy planner.
+
 `VERIFIED`. `message_types.py:89-93` and `:587-594` (the latter points readers at
 `droneWorkflowTest.py`'s `_sync_approach_target` as the reference implementation);
 `interdrone.py:898-905` and `:2002-2011`; `drone.py:338-346` and `:363-369`;

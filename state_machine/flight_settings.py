@@ -29,7 +29,7 @@ class Side(Enum):
     """
     Distinguishes which field edge a drone's pathfinding graph starts from.
 
-    Passed to Pathfinder.buildNodeField as startEdge: START -> "bottom",
+    Passed to the planner as its start edge: START -> "bottom",
     END -> "top" (mirrored, for the other pair in two-pair mode).
     """
 
@@ -37,18 +37,14 @@ class Side(Enum):
     END = "end"
 
 
-class Role(Enum):
-    """
-    Distinguishes a drone's role in the two-pair pathfinding scheme.
-
-    - GAMBLER: paired with an ASSISTANT; plans/flies the scored path.
-    - ASSISTANT: paired with a GAMBLER; supports that gambler.
-    - SOLOGAMBLER: unpaired gambler with no assistant.
-    """
-
-    SOLOGAMBLER = "solo_gambler"
-    GAMBLER = "gambler"
-    ASSISTANT = "assistant"
+def mission_sides(n_drones: int) -> list[list[int]]:
+    """The mission's sides, START edge first: 1-2 drones work one side; 3-4 split into two
+    (1/2 from the START edge, 3/4 from the END edge). A side's drones are equals: each keeps
+    its own copy of the side's planner (flight/pathfinding/side_agent.py) -- there are no
+    roles."""
+    if n_drones <= 2:
+        return [list(range(1, n_drones + 1))]
+    return [[1, 2], list(range(3, n_drones + 1))]
 
 
 # pylint: disable=too-many-instance-attributes
@@ -192,51 +188,23 @@ class FlightSettings:
         self.__carrot_arc_m: float | None = carrot_arc_m
         self.__yolo_status: Event = Event()
 
+        # Sides below are assigned by drone id, so the mission's drones must be exactly
+        # 1..n: fielding [1, 3, 4] would silently pair the wrong drones.
+        if sorted(self.__drones_in_mission) != list(range(1, len(self.__drones_in_mission) + 1)):
+            raise ValueError(
+                f"drones_in_mission must be 1..n (got {self.__drones_in_mission}): sides are"
+                " assigned by drone id"
+            )
+
+        # This drone's side (see mission_sides).
         self.__start_side: Side = Side.START
-        self.__role: Role = Role.SOLOGAMBLER
         self.__paired_drone: int | None = None
-        self.max_flight_time= 60*7
-
-        if len(self.__drones_in_mission) == 2:
-            # drone1/drone2 form a single GAMBLER/ASSISTANT pair, mirroring
-            # the len==3/4 blocks below (paired role, non-None pairedDrone).
-            if drone_ID == 1:
-                self.__role = Role.GAMBLER
-                self.__paired_drone = 2
-            if drone_ID == 2:
-                self.__role = Role.ASSISTANT
-                self.__paired_drone = 1
-        if len(self.__drones_in_mission) == 3:
-            if drone_ID == 1:
-                self.__role = Role.GAMBLER
-                self.__paired_drone = 2
-                self.__start_side = Side.START
-            if drone_ID == 2:
-                self.__role = Role.ASSISTANT
-                self.__paired_drone = 1
-                self.__start_side = Side.START
-            if drone_ID == 3:
-                self.__role = Role.SOLOGAMBLER
-                self.__paired_drone = None
-                self.__start_side = Side.END
-
-        if len(self.__drones_in_mission) == 4:
-            if drone_ID == 1:
-                self.__role = Role.GAMBLER
-                self.__paired_drone = 2
-                self.__start_side = Side.START
-            if drone_ID == 2:
-                self.__role = Role.ASSISTANT
-                self.__paired_drone = 1
-                self.__start_side = Side.START
-            if drone_ID == 3:
-                self.__role = Role.GAMBLER
-                self.__paired_drone = 4
-                self.__start_side = Side.END
-            if drone_ID == 4:
-                self.__role = Role.ASSISTANT
-                self.__paired_drone = 3
-                self.__start_side = Side.END
+        for side_index, side in enumerate(mission_sides(len(self.__drones_in_mission))):
+            if drone_ID in side:
+                self.__start_side = Side.START if side_index == 0 else Side.END
+                others = [d for d in side if d != drone_ID]
+                self.__paired_drone = others[0] if others else None
+        self.max_flight_time = 60 * 7
 
     @staticmethod
     def add_flight_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -533,38 +501,26 @@ class FlightSettings:
         self.__current_drone_ID = drone_ID
 
     @property
-    def role(self) -> Role:
-        """
-        Returns this drone's role in the two-pair pathfinding scheme.
+    def side_drones(self) -> list[int]:
+        """This drone's side: itself and its side-mate, ascending."""
+        return next(side for side in mission_sides(len(self.__drones_in_mission))
+                    if self.__current_drone_ID in side)
 
-        Returns
-        -------
-        role : Role
-            GAMBLER, ASSISTANT, or SOLOGAMBLER.
-        """
-        return self.__role
-
-    @role.setter
-    def role(self, role: Role) -> None:
-        """
-        Sets this drone's role in the two-pair pathfinding scheme.
-
-        Parameters
-        ----------
-        role : Role
-            GAMBLER, ASSISTANT, or SOLOGAMBLER.
-        """
-        self.__role = role
+    @property
+    def partner_side_drones(self) -> list[int]:
+        """The other side's drones (empty with one side): where cross-side messages go."""
+        sides = mission_sides(len(self.__drones_in_mission))
+        return next((side for side in sides if self.__current_drone_ID not in side), [])
 
     @property
     def paired_drone(self) -> int | None:
         """
-        Returns the 1-indexed drone ID this drone is paired with.
+        Returns this drone's side-mate: the other drone of its side.
 
         Returns
         -------
         paired_drone : int | None
-            The paired drone's ID, or None if this drone has no partner.
+            Its ID, or None if this drone works its side alone.
         """
         return self.__paired_drone
 
@@ -581,37 +537,6 @@ class FlightSettings:
         self.__paired_drone = paired_drone
 
     @property
-    def cross_pair_partner_id(self) -> int | None:
-        """
-        The OTHER pair's own gambler (or solo gambler)'s drone id -- who
-        this drone's own cross-pair mine relay (CROSS_PAIR_MINE_RELAY)
-        should be addressed to. None for a 1 or 2 drone mission (there is
-        no other pair). Not this drone's OWN paired_drone (that's its own
-        ASSISTANT/GAMBLER partner, an entirely different relationship --
-        see SHARE_PHOTOS vs CROSS_PAIR_MINE_RELAY).
-
-        Computed the same way __init__ derives THIS drone's own role:
-        purely from current_drone_ID and len(drones_in_mission), not
-        looked up from drone_info (DroneInfo carries no role field at
-        all, only id/IP/port).
-
-        Returns
-        -------
-        cross_pair_partner_id : int | None
-            The other pair's gambler drone id, or None if there is no
-            other pair.
-        """
-        n = len(self.__drones_in_mission)
-        if n <= 2:
-            return None
-        # 3-drone: drones 1/2 are the START-side pair, drone 3 is the
-        # END-side solo gambler. 4-drone: drones 1/2 are the START-side
-        # pair, drones 3/4 are the END-side pair. Either way, drone 1 is
-        # never anything but the START side and drone 3 the END side, so
-        # the same "am I 1 or 2" split picks the right partner for both.
-        return 3 if self.__current_drone_ID in (1, 2) else 1
-
-    @property
     def start_side(self) -> Side:
         """
         Returns which field edge this drone's pathfinding graph starts from.
@@ -619,7 +544,7 @@ class FlightSettings:
         Returns
         -------
         start_side : Side
-            START or END; maps to Pathfinder.buildNodeField's startEdge.
+            START or END; maps to the planner's start edge.
         """
         return self.__start_side
 
@@ -631,7 +556,7 @@ class FlightSettings:
         Parameters
         ----------
         start_side : Side
-            START or END; maps to Pathfinder.buildNodeField's startEdge.
+            START or END; maps to the planner's start edge.
         """
         self.__start_side = start_side
 

@@ -2,12 +2,13 @@
 Multi-drone (2/3/4) async integration testbench: drives N REAL state
 machines concurrently -- Start -> Takeoff -> CalcScanPath -> Scan ->
 DroneShare -> ... -> ExpandNodes -> EndRun -> AppShare -> Recall -> Land
--- through a simulated GAMBLER/ASSISTANT (2 drones), GAMBLER/ASSISTANT +
-SOLOGAMBLER (3 drones), or two GAMBLER/ASSISTANT pairs (4 drones) mission,
-to answer "does the interdrone wiring (segment-B handoff, SHARE_PHOTOS,
-cross-pair mine relay, point-A sync) actually work" by running it, not
-just reading it. See integration_tests/one_drone_sim_test.py for the
-one-drone (SOLOGAMBLER) equivalent -- this module reuses its MockVehicle/
+-- through a simulated mission: one side of 2 drones, a side of 2 plus a
+side of 1 (3 drones), or two sides of 2 (4 drones). Every drone keeps its
+own copy of its side's planner (flight/pathfinding/side_agent.py). Answers
+"does the interdrone wiring (SHARE_PHOTOS between side-mates, SIDE_JOB,
+cross-side mine relay and sync, point A, the join) actually work" by
+running it, not just reading it. See integration_tests/one_drone_sim_test.py
+for the one-drone equivalent -- this module reuses its MockVehicle/
 field-geometry helpers, but everything interdrone-shaped is new, since a
 one-drone mission never sends a single interdrone message.
 
@@ -28,30 +29,8 @@ ever runs ONE drone's worth of state in ONE process:
     entirely single-threaded so there's no cross-thread queue/future
     dance to get right.
 
-  - flight/pathfinder.py's Pathfinder.instance is a process-wide
-    singleton ("Static variable for singleton access"), fine for a real
-    deployment (one drone per process) but not when this testbench runs
-    several GAMBLER/SOLOGAMBLER drones concurrently in ONE process: each
-    one's own Takeoff.configureField() construction would silently
-    stomp every other drone's Pathfinder.instance the moment any of them
-    awaits. Solved narrowly -- not by patching flight/pathfinder.py --
-    by (a) monkeypatching Pathfinder.__init__ to also record each new
-    instance by its own droneID, and (b) wrapping each drone's own
-    Interdrone.update_state (already called by StateMachine._run() right
-    before every state's own run()) to re-pin Pathfinder.instance to
-    THIS drone's own recorded instance immediately before dispatch. That
-    covers every Pathfinder-mutating code path (CalcScanPath/Scan/
-    DroneShare/EndRun/ExpandNodes all capture Pathfinder.instance into a
-    local `pf` once at the top of their own run(), before any further
-    await, so re-pinning right before dispatch is sufficient). It does
-    NOT cover the two low-stakes, read-only Pathfinder.instance reads
-    inside interdrone.py's own receive loop (FIELD_CHECKSUM's comparison,
-    REQUEST_MAP_DATA's coordinate conversion) -- those run on a second,
-    concurrently-scheduled task per drone (interdrone_loop(), separate
-    from the state machine's own run loop) that this pinning hook doesn't
-    reach. Worst case there is a spurious mismatch warning or a
-    momentarily-wrong reported path, not corrupted mission state -- an
-    accepted, documented gap, not a silent one.
+  - Messages cross the router as real JSON (the same encode/decode the
+    networking thread does), so wire-format bugs show up here too.
 
 Also fixed here (not testbench workarounds -- real, previously-latent
 bugs this harness is what actually surfaced them, since a single real
@@ -62,29 +41,16 @@ drone process never exercises a paired peer at all):
     multi-drone Start state would hang forever. See the new
     `case MessageType.PING:` in state_machine/interdrone.py.
 
-  - Drone.last_synced_point_a was read/written by calc_scan_path_impl.py's
-    _send_point_a_sync_if_changed but never initialized in Drone.__init__
-    -- an AttributeError on the very first CalcScanPath pass for any
-    GAMBLER/SOLOGAMBLER with a cross_pair_partner_id (3- or 4-drone only,
-    which is why the 2-drone config never caught it).
+  - A drone with an empty queue (waiting on its side-mate's photos or the
+    other side's point A) bounces CalcScanPath -> Scan -> CalcScanPath with
+    no other await in between -- across drones sharing one event loop (not
+    one drone per process, as in a real deployment), that busy loop never
+    yields and starves every other drone's task, including the
+    interdrone_loop that would deliver what it is waiting on (fixed with an
+    asyncio.sleep(0) in scan_impl.py's bounce-back branch).
 
-  - A GAMBLER that finishes its own segment A while its paired ASSISTANT
-    still has segment B outstanding bounces CalcScanPath -> Scan ->
-    CalcScanPath with an empty local queue and no other await in
-    between -- across two drones sharing one event loop (not one drone
-    per process, as in a real deployment), that busy loop never yields,
-    so it both (a) resent -- and reset -- the ASSISTANT's own in-flight
-    queue every single pass (fixed with Drone.last_sent_segment_b, a
-    dedupe-on-unchanged-content guard) and (b) starved every other
-    drone's task outright, including the interdrone_loop that would have
-    delivered the ASSISTANT's own reply (fixed with an asyncio.sleep(0)
-    in scan_impl.py's own bounce-back branch). Confirmed as the actual
-    cause, not just theorized: a 2-drone run hung indefinitely sending
-    the identical SEND_SEGMENT_B_WAYPOINTS message hundreds of times
-    before both fixes; 2/3/4-drone runs are clean after them.
-
-Run directly: `python integration_tests/multi_drone_sim_test.py [2|3|4]`
-(omit the argument to run all three configurations in sequence).
+Run directly: `python integration_tests/multi_drone_sim_test.py [2|3|4] [dense]`
+(omit the count to run all three configurations in sequence).
 """
 
 import asyncio
@@ -106,8 +72,7 @@ from vision.common.detection import Detection
 from vision.common.drone_coordinates import DronePose, GimbalPose
 from vision.common.image import Image as VisionImage
 
-from flight.pathfinder import Pathfinder, WIDTHOFFIELD, HEIGHTOFFIELD
-
+from interdrone_communication.json_message_utilities import JsonMessageUtilities
 from interdrone_communication.message_types import MessageType
 
 from state_machine.drone import Drone, RANGEFINDER3_MAVLINK_ID
@@ -124,49 +89,10 @@ from integration_tests.one_drone_sim_test import (
     _local_to_latlon,
     _point_in_latlon_polygon,
     _rangefinder_feed,
+    check_reported_route,
+    HEIGHTOFFIELD,
+    WIDTHOFFIELD,
 )
-
-# ======================================================================
-# Pathfinder.instance singleton workaround -- see module docstring.
-# ======================================================================
-_pathfinder_by_drone_id: dict[int, Pathfinder] = {}
-_original_pathfinder_init = Pathfinder.__init__
-
-
-def _tracking_pathfinder_init(self, *args, **kwargs) -> None:
-    _original_pathfinder_init(self, *args, **kwargs)
-    _pathfinder_by_drone_id[self.droneID] = self
-
-
-Pathfinder.__init__ = _tracking_pathfinder_init
-
-
-def _install_pathfinder_pinning(interdrone: Interdrone) -> None:
-    """Wraps this drone's own Interdrone.update_state -- called by
-    StateMachine._run() immediately before every state's own run() -- to
-    re-pin the process-wide Pathfinder.instance singleton to THIS drone's
-    own Pathfinder first. A no-op (via .get() returning None) for an
-    ASSISTANT, or before configureField has run for a GAMBLER/
-    SOLOGAMBLER."""
-    original_update_state = interdrone.update_state
-    drone_id = interdrone.flight_settings.current_drone_ID
-
-    def _pinning_update_state(state) -> None:
-        # Unconditional, including the None case: an ASSISTANT has no
-        # Pathfinder of its own (see configureField) and every state's own
-        # code that checks `if pf is not None:` (ExpandNodes, EndRun, ...)
-        # relies on genuinely seeing None, the same as a real one-drone-
-        # per-process deployment always would. Only setting this when a pf
-        # IS registered would let an ASSISTANT silently inherit whatever
-        # the most recently active GAMBLER/SOLOGAMBLER last pinned --
-        # confirmed happening (ExpandNodes firing nodes_expanded, and
-        # mutating that OTHER drone's live Pathfinder, for a role that
-        # should have been a pure no-op).
-        Pathfinder.instance = _pathfinder_by_drone_id.get(drone_id)
-        original_update_state(state)
-
-    interdrone.update_state = _pinning_update_state
-
 
 # ======================================================================
 # Per-drone camera context -- a contextvar, not a single module-level
@@ -271,6 +197,8 @@ class _MessageRouter:
         return q
 
     def route(self, message) -> None:
+        # Through real JSON, as the networking thread sends it.
+        message = JsonMessageUtilities.message_from_json(JsonMessageUtilities.message_to_json(message))
         for target_id in message.drones_to_send_data:
             q = self._queues.get(target_id)
             if q is not None:
@@ -343,6 +271,9 @@ async def _leader_autopilot(interdrone: Interdrone) -> None:
     interdrone.set_cmd_msg(CMD_MSG.MISSION)
 
 
+LAUNCH_SPACING_FT = 10.0
+
+
 def _start_coord_for(flight_settings: FlightSettings) -> dict:
     """Every drone starts at the same x (field center) -- retarget_
     approach_target is what's supposed to pull two pairs together, not
@@ -371,11 +302,16 @@ async def _run_one_drone(
         sim_mode=SimMode.SIM,
     )
     flight_settings.start_coord = _start_coord_for(flight_settings)
-    start_lat, start_lon = flight_settings.start_coord["lat"], flight_settings.start_coord["lon"]
 
     drone = Drone(id=drone_id)
     drone.use_settings(flight_settings.sim_mode)
-    vehicle = MockVehicle(start_lat, start_lon)
+    # Every drone of a side plans from the same entry (start_coord), but no two launch
+    # from the same pad: the second drone of a pair starts LAUNCH_SPACING_FT to the side,
+    # or the measured-separation check (live positions) would trip at the first leg.
+    launch_x = WIDTHOFFIELD / 2 + (LAUNCH_SPACING_FT if flight_settings.paired_drone is not None
+                                   and drone_id > flight_settings.paired_drone else 0.0)
+    launch_y = 0.0 if flight_settings.start_side == Side.START else float(HEIGHTOFFIELD)
+    vehicle = MockVehicle(*_local_to_latlon(launch_x, launch_y))
     drone._vehicle = vehicle
     vehicle.add_message_listener("DISTANCE_SENSOR", drone._on_distance_sensor)
 
@@ -391,7 +327,6 @@ async def _run_one_drone(
     rpicamera_module.RPICamera = MockCamera
 
     interdrone = _make_interdrone(flight_settings, drone, router)
-    _install_pathfinder_pinning(interdrone)
     machine = StateMachine(
         Start(drone, flight_settings, interdrone), drone, flight_settings, interdrone
     )
@@ -427,11 +362,10 @@ async def _run_one_drone(
 
     return {
         "drone_id": drone_id,
-        "role": flight_settings.role,
+        "side": "bottom" if drone_id in (1, 2) else "top",
         "drone": drone,
         "vehicle": vehicle,
         "interdrone": interdrone,
-        "pathfinder": _pathfinder_by_drone_id.get(drone_id),
         "final_state": type(interdrone._current_state).__name__ if interdrone._current_state else None,
         "error": error,
         "elapsed_s": elapsed,
@@ -442,15 +376,12 @@ async def _run_one_drone(
 # Driver
 # ======================================================================
 async def run_simulation(
-    n_drones: int, true_mines_local: list[tuple[float, float]], timeout_s: float = 300.0
+    n_drones: int,
+    true_mines_local: list[tuple[float, float]],
+    timeout_s: float = 300.0,
 ) -> list[dict]:
     if n_drones not in (2, 3, 4):
         raise ValueError(f"n_drones must be 2, 3, or 4 (got {n_drones})")
-
-    # Fresh registry per run -- otherwise a later run's drone 1 would see
-    # an earlier run's drone 1 Pathfinder still sitting in the dict.
-    _pathfinder_by_drone_id.clear()
-    Pathfinder.instance = None
 
     corners = _field_corners()
     true_mines_latlon = [_local_to_latlon(x, y) for x, y in true_mines_local]
@@ -481,30 +412,34 @@ def _report(n_drones: int, results: list[dict]) -> bool:
         did = result["drone_id"]
         ok = result["error"] is None and result["final_state"] == "Land"
         all_ok = all_ok and ok
-        print(f"-- drone {did} ({result['role'].name}) " + "-" * (52 - len(result["role"].name)))
+        print(f"-- drone {did} ({result['side']} side) " + "-" * (47 - len(result["side"])))
         print(f"   final state : {result['final_state']}")
         print(f"   elapsed     : {result['elapsed_s']:.1f}s")
         print(f"   error       : {result['error'] if result['error'] is not None else 'none'}")
-        pf = result["pathfinder"]
-        if pf is not None:
-            # protoMines is a raw discovery-EVENT log (Pathfinder.
-            # add_discovered_mine appends to it unconditionally, even when
-            # the detection merges into an already-known obstacle) -- not
-            # a count of distinct mines, so it can legitimately exceed the
-            # true count even with zero bugs (the same physical mine
-            # photographed once by the GAMBLER and once by its ASSISTANT
-            # near the segment A/B seam is two discovery events). Distinct
-            # LIVE obstacles is what actually answers "how many different
-            # mines does this drone's graph know about."
-            live_obstacles = len(pf.nodeField.mines) + len(pf.nodeField.unionObstacles)
+        planner = result["drone"].planner
+        if planner is not None:
             print(
-                f"   mines found : {live_obstacles} distinct / {len(result['true_mines_latlon'])} true"
-                f"  ({len(pf.protoMines)} discovery events)"
+                f"   mines found : {len(planner.planner.discovered)} / "
+                f"{len(result['true_mines_latlon'])} true"
             )
-            print(f"   seen cells  : {pf.seen_tracker.count()}")
+            print(f"   seen cells  : {len(list(planner.planner.seen.on_cells()))}")
+        if did == 1 and planner is not None:
+            drone = result["drone"]
+            problems = check_reported_route(planner, drone.mission_path)
+            if drone.reported_half_route:
+                problems.append("reported only its own half")
+            print(f"   reported    : {len(drone.mission_path)} points -- "
+                  f"{'; '.join(problems) if problems else 'full field, continuous, clear'}")
+            all_ok = all_ok and not problems
         camera = result["drone"].camera
         if camera is not None:
             print(f"   captures    : {camera.capture_count}")
+    planners = [r["drone"].planner for r in results if r["drone"].planner is not None]
+    if len(planners) > 1:
+        # Every mine is relayed both ways, so both leads must end with the same set.
+        agree = len({p.mine_hash() for p in planners}) == 1
+        print(f"final mine sets agree : {agree}")
+        all_ok = all_ok and agree
     print("=" * 70)
     print(f"RESULT: {'PASS' if all_ok else 'FAIL'} -- all drones reached Land: {all_ok}")
     print("=" * 70)
@@ -514,11 +449,10 @@ def _report(n_drones: int, results: list[dict]) -> bool:
 def _mines_for(n_drones: int) -> list[tuple[float, float]]:
     """A single column near the field's own x-center (matching
     _start_coord_for's start x), spaced every 40ft up the FULL height --
-    close enough together that a GAMBLER's own segment-A sweep chains
-    through several discoveries in a row before the paired ASSISTANT's
-    SHARE_PHOTOS reports catch up (see Pathfinder.start_helper_node_
-    detour's own docstring on chaining), which is what actually produces
-    a non-trivial maze_b_path for the ASSISTANT to fly -- a handful of
+    close enough together that one drone's sweep chains through several
+    discoveries in a row before its side-mate's SHARE_PHOTOS reports catch
+    up, which is what actually produces detours for the side-mate to fly --
+    a handful of
     mines spaced 80-100ft apart (this module's own first-draft mine set)
     each got resolved by a single cheap helper-node detour with nothing
     left over to hand off, so 2-drone SHARE_PHOTOS never actually
@@ -530,14 +464,27 @@ def _mines_for(n_drones: int) -> list[tuple[float, float]]:
     return [(40.0, y) for y in range(30, 271, 40)]
 
 
+def _dense_mines(count: int = 60, seed: int = 3) -> list[tuple[float, float]]:
+    """A random field (the path-node simulator's generator). With the column above, a
+    route steps around the first mine and then runs clear of the rest, so a member
+    gets little work."""
+    from flight.pathfinding.pathnode.minefield import generate_true_minefield
+
+    return list(generate_true_minefield(count, seed))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.WARNING)
-    requested = sys.argv[1:2]
-    configs = [int(requested[0])] if requested else [2, 3, 4]
+    args = sys.argv[1:]
+    counts = [int(a) for a in args if a.isdigit()]
+    configs = counts or [2, 3, 4]
+    mines = _dense_mines if "dense" in args else _mines_for
 
     all_ok = True
     for n_drones in configs:
-        results = asyncio.run(run_simulation(n_drones, _mines_for(n_drones)))
+        results = asyncio.run(run_simulation(
+                n_drones, mines(n_drones) if mines is _mines_for else mines()
+            ))
         all_ok = _report(n_drones, results) and all_ok
 
     if not all_ok:

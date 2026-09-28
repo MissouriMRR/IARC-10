@@ -1,53 +1,22 @@
-import hashlib
-from typing import List, Tuple
-from shapely.geometry import Polygon, LineString, Point
-from flight.pathfinding.nodeField.node import Node
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.patches import Polygon as polyPlt
-import math
+"""PolygonObstacle: one obstacle's outline, its grown clearance shape, and its tangents.
+
+Outline rings are counter-clockwise MineNode lists (a union pinched at a point has several).
+The shortest-path graph is built on the rings pushed out VERTEX_INFLATE_FT (graphRings).
+
+Tangents follow Abrahamsen and Walczak, "Common Tangents of Two Disjoint Polygons in Linear
+Time and Constant Workspace", arXiv:1601.01816 (Algorithm 2). They work on non-convex simple
+polygons, but return only the (up to) 4 GLOBAL tangents of a pair. See FieldConnections for
+the extra local bitangents a non-convex outline needs.
+"""
+
+from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import Point
+
+from flight.pathfinding.common import VERTEX_INFLATE_FT, VISIBILITY_MARGIN_FT
+from flight.pathfinding.nodeField.node import outlineNodes
 
 
-def hash_position(x: float, y: float, precision: int = 6) -> str:
-    """Stable, position-based identifier for a single local (x, y) point in
-    the field's shared local coordinate frame -- the shared formula behind
-    PolygonObstacle.obstacle_hash (its own self.origin) and
-    Pathfinder.add_discovered_mine's self_mine_order/other_mine_order
-    tracking (the just-discovered mine's own position, before it's
-    possibly merged into a union -- see that method's own comment for why
-    hashing the live obstacle after a merge would be the wrong value).
-    Two callers hashing the same rounded position always get the same
-    result, with no coordination -- same idea as Field.mineHash's own
-    whole-field hash, just scoped to one point.
-
-    hashlib, not Python's built-in hash(): that one is randomized per
-    process (PYTHONHASHSEED) and would NOT agree across two drones even
-    for identical input."""
-    payload = repr((round(x, precision), round(y, precision))).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
-def is_clockwise(points):
-    signed_area = 0
-    n = len(points)
-    for i in range(n):
-        x1, y1 = points[i]
-        x2, y2 = points[(i + 1) % n]
-        signed_area += x1 * y2 - x2 * y1
-    return signed_area > 0
-
-
-# ---------------------------------------------------------------------------
-# Common tangents of two disjoint simple polygons, following the linear-time
-# constant-workspace algorithm (Algorithm 2) of:
-#   Mikkel Abrahamsen and Bartosz Walczak, "Common Tangents of Two Disjoint
-#   Polygons in Linear Time and Constant Workspace", arXiv:1601.01816.
-# This works on general (possibly non-convex) simple polygon corner lists, not
-# just convex hulls, and replaces exteriorConnections/ObstacleExtremaWalker as
-# the way connectPolygonObstacle finds bridge connections between obstacles.
-# ---------------------------------------------------------------------------
-
-
+# -- Abrahamsen-Walczak tangent search ---------------------------------------------------
 def _det(a, b):
     return a[0] * b[1] - b[0] * a[1]
 
@@ -56,84 +25,48 @@ def _det_star3(a, b, c):
     return _det(a, b) + _det(b, c) + _det(c, a)
 
 
-def _polygon_orientation_sign(vertices):
-    n = len(vertices)
-    if n < 3:
-        # A single point (or a segment) has no orientation. The algorithm only
-        # ever indexes such a degenerate side modulo its own length, so any
-        # sign works here -- see the single-point specialization used by
-        # PolygonObstacle.pointTangents.
-        return 1
-    total = 0.0
-    for i in range(n):
-        total += _det(vertices[i], vertices[(i + 1) % n])
-    if total > 0:
-        return 1
-    if total < 0:
-        return -1
-    return 0
+def _orientation_sign(verts):
+    if len(verts) < 3:
+        return 1  # a single query point has no orientation; any sign works
+    total = sum(_det(verts[i], verts[(i + 1) % len(verts)]) for i in range(len(verts)))
+    return (total > 0) - (total < 0)
 
 
 def _in_open_triangle(z, a, b, c):
-    d1 = _det_star3(z, a, b)
-    d2 = _det_star3(z, b, c)
-    d3 = _det_star3(z, c, a)
+    d1, d2, d3 = _det_star3(z, a, b), _det_star3(z, b, c), _det_star3(z, c, a)
     return (d1 > 0 and d2 > 0 and d3 > 0) or (d1 < 0 and d2 < 0 and d3 < 0)
 
 
 def _find_common_tangent(verts0, verts1, alpha0, alpha1):
-    """
-    Algorithm 2 of arXiv:1601.01816. Finds indices (i0, i1) into verts0/verts1
-    such that the line through verts0[i0] and verts1[i1] is the requested
-    common tangent:
-        alpha0=+1 -> verts0 lies in RHP(tangent); alpha0=-1 -> LHP
-        alpha1=+1 -> verts1 lies in RHP(tangent); alpha1=-1 -> LHP
-    (alpha0==alpha1 asks for an outer common tangent, alpha0!=alpha1 for a
-    separating one). Returns None if no such tangent exists (nested hulls for
-    the outer case, overlapping hulls for the separating case).
-    """
-    n0 = len(verts0)
-    n1 = len(verts1)
-    if n0 == 0 or n1 == 0:
+    """Indices (i0, i1) whose line is the tangent with verts0 on side alpha0 and verts1 on
+    side alpha1 (+1 right, -1 left; equal = outer tangent, opposite = separating).
+    None if there is none."""
+    n = (len(verts0), len(verts1))
+    if 0 in n:
         return None
-
-    sign0 = _polygon_orientation_sign(verts0)
-    sign1 = _polygon_orientation_sign(verts1)
-    if sign0 == 0 or sign1 == 0:
+    sign = (_orientation_sign(verts0), _orientation_sign(verts1))
+    if 0 in sign:
         return None
-
-    n = (n0, n1)
-    beta = (alpha1 * sign0, -alpha0 * sign1)
+    beta = (alpha1 * sign[0], -alpha0 * sign[1])
     verts = (verts0, verts1)
     alpha = (alpha0, alpha1)
 
-    def real_index(k, i):
+    def real(k, i):
         return (beta[k] * i) % n[k]
 
     def point(k, i):
-        return verts[k][real_index(k, i)]
+        return verts[k][real(k, i)]
 
-    s = [0, 0]
-    v = [0, 0]
-    blocked = [False, False]
-    u = 0
-
-    # The paper proves at most 6*(n0+n1) iterations; the cap below is only a
-    # floating-point safety net (e.g. near-collinear corners) and is not part
-    # of the algorithm itself.
-    max_iterations = 6 * (n0 + n1) + 10
-    iterations = 0
-
-    while s[0] < 2 * n0 and s[1] < 2 * n1 and (v[0] < s[0] + n0 or v[1] < s[1] + n1):
-        iterations += 1
-        if iterations > max_iterations:
+    s, v, blocked, u = [0, 0], [0, 0], [False, False], 0
+    cap = 6 * (n[0] + n[1]) + 10  # float-safety net; the paper proves this bound
+    steps = 0
+    while s[0] < 2 * n[0] and s[1] < 2 * n[1] and (v[0] < s[0] + n[0] or v[1] < s[1] + n[1]):
+        steps += 1
+        if steps > cap:
             return None
-
         v[u] += 1
-        a = point(0, s[0])
-        b = point(1, s[1])
         c = point(u, v[u])
-        if alpha[u] * _det_star3(a, b, c) > 0 and not blocked[u]:
+        if alpha[u] * _det_star3(point(0, s[0]), point(1, s[1]), c) > 0 and not blocked[u]:
             other = 1 - u
             if _in_open_triangle(point(other, s[other]), point(u, s[u]), point(u, v[u] - 1), c):
                 blocked[u] = True
@@ -142,221 +75,122 @@ def _find_common_tangent(verts0, verts1, alpha0, alpha1):
                 v[other] = s[other]
                 blocked[other] = False
         u = 1 - u
-
-    if s[0] >= 2 * n0 or s[1] >= 2 * n1 or blocked[0] or blocked[1]:
+    if s[0] >= 2 * n[0] or s[1] >= 2 * n[1] or blocked[0] or blocked[1]:
         return None
-
-    return (real_index(0, s[0]), real_index(1, s[1]))
-
-
-def _wrap_angle(angle, pivot):
-    return ((angle - pivot + math.pi) % (2 * math.pi)) - math.pi
-
-
-def _find_point_tangent(viewpoint, verts, alpha, seed_index=0):
-    """
-    Single-sided specialization of _find_common_tangent for a 1-vertex
-    "polygon" on side 0 (viewpoint), seeded from seed_index instead of always
-    starting cold at 0 -- used to build per-vertex occlusion arcs quickly,
-    seeding from whichever of commonTangents' up-to-4 touch points is
-    available as a fast starting guess.
-
-    Known limitation (found and validated during algorithm design): the point
-    side can never trigger its own wrong-side test, so it can never clear the
-    polygon side's `blocked` flag once set, and this can cause a false `None`
-    on a specific edge case (a stuck-blocked-flag situation). Callers must
-    treat a None return as "use _brute_force_arc for this side", not as
-    "no tangent exists" -- unlike _find_common_tangent's None, which IS a
-    reliable "no such tangent" signal for the general two-polygon case.
-    """
-    n1 = len(verts)
-    if n1 == 0:
-        return None
-    sign1 = _polygon_orientation_sign(verts)
-    if sign1 == 0:
-        return None
-    beta1 = -1 * sign1
-
-    def real_index(i):
-        return (beta1 * i) % n1
-
-    def point(i):
-        return verts[real_index(i)]
-
-    s1 = (beta1 * seed_index) % n1
-    v1 = s1
-    blocked1 = False
-    max_iterations = 6 * n1 + 10
-    iterations = 0
-    while s1 < 2 * n1 and v1 < s1 + n1:
-        iterations += 1
-        if iterations > max_iterations:
-            return None
-        v1 += 1
-        b = point(s1)
-        c = point(v1)
-        if alpha * _det_star3(viewpoint, b, c) > 0 and not blocked1:
-            if _in_open_triangle(viewpoint, point(s1), point(v1 - 1), c):
-                blocked1 = True
-            else:
-                s1 = v1
-                blocked1 = False
-    if s1 >= 2 * n1 or blocked1:
-        return None
-    return real_index(s1)
-
-
-def _brute_force_arc(viewpoint, verts, pivot_point):
-    """O(len(verts)) fallback used only when _find_point_tangent returns None
-    for either side of a vertex's arc (the stuck-blocked-flag edge case) --
-    not a general-purpose replacement for the seeded fast path."""
-    pivot = math.atan2(pivot_point[1] - viewpoint[1], pivot_point[0] - viewpoint[0])
-    angles = [
-        _wrap_angle(math.atan2(v[1] - viewpoint[1], v[0] - viewpoint[0]), pivot) for v in verts
-    ]
-    return min(angles), max(angles)
+    return real(0, s[0]), real(1, s[1])
 
 
 class PolygonObstacle:
-    def __init__(
-        self, vertices, nodes: List[Node], wrapping: bool
-    ):  # Assumes nodes are already connected
-        self.isWrapping = True
-        self.vertices = vertices
-        # Set by Field.mergePolygons on every obstacle it consumes into a
-        # new unionObstacle -- lets a stale reference to this obstacle
-        # (e.g. Pathfinder.promoted_helper_nodes' recorded "obstacle") be
-        # resolved forward to whatever it's actually part of now, possibly
-        # through more than one merge (a union can itself later merge into
-        # a bigger one). None means never merged away.
+    """An obstacle with a hole-free outline.
+
+    - rings: counter-clockwise MineNode lists
+    - shape: shapely Polygon / MultiPolygon of the outline
+    - grown: shape grown by VISIBILITY_MARGIN_FT (what clearance tests use)
+    - id: set by Field; mergedInto: the obstacle this one was merged into (forward link)
+    - grows: whether Field.expandField grows it (False: a blocked square stays as it is)
+    """
+
+    grows = False
+
+    def __init__(self, rings, origin=None, shape=None):
+        self.id = None
         self.mergedInto = None
+        if shape is not None:
+            self._setShape(shape)
+        else:
+            self._setRings(rings)
+        self.origin = origin if origin is not None else (self.shape.centroid.x, self.shape.centroid.y)
 
-        if len(self.vertices) < 2:
-            return
+    @classmethod
+    def fromShape(cls, shape, origin=None):
+        """Obstacle for a shapely Polygon / MultiPolygon (holes are ignored)."""
+        return cls([], origin, shape)
 
-        self.xMin = min(v[0] for v in self.vertices)
-        self.xMax = max(v[0] for v in self.vertices)
-        self.yMin = min(v[1] for v in self.vertices)
-        self.yMax = max(v[1] for v in self.vertices)
+    # -- geometry ------------------------------------------------------------------------
+    def _setRings(self, rings):
+        self.rings = rings
+        parts = [Polygon([(n.x, n.y) for n in ring]) for ring in rings]
+        for ring in rings:
+            for node in ring:
+                node.parentMine = self
+        if parts:
+            self.shape = parts[0] if len(parts) == 1 else MultiPolygon(parts)
+            self._refresh()
 
-        self.nodes = nodes
+    def _setShape(self, shape):
+        parts = list(shape.geoms) if hasattr(shape, "geoms") else [shape]
+        self._setRings([outlineNodes(p.exterior.coords, self) for p in parts if not p.is_empty])
 
-        self.polygon = Polygon(self.vertices)
-
-        # This obstacle's position at construction, in the field's shared
-        # local coordinate frame -- fixed forever, unlike self.vertices/
-        # self.polygon, which CAN change shape later (a BlockMine's own
-        # expand(), or a unionObstacle whose constituents change) -- see
-        # obstacle_hash, which is built from this specifically so it stays
-        # stable across those later changes instead of drifting with them.
-        # Every obstacle type gets a sensible default here (this polygon's
-        # own centroid); BlockMine overrides it immediately after calling
-        # this constructor with something more precise (the mine's actual
-        # discovery position, not the safety-radius block's centroid --
-        # see BlockMine's own comment on why that distinction matters for
-        # Field.mineHash specifically).
-        self.origin: Tuple[float, float] = (self.polygon.centroid.x, self.polygon.centroid.y)
+    def _refresh(self):
+        self.grown = self.shape.buffer(VISIBILITY_MARGIN_FT, join_style="mitre")
+        self._graphRings = None
+        self._pushed = None
 
     @property
-    def obstacle_hash(self) -> "str | None":
-        """Stable, position-based identifier for THIS specific obstacle,
-        portable across processes/drones -- unlike Field._generateId()'s
-        own id (a per-process sequential counter, drone-number-prefixed,
-        never comparable between two drones' separate Fields), this is
-        derived purely from self.origin, so two drones that independently
-        discover the SAME obstacle compute the SAME hash with no
-        coordination at all. Same idea as Field.mineHash's own whole-
-        field hash, just scoped to one obstacle instead of every mine in
-        it -- see that method's own docstring for the matching design.
+    def pushed(self):
+        """Outline pushed VERTEX_INFLATE_FT out: the region a query point may sit in that is
+        inside the graph's corner ring yet still clear of the grown obstacle."""
+        if self._pushed is None:
+            self._pushed = self.shape.buffer(VERTEX_INFLATE_FT, join_style="mitre")
+        return self._pushed
 
-        None if this obstacle never got a real self.origin (the len(
-        vertices) < 2 degenerate case __init__ bails out of early)."""
-        origin = getattr(self, "origin", None)
-        if origin is None:
-            return None
-        return hash_position(origin[0], origin[1])
+    @property
+    def nodes(self):
+        return [n for ring in self.rings for n in ring]
 
-    # A vertex's index in self.vertices is not guaranteed to line up with its
-    # node's index in self.nodes (e.g. hull-derived or merged/union vertex
-    # lists), so look the node up by matching coordinates instead of assuming
-    # the indices correspond.
-    def _nodeAtVertexIndex(self, index: int) -> "Node | None":
-        x, y = self.vertices[index]
-        for node in self.nodes:
-            if node.x == x and node.y == y:
-                return node
-        return None
+    @property
+    def vertices(self):
+        return [(n.x, n.y) for n in self.nodes]
 
-    # Finds up to four common tangents (two outer, two separating) between this
-    # obstacle and other_obstacle via the linear-time constant-workspace algorithm
-    # of Abrahamsen & Walczak (arXiv:1601.01816, Algorithm 2), returning the
-    # (self, other) Node pairs each tangent connects.
-    def commonTangents(self, other_obstacle: "PolygonObstacle") -> List[Tuple[Node, Node]]:
-        connections = []
-        for alpha0, alpha1 in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
-            result = _find_common_tangent(self.vertices, other_obstacle.vertices, alpha0, alpha1)
-            if result is not None:
-                selfIndex, otherIndex = result
-                selfNode = self._nodeAtVertexIndex(selfIndex)
-                otherNode = other_obstacle._nodeAtVertexIndex(otherIndex)
-                if selfNode is not None and otherNode is not None:
-                    connections.append((selfNode, otherNode))
-        return connections
+    @property
+    def polygon(self):
+        return self.shape
 
-    # Returns the (self, other) Node pairs that should be connected.
-    # commonTangents already returns [] when no tangent exists, so no
-    # separate existence-check gate is needed here.
-    def connectPolygonObstacle(self, other_obstacle: "PolygonObstacle"):
-        return self.commonTangents(other_obstacle)
+    @property
+    def graphRings(self):
+        """Outline rings pushed VERTEX_INFLATE_FT outward (mitre): the graph's corners."""
+        if self._graphRings is None:
+            self._graphRings = []
+            parts = list(self.shape.geoms) if hasattr(self.shape, "geoms") else [self.shape]
+            for part in parts:
+                pushed = part.buffer(VERTEX_INFLATE_FT, join_style="mitre")
+                pushed = max(getattr(pushed, "geoms", [pushed]), key=lambda g: g.area)
+                self._graphRings.append(outlineNodes(pushed.exterior.coords, self))
+        return self._graphRings
 
-    # Finds the (up to two) tangent nodes of this obstacle as seen from an
-    # external point, using the same common-tangent algorithm (arXiv:1601.01816)
-    # specialized to a single-point "polygon" on one side -- see the note in
-    # _polygon_orientation_sign. Replaces the FloatingExtremaWalker heuristic.
-    def pointTangents(self, point: Tuple[float, float]) -> List[Node]:
-        tangents = []
-        for alpha in (1, -1):
-            result = _find_common_tangent([point], self.vertices, 1, alpha)
-            if result is not None:
-                _, obstacleIndex = result
-                node = self._nodeAtVertexIndex(obstacleIndex)
-                if node is not None:
-                    tangents.append(node)
-        return tangents
-
-    # Returns the connections the floating node should make
-    def connectFloatingNode(self, floating_node: Node):
-        return self.pointTangents((floating_node.x, floating_node.y))
-
-    def obstacleOverlap(self, otherObstacle):
-        return self.polygon.intersects(otherObstacle.polygon)
-
-    @staticmethod
-    def midPoint(vertex1, vertex2):
-        return ((vertex1[0] + vertex2[0]) / 2, (vertex1[1] + vertex2[1]) / 2)
+    def expand(self, distance):
+        """Grow the outline by distance (mitre offset). Field.expandField skips obstacles with
+        grows False."""
+        self._setShape(self.shape.buffer(distance, join_style="mitre"))
 
     def contains_point(self, point):
-        return self.polygon.contains(Point(point))
+        return self.shape.contains(Point(point))
 
-    def intersects(self, line):
-        p1, p2 = line
-        line = LineString(line)
-        # crosses() alone misses a segment that lies entirely inside this
-        # obstacle without touching its boundary (both endpoints inside a
-        # dense/concave obstacle after a batch expand+merge, in particular).
-        # Neither crosses() nor contains() alone catches a shallow sliver
-        # intrusion that only "touches" the boundary in shapely's strict
-        # topological sense rather than cleanly crossing through it or
-        # being fully contained -- confirmed directly: a mine relayed
-        # between two pairs sharing a field can graze an already-confirmed
-        # edge by a fraction of a foot and neither predicate fires,
-        # leaving a real (if shallow) unsafe edge in frozen history that
-        # nothing ever goes back to repair. Midpoint containment is the
-        # same fallback field.py's own addObstacle uses for the identical
-        # blind spot on freshly-created edges (see its docstring) -- a
-        # legitimate tangent line only ever touches this polygon at an
-        # endpoint, so its midpoint is never inside it, making this safe
-        # to add unconditionally alongside crosses()/contains() rather
-        # than only at this one call site.
-        mx, my = (p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0
-        return self.polygon.crosses(line) or self.polygon.contains(line) or self.contains_point((mx, my))
+    def obstacleOverlap(self, other):
+        """Whether this and other are within the margin of each other (they must merge)."""
+        return self.grown.intersects(other.grown)
+
+    # -- tangents (on the pushed rings) --------------------------------------------------
+    def commonTangents(self, other):
+        """(self node, other node) pairs of the common tangents of the two obstacles."""
+        out = []
+        for ring0 in self.graphRings:
+            v0 = [(n.x, n.y) for n in ring0]
+            for ring1 in other.graphRings:
+                v1 = [(n.x, n.y) for n in ring1]
+                for a0, a1 in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
+                    hit = _find_common_tangent(v0, v1, a0, a1)
+                    if hit is not None:
+                        out.append((ring0[hit[0]], ring1[hit[1]]))
+        return out
+
+    def pointTangents(self, point):
+        """Nodes where the tangent lines from an outside point touch this obstacle."""
+        out = []
+        for ring in self.graphRings:
+            verts = [(n.x, n.y) for n in ring]
+            for alpha in (1, -1):
+                hit = _find_common_tangent([tuple(point)], verts, 1, alpha)
+                if hit is not None:
+                    out.append(ring[hit[1]])
+        return out

@@ -2,7 +2,7 @@
 
 The route is one ordered chain of path nodes from the bottom entry to the top entry.
 Consecutive nodes are joined by a link that is either checked (segment C), pending
-(segment B, owned by one assistant) or the single forward gap between the two gamblers'
+(segment B, owned by one member) or the single forward gap between the two leads'
 point As. See sim.py for the rules.
 
 Deliberately independent of the old planner: nothing here imports flight.pathfinder,

@@ -27,14 +27,14 @@
   "speed_test_kb_data_size": 16,
   "range_test_toggle": false,
   "mission_field_corners": [
-    { "lat": 34.6250780, "lon": -86.8092641 },
     { "lat": 34.6251758, "lon": -86.8090283 },
-    { "lat": 34.6243474, "lon": -86.8088099 },
-    { "lat": 34.6244482, "lon": -86.8085717 }
+    { "lat": 34.6250780, "lon": -86.8092641 },
+    { "lat": 34.6244482, "lon": -86.8085717 },
+    { "lat": 34.6243474, "lon": -86.8088099 }
   ],
   "start_coord": {
-    "lat": 34.6243978,
-    "lon": -86.8086908
+    "lat": 36.021683,
+    "lon": -95.941831
   },
   "max_flight_height": 10,
   "mission_type": "Automatic"

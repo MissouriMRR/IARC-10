@@ -5,10 +5,13 @@ import logging
 import math
 
 import flight.flight_log as flight_log
-from flight.pathfinder import Pathfinder
 from flight.pathfinding.utils.goto import move_to
-from state_machine.drone import LEG_GROUNDSPEED_M_S, LEG_TOLERANCE_M, MISSION_ALTITUDE_M
-from state_machine.flight_settings import Role
+from state_machine.drone import (
+    LEG_GROUNDSPEED_M_S,
+    LEG_TOLERANCE_M,
+    MISSION_ALTITUDE_M,
+    FormationLost,
+)
 from state_machine.state_tracker import (
     update_drone,
     update_flight_settings,
@@ -17,6 +20,7 @@ from state_machine.state_tracker import (
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.drone_share import DroneShare
 from state_machine.states.end_run import EndRun
+from state_machine.states.land import Land
 from state_machine.states.scan import Scan
 from state_machine.states.state import State
 from vision.common.drone_coordinates import DronePose
@@ -41,75 +45,10 @@ MAX_CAMERA_CLIMB_ATTEMPTS: int = 8
 _CLIMB_ALTITUDE_TOLERANCE_M: float = 0.15
 
 
-async def _capture_for_assistant(self: Scan, waypoint) -> None:
-    """ASSISTANT: captures one photo at this waypoint and stores its TRUE
-    ground footprint corners (self.drone.last_photo_corners_latlon) for
-    DroneShare to report back to the paired GAMBLER via SHARE_PHOTOS.
-
-    No seen_tracker/climb-retry loop here, unlike _capture_and_mark_seen
-    -- an ASSISTANT has no Pathfinder (see configureField) to check
-    coverage against; the GAMBLER applies coverage to ITS OWN
-    seen_tracker once the report arrives (see interdrone.py's own
-    SHARE_PHOTOS receive case)."""
-    camera = self.drone.camera
-    if camera is None:
-        logging.warning("drone %d has no camera configured -- skipping photo capture", self.drone.id)
-        return
-
-    image = camera.capture_image(only_metadata=False)
-    if image is None or image.image is None:
-        logging.warning("drone %d: camera capture failed -- skipping photo", self.drone.id)
-        return
-    self.drone.last_captured_image = image
-
-    vehicle = self.drone.vehicle
-    location = vehicle.location.global_relative_frame
-    attitude = vehicle.attitude
-    altitude_agl_m = self.drone.rangefinder_altitude_agl_m
-    if altitude_agl_m is None:
-        logging.warning(
-            "drone %d: no fresh rangefinder3 reading -- falling back to %.1fm for"
-            " this photo's footprint math",
-            self.drone.id,
-            MISSION_ALTITUDE_M,
-        )
-        altitude_agl_m = MISSION_ALTITUDE_M
-
-    drone_pose = DronePose(
-        lat=location.lat,
-        lon=location.lon,
-        altitude=altitude_agl_m,
-        # dronekit's Attitude is in radians; DronePose expects degrees.
-        yaw=math.degrees(attitude.yaw),
-        pitch=math.degrees(attitude.pitch),
-        roll=math.degrees(attitude.roll),
-    )
-
-    width, height = image.image.size
-    top_left, top_right, bottom_left, bottom_right = camera.get_image_corner_coordinates(
-        width, height, drone_pose
-    )
-    if None in (top_left, top_right, bottom_left, bottom_right):
-        logging.warning(
-            "drone %d: a corner ray never reached the ground -- skipping photo report",
-            self.drone.id,
-        )
-        self.drone.last_photo_corners_latlon = None
-        return
-
-    # Reordered to a perimeter walk (top_left, top_right, bottom_right,
-    # bottom_left) -- get_image_corner_coordinates returns a diagonal-
-    # crossing order, same reason _capture_and_mark_seen reorders before
-    # calling accept_image_corner_coord. The GAMBLER does that reordered
-    # call itself once this report arrives; ASSISTANT has no Pathfinder to
-    # call it on.
-    self.drone.last_photo_corners_latlon = [top_left, top_right, bottom_right, bottom_left]
-
-
-async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
+async def _capture_and_mark_seen(self: Scan, planner, waypoint) -> None:
     """Captures a photo at the drone's current position, computes its TRUE
     ground footprint from the camera's real FOV/mount geometry (BaseCamera.
-    get_image_corner_coordinates), and marks pf.seen_tracker with it --
+    get_image_corner_coordinates), and records it as coverage on the planner --
     instead of the fixed-size-rectangle assumption calc_scan_path_impl used
     to space out waypoints in the first place (SHAPE_SIZE_FT), which is only
     ever a planning estimate, not what the camera actually saw.
@@ -126,18 +65,17 @@ async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
     a logged warning, if no rangefinder3 reading has arrived yet. That
     fallback altitude is ONLY ever used for this footprint math, never for
     flight control.
+
+    Leaves the last footprint on Drone.last_photo_corners_latlon (None if none) --
+    DroneShare relays it to the other side (CROSS_PAIR_COVERAGE) and the side-mate.
     """
+    self.drone.last_photo_corners_latlon = None
     camera = self.drone.camera
     if camera is None:
         logging.warning("drone %d has no camera configured -- skipping photo capture", self.drone.id)
         return
 
     vehicle = self.drone.vehicle
-    required_x, required_y = pf.coord_converter.latlon_to_local(waypoint.lat, waypoint.long)
-    required_col, required_row = pf.seen_tracker.real_to_cell(required_x, required_y)
-    cell_in_bounds = (
-        0 <= required_col < pf.seen_tracker.width and 0 <= required_row < pf.seen_tracker.height
-    )
 
     attempts = 0
     while True:
@@ -182,14 +120,16 @@ async def _capture_and_mark_seen(self: Scan, pf: Pathfinder, waypoint) -> None:
 
         # get_image_corner_coordinates returns (top_left, top_right,
         # bottom_left, bottom_right) -- a diagonal-crossing order, not a
-        # perimeter walk. accept_image_corner_coord's fill is a simple-
-        # polygon point-in-test, so the corners must be reordered to trace
-        # the rectangle's actual edges (top_left, top_right, bottom_right,
-        # bottom_left) or the "polygon" self-intersects and the coverage
-        # test is wrong.
-        pf.accept_image_corner_coord([top_left, top_right, bottom_right, bottom_left])
+        # perimeter walk. The coverage fill is a simple-polygon test, so the
+        # corners must be reordered to trace the rectangle's actual edges
+        # (top_left, top_right, bottom_right, bottom_left) or the "polygon"
+        # self-intersects and the coverage test is wrong.
+        corners = [top_left, top_right, bottom_right, bottom_left]
+        planner.own_footprint(corners)
+        self.drone.last_photo_corners_latlon = corners
 
-        if not cell_in_bounds or pf.seen_tracker.get(required_col, required_row):
+        # None: the waypoint's cell is off the field, so no altitude can cover it.
+        if planner.cell_seen_at(waypoint.lat, waypoint.long) is not False:
             return
 
         attempts += 1
@@ -255,9 +195,9 @@ async def run(self: Scan) -> State:
     DroneShare is the other place this cycle can break to CalcScanPath:
     if IT finds a mine in the photo it just processed.
 
-    Immediately after reaching the waypoint (GAMBLER/SOLOGAMBLER only --
-    see _capture_and_mark_seen), captures a photo and marks pf.seen_tracker
-    with its TRUE ground footprint, climbing in 0.5m steps and recapturing
+    Immediately after reaching the waypoint (see _capture_and_mark_seen), captures a
+    photo and records its TRUE
+    ground footprint on the planner, climbing in 0.5m steps and recapturing
     until that footprint fully covers the cell this waypoint was sent to
     check. DroneShare, which runs next, only has photo *processing* left to
     do (mine detection) -- see its own docstring.
@@ -293,10 +233,8 @@ async def run(self: Scan) -> State:
             return EndRun(self.drone, self.flight_settings, self.interdrone)
 
         if self.drone.replan_needed is not None or not self.drone.waypoints:
-            # An empty queue with nothing to replan around yet (an
-            # ASSISTANT waiting on its paired GAMBLER's next SEND_SEGMENT_
-            # B_WAYPOINTS, or a GAMBLER that just handed segment B off and
-            # has nothing local left of its own) bounces straight back to
+            # An empty queue with nothing to replan around yet (waiting on the
+            # other side's point A or the side-mate's photos) bounces straight back to
             # CalcScanPath with no other await in between -- across two
             # concurrently-running drones sharing one event loop, that is
             # a tight loop with no suspension point, which starves every
@@ -314,21 +252,23 @@ async def run(self: Scan) -> State:
         # waypoints too) -- not a new interdrone send.
         # MISSION_ALTITUDE_M, not gotoWaypoint's own POIF-oriented default
         # (LEG_ALTITUDE_M) -- this is the mapping-mission scan loop.
-        reached = await self.drone.gotoWaypoint(
-            self.interdrone.drone_states, altitude_m=MISSION_ALTITUDE_M
-        )
+        try:
+            reached = await self.drone.gotoWaypoint(
+                self.interdrone.drone_states, altitude_m=MISSION_ALTITUDE_M
+            )
+        except FormationLost as ex:
+            # Measured separation from a peer fell below the floor (or a hold never
+            # cleared): the avoidance guarantee is gone. Land, as POIF does, rather
+            # than let the exception kill the state machine with the drone in GUIDED.
+            flight_log.event("scan_separation_lost", reason=str(ex))
+            logging.critical("drone %d: scan aborted -- %s", self.drone.id, ex)
+            return Land(self.drone, self.flight_settings, self.interdrone)
         self.drone.last_reached_waypoint = reached
         flight_log.event("scan_waypoint_reached", waypoint=flight_log.waypoint_brief(reached))
 
-        # An ASSISTANT has no Pathfinder (see configureField), and therefore
-        # no seen_tracker to check photo coverage against -- it still takes
-        # the photo (_capture_for_assistant), just without the climb-retry
-        # coverage loop; DroneShare reports the result back to its paired
-        # GAMBLER via SHARE_PHOTOS instead of applying it locally.
-        if self.flight_settings.role != Role.ASSISTANT:
-            await _capture_and_mark_seen(self, Pathfinder.instance, reached)
-        else:
-            await _capture_for_assistant(self, reached)
+        # Records the photo's real footprint on this drone's planner, climbing to retry
+        # while it misses the waypoint's square; DroneShare then applies the photo.
+        await _capture_and_mark_seen(self, self.drone.planner, reached)
 
         return DroneShare(self.drone, self.flight_settings, self.interdrone)
     except asyncio.CancelledError as ex:

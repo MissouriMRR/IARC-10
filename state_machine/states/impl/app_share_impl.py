@@ -48,12 +48,11 @@ async def run(self: AppShare) -> State:
         logging.info("AppShare state running")
 
         # The mission's own final route -- EndRun already resynced
-        # self.drone.mission_path with this Pathfinder's now-final,
+        # self.drone.mission_path with this planner's now-final,
         # post-ExpandNodes route (see its own docstring on why that's a
         # wholesale replace, not another append) before transitioning
         # here. A no-op for anything but drone 1 (push_mission_path's own
-        # gate) and for an ASSISTANT (mission_path stays empty its whole
-        # life -- see configureField).
+        # gate).
         #
         # PLACEHOLDER still: sharing discovered-mine data specifically
         # with the app isn't implemented -- see SEND_GROUND_TRUTH_COORDS
@@ -77,11 +76,8 @@ def _write_path_file(drone) -> None:
     SEND_PATHS_TO_APP's interdrone message ever reaches the app (or
     there's even an app connected at all, e.g. a bench test run).
 
-    Unlike push_mission_path, NOT restricted to drone 1 -- every
-    GAMBLER/SOLOGAMBLER gets its own file (an ASSISTANT's mission_path
-    stays empty its whole life and it never sets no_valid_path_found
-    either -- see configureField/_check_no_valid_path -- so the guard
-    below already skips it with no extra role check needed). A local
+    Unlike push_mission_path, NOT restricted to drone 1 -- every drone
+    gets its own file (each keeps its own copy of its side's planner). A local
     debug record has no reason to inherit "only drone 1 talks to the
     app"'s reporting convention.
     """
