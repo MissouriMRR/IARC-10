@@ -1,0 +1,10 @@
+# Paths to your dataset
+path: ../dataset
+
+val: /images/val
+test: /images/test
+
+# Classes
+nc: 1
+names:
+ 0: mine
