@@ -21,9 +21,6 @@ from pymavlink import mavutil
 from pymavlink.dialects.v20.all import MAVLink_command_long_message
 
 from flight.pathfinding.utils.calculate_distance import calculate_distance
-import flight.pathfinding.utils.seen_by_drone as seen_by_drone
-import flight.pathfinding.nodeField as nodeGen
-from flight.pathfinder import HEIGHTOFFIELD, Pathfinder, WIDTHOFFIELD, format_iarc_path
 from state_machine.flight_settings import SimMode
 from flight.waypoint import (
     COLLISION_RADIUS,
@@ -32,7 +29,6 @@ from flight.waypoint import (
     Waypoint,
     segment_distance,
 )
-import flight.collisionAvoidance
 import flight.flight_log as flight_log
 from flight.pathfinding.utils.goto import FlightInterrupted, move_to
 
@@ -131,33 +127,27 @@ class LegConflict(NamedTuple):
 
 
 class CrossPairMineReport(NamedTuple):
-    """One CROSS_PAIR_MINE_RELAY, staged on Drone.pending_cross_pair_mines
-    by interdrone's receive handler for CalcScanPath to drain later,
-    synchronously -- see that attribute's own docstring for why a live
-    Pathfinder can never be touched directly from the interdrone loop's
-    own (concurrent) task."""
+    """One mine from the partner side (CROSS_PAIR_MINE_RELAY or _SYNC), staged on
+    Drone.pending_cross_pair_mines by interdrone's receive handler for CalcScanPath to drain
+    later, synchronously -- the planner is never touched from the interdrone loop's own
+    (concurrent) task."""
 
     lat: float
     lon: float
-    # The SENDER's own PolygonObstacle.obstacle_hash for this mine --
-    # echoed back in CROSS_PAIR_MINE_RELAY_ACK and, if a local patch gets
-    # made in response, in CROSS_PAIR_PATCHED_SPAN too.
-    obstacle_hash: str
-    # Who to reply to if applying this locally (prefer_local_patch=True)
-    # produces a patch_confirmed_span result.
-    discovering_drone_id: int
 
 
 class SharedPhotoReport(NamedTuple):
-    """One SHARE_PHOTOS entry (ASSISTANT -> its own paired GAMBLER),
+    """One SHARE_PHOTOS entry from the side-mate,
     staged on Drone.pending_photo_reports by interdrone's receive handler
     for CalcScanPath to drain later, synchronously -- same reason
-    CrossPairMineReport is staged rather than applied directly: a live
-    Pathfinder can never be touched from the interdrone loop's own
-    (concurrent) task."""
+    CrossPairMineReport is staged rather than applied directly: the planner
+    is never touched from the interdrone loop's own (concurrent) task."""
 
     corner_coordinates: list[tuple[float, float]]
     mines: list[tuple[float, float]]
+    # A photo that produced no footprint (camera failure): where it was planned. It counts
+    # as a miss (planner.failed_photo); corner_coordinates is empty.
+    failed_at: tuple[float, float] | None = None
 
 
 def _describe_conflict(conflict: LegConflict) -> str:
@@ -227,7 +217,7 @@ class Drone:
     """
 
     def __init__(
-        self, address: str = "", baud: int | None = None, mine_radius: int = 36, id: int = 0
+        self, address: str = "", baud: int | None = None, id: int = 0
     ) -> None:
         """
         Initialize a new Drone object, but do not connect to a drone.
@@ -244,14 +234,8 @@ class Drone:
         self._vehicle: dronekit.Vehicle | None = None
         self.address: str = address
         self.baud: int | None = baud
-        self.field_size: tuple[int, int] = (3600, 960)
-        self.mine_radius = mine_radius
         self.tasks: tuple = []
-        self.seen_tracker = seen_by_drone.SightTracker(self.field_size)
-        self.field: "nodeGen.Field" = None
         self.id = id
-        self.start_node = None
-        self.end_nodes = []
         self.waypoints = []
         self.formation_abort: str | None = None
         # Set (to a reason string) by interdrone's own message handling when
@@ -268,9 +252,6 @@ class Drone:
         # returns it, but each state's run() is a fresh call with no
         # shared closure, so it has to live here to cross that boundary.
         self.last_reached_waypoint: Waypoint | None = None
-        # How long an ASSISTANT's waypoint queue has sat empty -- see
-        # CalcScanPath's own ASSISTANT_IDLE_TIMEOUT_S for why this exists.
-        self.assistant_idle_since: float | None = None
         self.startTime: float | None = None
         # Last speed sent to the autopilot, so commandPoint can skip re-sending it.
         self._commanded_groundspeed: float | None = None
@@ -291,82 +272,61 @@ class Drone:
         # for DroneShare's mine-detection placeholder to process without
         # recapturing.
         self.last_captured_image: Any = None
-        # ASSISTANT only: the TRUE ground footprint corners (lat, lon) of
-        # the photo _capture_for_assistant (scan_impl.py) just took --
-        # None if that capture failed. DroneShare reads this to build the
-        # SHARE_PHOTOS report sent back to the paired GAMBLER, since an
-        # ASSISTANT has no seen_tracker of its own to mark directly.
+        # The TRUE ground footprint corners (lat, lon) of the photo Scan just
+        # took -- None if that capture failed. DroneShare sends it to the
+        # side-mate (SHARE_PHOTOS) and the other side (CROSS_PAIR_COVERAGE).
         self.last_photo_corners_latlon: list[tuple[float, float]] | None = None
-        # The parent drone's own accumulated, mission-wide route: plain
-        # (lat, lon) points, in flight order, appended to ONLY once a
-        # stretch is truly settled (see extend_mission_path) -- never
-        # Node objects, never read from a live Pathfinder's own maze_a_
-        # path/maze_b_path/maze_confirmed_path directly. That distinction
-        # matters as soon as there's more than one Pathfinder in a
-        # mission (two pairs, see CalcScanPath's own GAMBLER/SOLOGAMBLER
-        # split): each Pathfinder's node ids are drone-number-prefixed and
-        # not comparable across processes, and querying a live Pathfinder
-        # only ever gives you that ONE Pathfinder's own half of the field
-        # -- mission_path is meant to be readable by something outside
-        # this drone's own process (the app, a status file) without
-        # needing a live Pathfinder object at all. Every GAMBLER/
-        # SOLOGAMBLER accumulates its own (an ASSISTANT has no Pathfinder
-        # to accumulate one from, see configureField) -- but only drone 1
-        # (the mission's "parent", already the established app-reporting
-        # role -- see SEND_SWARM_STATUS) is meant to be READ externally.
-        # In a two-pair mission that means drone 1's own mission_path only
-        # covers its own pair's half until cross-pair relay exists to
-        # fold the other pair's confirmed stretches in too (see
-        # get_mission_iarc_path's own docstring) -- an honest gap, not
-        # papered over here.
+        # The mission's reported route: plain (lat, lon) points, in flight
+        # order -- readable by something outside this drone's own process
+        # (the app, a status file) without a live planner. Set by
+        # CalcScanPath when this side finishes and replaced by EndRun: in a
+        # two-sided mission drone 1's is the full-field route, joined with
+        # the other side's (see end_run_impl._join_with_partner). Only drone
+        # 1's (the mission's app link -- see SEND_SWARM_STATUS) is read
+        # externally.
         self.mission_path: list[tuple[float, float]] = []
-        # Staged CROSS_PAIR_MINE_RELAY reports, appended by interdrone's
-        # own receive handler, drained (synchronously, from CalcScanPath)
-        # via Pathfinder.add_discovered_mine(report.lat, report.lon,
-        # prefer_local_patch=True) -- see CrossPairMineReport's own
-        # docstring for why the receive path only ever stages, never
-        # calls that directly itself.
+        # This drone's copy of its side's planner (flight/pathfinding/mission_planner.py) and
+        # the agent that drives it and does its messaging (flight/pathfinding/side_agent.py).
+        # Both built by Takeoff's configureField, on every drone.
+        self.planner = None
+        self.side = None
+        # Staged by interdrone's receive handler and applied by the side agent on the next
+        # planning pass -- the planner is never touched from the interdrone task:
+        # - the other side's mines (CROSS_PAIR_MINE_RELAY / _SYNC);
         self.pending_cross_pair_mines: list[CrossPairMineReport] = []
-        # Staged CROSS_PAIR_PATCHED_SPAN points, appended by interdrone's
-        # own receive handler -- this drone was the ORIGINAL discoverer,
-        # and these are the new places to fly to and re-photograph a
-        # local patch the OTHER pair made in response (see
-        # Pathfinder.patch_confirmed_span's own docstring for why the
-        # discovering pair, not the patching one, goes back to verify).
-        # Drained the same way pending_cross_pair_mines is.
-        self.pending_verification_waypoints: list[tuple[float, float]] = []
-        # Latest CROSS_PAIR_POINT_A_SYNC (lat, lon) from the other pair,
-        # staged by interdrone's own receive handler -- drained (calling
-        # Pathfinder.retarget_approach_target, which touches the live
-        # graph) synchronously from CalcScanPath, same reason
-        # pending_cross_pair_mines is never applied directly from that
-        # receive task. A single slot, not a list: only the OTHER pair's
-        # MOST RECENT point_A ever matters, so an older, still-undrained
-        # sync is just overwritten rather than queued.
-        self.pending_point_a_sync: tuple[float, float] | None = None
-        # Staged SHARE_PHOTOS reports (ASSISTANT -> its own paired
-        # GAMBLER), appended by interdrone's own receive handler, drained
-        # (synchronously, from CalcScanPath) via pf.accept_image_corner_
-        # coord for coverage and pf.add_discovered_mine for any mines --
-        # same staging reason as pending_cross_pair_mines.
+        # - the side-mate's photos (SHARE_PHOTOS);
         self.pending_photo_reports: list[SharedPhotoReport] = []
-        # GAMBLER only: the exact (lat, lon) tuple set most recently sent
-        # to the paired ASSISTANT via SEND_SEGMENT_B_WAYPOINTS. Segment B
-        # doesn't shrink until the ASSISTANT's own SHARE_PHOTOS reports
-        # get drained back in (see _drain_photo_reports), so
-        # get_places_to_check_maze keeps returning the SAME still-
-        # uncovered b_places every CalcScanPath pass in between --
-        # without this, _run_gambler would resend (and the ASSISTANT's
-        # own receive handler would resetWaypoints) every single pass,
-        # repeatedly discarding whatever the ASSISTANT is mid-flight on.
-        self.last_sent_segment_b: tuple[tuple[float, float], ...] | None = None
-        # GAMBLER/SOLOGAMBLER with a cross_pair_partner_id only: the
-        # (lat, lon) this pair's own point_A (maze_a_path[0]) was last
-        # synced to the other pair/solo drone at, via
-        # CROSS_PAIR_POINT_A_SYNC -- see _send_point_a_sync_if_changed's
-        # own epsilon-guard docstring for why a sync is skipped once
-        # nothing has actually moved.
-        self.last_synced_point_a: tuple[float, float] | None = None
+        # - the other side's latest point A (latest wins) and its photo footprints;
+        self.pending_partner_point_a: tuple[float, float] | None = None
+        self.pending_partner_coverage: list[list[tuple[float, float]]] = []
+        # - the job each other drone last announced (SIDE_JOB; latest wins), by sender id:
+        #   the side-mate's is held from it (claims.py), the other side's steers clear of it.
+        self.peer_jobs: dict[int, Any] = {}
+        # Set by calc_scan_path_impl.py's _flag_no_valid_path when the
+        # planner finds no route at all -- which otherwise looks exactly
+        # like a finished scan. AppShare's own path file/push checks this
+        # so a fully mine-blocked field is reported as "no path found,"
+        # not silently as an empty-but-successful one.
+        self.no_valid_path_found: bool = False
+        # The join (EndRun, two-sided missions):
+        # - drone 1: the other side's route (CROSS_PAIR_CHAIN), for the joined report;
+        self.partner_route: list[tuple[float, float]] | None = None
+        self.partner_route_complete: bool = False
+        self.partner_route_mine_hash: str | None = None
+        # - drone 1: the join is done, and the mine hash it was made with. Later
+        #   CROSS_PAIR_CHAIN resends are acked straight from the receive handler, so a lost
+        #   ack can't strand the other side.
+        self.route_joined: bool = False
+        self.joined_mine_hash: str | None = None
+        # - the top side's speaker: the mine hash drone 1 joined its route with
+        #   (CROSS_PAIR_CHAIN_ACK). It may leave only while that matches its own.
+        self.partner_route_ack_hash: str | None = None
+        # The mapping mission's POSITION_REPORT stream (started by Takeoff, cancelled on
+        # landing): peers need it for collision avoidance, the side-mate for its claims.
+        self.position_stream = None
+        # Drone 1, two-sided mission: the reported route is only this side's half
+        # because the partner's route never arrived or didn't connect.
+        self.reported_half_route: bool = False
         # TODO: add reference to mine and path data classes
 
     @property
@@ -626,40 +586,22 @@ class Drone:
     def getWaypointChecksum(self):
         return Waypoint.getChecksum(self.waypoints)
 
-    def extend_mission_path(self, points_latlon: list[tuple[float, float]]) -> None:
-        """Appends newly-settled (lat, lon) points onto self.mission_path.
-        Call only with a stretch that's truly done changing -- CalcScanPath
-        calls this with maze_b_path's own points right before
-        pf.confirm_b_into_c() folds them into confirmed history (the exact
-        moment they stop being reroutable), and EndRun calls it once more
-        with the final maze_a_path once the mission concludes (the one
-        stretch that never goes through confirm_b_into_c at all, since
-        it's the approach edge, not something that drains into C)."""
-        self.mission_path.extend(points_latlon)
-
     def get_mission_iarc_path(self, buffer_width: int = 0) -> str:
-        """Returns self.mission_path -- see that attribute's own docstring
-        for why it's tracked separately from any live Pathfinder's own
-        route -- in the IARC text-reporting format (see
-        flight.pathfinder.format_iarc_path for the format itself).
+        """Returns self.mission_path in the IARC text-reporting format (see
+        flight.pathfinding.iarc_report.format_iarc_path for the format itself).
 
-        Needs Pathfinder.instance for coordinate geometry only (converting
-        mission_path's plain lat/lon into the local frame format_iarc_path
-        works in) -- whichever drone calls this (meant to be drone 1, the
-        mission's "parent") always has one, since only ASSISTANT skips
-        building a Pathfinder (see configureField) and drone 1 is never
-        assigned that role for any drone count.
+        Needs self.planner for coordinate geometry (the local frame format_iarc_path
+        works in). Every drone has one once Takeoff has configured the field.
 
-        Raises ValueError if mission_path is empty, or if this drone has
-        no Pathfinder to convert coordinates with."""
-        pf = Pathfinder.instance
-        if pf is None:
+        Raises ValueError if mission_path is empty, or if this drone has no planner."""
+        if self.planner is None:
             raise ValueError(
-                "get_mission_iarc_path needs Pathfinder.instance for coordinate"
-                " geometry, and this drone has none"
+                "get_mission_iarc_path needs a planner for coordinate geometry, and this"
+                " drone has none"
             )
-        path_xy = [pf.coord_converter.latlon_to_local(lat, lon) for lat, lon in self.mission_path]
-        return format_iarc_path(path_xy, buffer_width)
+        # The planner reports with strict=False: a discontinuity is logged, not raised --
+        # raising out of EndRun/AppShare would leave the drone hovering.
+        return self.planner.iarc_path(self.mission_path, buffer_width)
 
     def checkForCollision(self, other_waypoints: list[Waypoint]) -> int:
         """Report where this drone's *planned* route crosses another drone's.
@@ -715,12 +657,12 @@ class Drone:
         startTime is still None -- too early in the mission for "exceeded"
         to mean anything -- rather than raising, so callers (CalcScanPath/
         Scan's own time-exceeded check, ahead of every replan and every
-        flight leg) don't need their own None-guard. Uses time.time() to
-        match how startTime itself is set (epoch seconds, not
-        monotonic -- see takeoff_impl.py)."""
+        flight leg) don't need their own None-guard. time.monotonic(), as
+        startTime is set: a wall-clock step (NTP, GPS time sync) mid-flight
+        must not end the mission early or never."""
         if self.startTime is None:
             return False
-        return time.time() - self.startTime > max_flight_time
+        return time.monotonic() - self.startTime > max_flight_time
 
     def conflictsForLeg(
         self,
@@ -1134,37 +1076,40 @@ class Drone:
         )
         logging.info(f"Reached waypoint {curWaypoint.waypoint_id}")
 
-        return self.waypoints.pop(0)
-
-    def setFieldSize(self, xMin, xMax, yMin, yMax):
-        self.field = nodeGen.Field(xMin, xMax, yMin, yMax)
+        # The queue can be replaced mid-leg (a replan while flying): return the waypoint
+        # this leg flew, and drop it only if it is still queued -- never pop whatever is at
+        # the head now (another waypoint, or nothing at all).
+        for i, queued in enumerate(self.waypoints):
+            if queued is curWaypoint:
+                del self.waypoints[i]
+                break
+        return curWaypoint
 
     # Smart landing sequence, Should be usable in final product!!
     async def recall(self) -> None:
-        """Flies to the nearest field edge (whichever of the two axes is
-        closer to a boundary, in the Pathfinder's own local frame) at
+        """Flies to the nearest of the four field edges (in the planner's local frame) at
         MISSION_ALTITUDE_M -- exits the field along the shortest path
         before Land's own return_to_launch takes over for the rest of the
         way home, rather than cutting straight back across ground that
         might not be fully swept. Only ever reached from the mapping
         mission's own EndRun -> AppShare -> Recall tail (see recall_impl.py),
         never POIF, hence MISSION_ALTITUDE_M and not LEG_ALTITUDE_M here.
-        self.x/self.y/self.convert_goto (this method's previous body)
-        never existed anywhere on this class -- this predates the
-        Pathfinder-based rewrite the rest of Drone/the maze-mode states
-        now use, and every call would have raised AttributeError. A no-op
-        if this drone never built a Pathfinder (ASSISTANT -- see
-        configureField -- or a test harness that skipped Takeoff)."""
-        pf = Pathfinder.instance
-        if pf is None:
+        A no-op if this drone has no planner (a test harness that
+        skipped Takeoff)."""
+        planner = self.planner
+        if planner is None:
             return
         lat, lon = self.currentPosition()
-        x, y = pf.coord_converter.latlon_to_local(lat, lon)
-        if WIDTHOFFIELD - x < HEIGHTOFFIELD - y:
-            target_x, target_y = WIDTHOFFIELD, y
-        else:
-            target_x, target_y = x, HEIGHTOFFIELD
-        target_lat, target_lon = pf.coord_converter.local_to_latlon(target_x, target_y)
+        x, y = planner.latlon_to_local(lat, lon)
+        w, h = planner.field_w, planner.field_h
+        # (distance to the edge, the point on it) for left, right, bottom, top. The old
+        # version only compared the right and top edges, so a drone near the left or
+        # bottom edge flew across the field to leave it.
+        _dist, (target_x, target_y) = min(
+            (x, (0.0, y)), (w - x, (w, y)), (y, (x, 0.0)), (h - y, (x, h)),
+            key=lambda edge: edge[0],
+        )
+        target_lat, target_lon = planner.local_to_latlon(target_x, target_y)
         self.commandPoint(target_lat, target_lon, MISSION_ALTITUDE_M, groundspeed=LEG_GROUNDSPEED_M_S)
         target = (target_lat, target_lon)
         while segment_distance(self.currentPosition(), self.currentPosition(), target, target) > LEG_TOLERANCE_M:

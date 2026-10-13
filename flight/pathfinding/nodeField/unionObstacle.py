@@ -1,27 +1,37 @@
-from shapely import unary_union
+from shapely.ops import unary_union
+
 from flight.pathfinding.nodeField.polygonObstacle import PolygonObstacle
 
 
 class unionObstacle(PolygonObstacle):
-    def __init__(self, obstacleList, nodes, wrapped):
-        self.obstacleList = obstacleList
-        self.nodes = nodes
+    """Merged obstacles, outlined by the exact union (interior holes ignored).
 
-        self.combinedPolygon = unary_union([i.polygon for i in self.obstacleList])
-        self.wrappedPolygon = self.combinedPolygon.convex_hull
-        self.polygon = self.combinedPolygon.convex_hull
-        self.vertices = self.polygon.exterior.coords
-        super().__init__(self.vertices, nodes, wrapped)
+    - grows: True (its mines do; zones inside it do not)
+    - obstacleList: the leaf obstacles (mines, zones) it is made of, never other unions
+    """
+
+    def __init__(self, obstacleList):
+        leaves = []
+        for o in obstacleList:
+            leaves.extend(o.obstacleList if isinstance(o, unionObstacle) else [o])
+        self.obstacleList = leaves
+        super().__init__([], (leaves[0].origin), shape=self._union())
+
+    grows = True
+
+    def _union(self):
+        return unary_union([o.shape for o in self.obstacleList])
+
+    def mines(self):
+        """The BlockMines inside (skips plain zones)."""
+        return [o for o in self.obstacleList if hasattr(o, "squares")]
 
     def updateGeometry(self):
-        self.combinedPolygon = unary_union([i.polygon for i in self.obstacleList])
+        """Re-derive the outline after a constituent changed shape."""
+        self._setShape(self._union())
 
-    def getGeomtery(self):
-        return self.combinedPolygon
-
-    # Merge-eligibility must be checked against the true (possibly concave)
-    # combined shape, not self.polygon (the convex hull) -- otherwise a new
-    # obstacle sitting entirely inside a concave notch, touching no real
-    # material, would incorrectly be judged as overlapping and get merged in.
-    def obstacleOverlap(self, otherObstacle):
-        return self.combinedPolygon.intersects(otherObstacle.polygon)
+    def expand(self, distance):
+        for o in self.obstacleList:
+            if o.grows:
+                o.expand(distance)
+        self.updateGeometry()

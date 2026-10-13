@@ -79,26 +79,26 @@ class MessageType(Enum):
     MISSION_END_ACK = 586
     SEND_SEEN = 590
     SEND_SEEN_ACK = 591
-    SEND_SEGMENT_B_WAYPOINTS = 595 # Also used to distrbute mines
+    # 595 retired (was SEND_SEGMENT_B_WAYPOINTS / ASSIGN_WORK: every drone now plans itself)
 
     # Placeholder messages
     MISC2 = 597
     MISC3 = 598
     MISC4 = 599
 
-    # CROSS-PAIR (two pairs, or a pair + a solo drone, working the same
-    # field from opposite ends -- see flight/pathfinder.py's own
-    # retarget_approach_target). Gambler-to-gambler, not gambler-to-
-    # assistant like SHARE_PHOTOS above -- see FlightSettings.
-    # cross_pair_partner_id for how the target drone id is chosen.
+    # CROSS-PAIR: between the two sides (FlightSettings.side_drones /
+    # partner_side_drones) working the field from opposite ends and meeting in the
+    # middle. Sent to every drone of the other side, so each copy of its planner hears.
     CROSS_PAIR_MINE_RELAY = 600
     CROSS_PAIR_MINE_RELAY_ACK = 601
-    CROSS_PAIR_PATCHED_SPAN = 602
-    CROSS_PAIR_PATCHED_SPAN_ACK = 603
-    # Not acked, not resent on failure -- same reasoning as POSITION_REPORT:
-    # a continuous stream where a dropped one is superseded by the next
-    # point_A move, so there's nothing a lost message would need retried.
-    CROSS_PAIR_POINT_A_SYNC = 604
+    # 602-603 retired (the legacy planner's CROSS_PAIR_PATCHED_SPAN and its ack): don't reuse.
+    CROSS_PAIR_POINT_A = 604        # a side's speaker -> the other side: its point A (lossy)
+    CROSS_PAIR_COVERAGE = 605       # any drone -> the other side: one photo footprint (lossy)
+    CROSS_PAIR_CHAIN = 606          # top side's speaker -> bottom side: its finished route
+    CROSS_PAIR_CHAIN_ACK = 607      # drone 1 -> top side: joined, you're released
+    # 608 retired (was PAIR_SCAN_DONE: every drone knows from its own planner when it is done)
+    CROSS_PAIR_MINE_SYNC = 609      # a side's speaker -> the other side: every mine it knows
+    SIDE_JOB = 610                  # drone -> its side-mate: the job it is working on
 
 
 SchemaFieldType: TypeAlias = (
@@ -502,16 +502,6 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
     },
-    MessageType.SEND_SEGMENT_B_WAYPOINTS: {
-        "id": MessageType.SEND_SEGMENT_B_WAYPOINTS,
-        "drones_to_send_data": tuple[int, ...],
-        "sender_id": int,
-        # (lat, lon) -- was typed tuple[int, int] before this drone's own
-        # send_segment_b_waypoints/receive wiring existed; lat/lon are
-        # never integers, so every real send would have failed schema
-        # validation and silently gone out as an empty {} payload.
-        "waypoints": list[tuple[float, float]],
-    },
     MessageType.MISC2: {
         "id": MessageType.MISC2, # Change name when implemented
         "drones_to_send_data": tuple[int, ...],
@@ -529,21 +519,15 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "sender_id": int,
     },
     # CROSS-PAIR: the discovering pair's own report of a mine to the OTHER
-    # pair/solo drone -- see Pathfinder.add_discovered_mine's own
-    # prefer_local_patch docstring for why the receiving side must call
-    # add_discovered_mine(..., prefer_local_patch=True), not the plain
-    # form SHARE_PHOTOS' own receive handler uses.
+    # pair/solo drone.
     MessageType.CROSS_PAIR_MINE_RELAY: {
         "id": MessageType.CROSS_PAIR_MINE_RELAY,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
         "mine_lat": float,
         "mine_lon": float,
-        # PolygonObstacle.obstacle_hash on the SENDER's own Pathfinder --
-        # position-derived, so both sides compute the same value for the
-        # same physical mine with no shared numeric id needed. Lets a
-        # later CROSS_PAIR_PATCHED_SPAN reply reference this exact mine.
-        "mine_obstacle_hash": str,
+        # The sender's position-derived id for the mine, echoed back in the ack.
+        "relay_id": str,
     },
     MessageType.CROSS_PAIR_MINE_RELAY_ACK: {
         "id": MessageType.CROSS_PAIR_MINE_RELAY_ACK,
@@ -553,51 +537,56 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         # prompted it -- sent the moment the relay is QUEUED (see
         # Drone.pending_cross_pair_mines), not once it's actually
         # processed by CalcScanPath.
-        "mine_obstacle_hash": str,
+        "relay_id": str,
     },
-    # CROSS-PAIR: the patching pair's reply once it applies a relayed mine
-    # via add_discovered_mine(prefer_local_patch=True) -- see
-    # Pathfinder.patch_confirmed_span's own docstring for why the result
-    # goes back to the DISCOVERING pair (the one that sent
-    # CROSS_PAIR_MINE_RELAY) to go re-verify/photograph, even though the
-    # patch itself landed in the PATCHING pair's own confirmed history.
-    # Only ever sent if patch_confirmed_span actually made a patch
-    # (self.last_patched_span is not None) -- check_path_envelopment's own
-    # unconditional full-recompute fallback needs no reply, since it
-    # doesn't ask the discovering pair to do anything.
-    MessageType.CROSS_PAIR_PATCHED_SPAN: {
-        "id": MessageType.CROSS_PAIR_PATCHED_SPAN,
+    MessageType.CROSS_PAIR_POINT_A: {
+        "id": MessageType.CROSS_PAIR_POINT_A,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        # Which CROSS_PAIR_MINE_RELAY this replies to.
-        "mine_obstacle_hash": str,
-        # The new local sub-path's own (lat, lon) points, inclusive of
-        # both boundary nodes -- exactly patch_confirmed_span's own
-        # return value, converted from local (x, y) to lat/lon before
-        # sending (see that method's own docstring for the local-frame
-        # node list it returns).
-        "patched_span": list[tuple[float, float]],
+        "lat": float,
+        "lon": float,
     },
-    MessageType.CROSS_PAIR_PATCHED_SPAN_ACK: {
-        "id": MessageType.CROSS_PAIR_PATCHED_SPAN_ACK,
+    MessageType.CROSS_PAIR_COVERAGE: {
+        "id": MessageType.CROSS_PAIR_COVERAGE,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "mine_obstacle_hash": str,
+        # The photo's ground footprint, 4 (lat, lon) corners in perimeter order.
+        "corners": list[tuple[float, float]],
     },
-    # CROSS-PAIR: the sender's current point_A (maze_a_path[0]), so the
-    # OTHER pair/solo drone can retarget its own segment-A search onto it
-    # instead of the field's fixed far edge -- see Pathfinder.
-    # retarget_approach_target's own docstring for the mechanism this
-    # feeds and flight/pathfinding/tests/droneWorkflowTest.py's
-    # _sync_approach_target for the reference (pathfinder-only) version of
-    # this same sync being wired here for the real interdrone/state
-    # machine path.
-    MessageType.CROSS_PAIR_POINT_A_SYNC: {
-        "id": MessageType.CROSS_PAIR_POINT_A_SYNC,
+    MessageType.CROSS_PAIR_CHAIN: {
+        "id": MessageType.CROSS_PAIR_CHAIN,
         "drones_to_send_data": tuple[int, ...],
         "sender_id": int,
-        "point_a_lat": float,
-        "point_a_lon": float,
+        # (lat, lon) points, from the sender's entry to where it met drone 1's side.
+        "route": list[tuple[float, float]],
+        # Whether the sender's side is fully checked.
+        "complete": bool,
+        # The sender's mine_hash(): drone 1 joins only when its own matches, i.e. both
+        # routes were planned around the same mines.
+        "mine_hash": str,
+    },
+    MessageType.CROSS_PAIR_CHAIN_ACK: {
+        "id": MessageType.CROSS_PAIR_CHAIN_ACK,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # The mine_hash the join was made with: the end-side lead leaves only on an ack
+        # matching its own current hash, so an ack for an older mine set can't release it.
+        "mine_hash": str,
+    },
+    MessageType.CROSS_PAIR_MINE_SYNC: {
+        "id": MessageType.CROSS_PAIR_MINE_SYNC,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # Every mine the sender knows, (lat, lon). The receiver adds any it lacks: repairs a
+        # lost CROSS_PAIR_MINE_RELAY, so the two mine hashes converge.
+        "mines": list[tuple[float, float]],
+    },
+    MessageType.SIDE_JOB: {
+        "id": MessageType.SIDE_JOB,
+        "drones_to_send_data": tuple[int, ...],
+        "sender_id": int,
+        # (group, key, (x, y)) in local feet, or None (see claims.py / side_agent.py).
+        "job": Any,
     },
 }
 

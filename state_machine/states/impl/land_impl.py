@@ -34,6 +34,10 @@ async def run(self: Land) -> None:
         update_flight_settings(self.flight_settings)
         logging.info("Land state running")
 
+        if self.drone.position_stream is not None:
+            self.drone.position_stream.cancel()
+            self.drone.position_stream = None
+
         # Instruct the drone to land
         self.drone.vehicle.airspeed = 20
         await self.drone.return_to_launch()

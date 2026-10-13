@@ -17,9 +17,10 @@ from state_machine.states.takeoff import Takeoff
 from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.calc_scan_path import CalcScanPath
-from state_machine.flight_settings import Role, Side, SimMode
-from flight.pathfinder import Pathfinder
-from time import time
+from state_machine.flight_settings import SimMode
+from flight.pathfinding.mission_planner import make_planner
+from flight.pathfinding.side_agent import SideAgent
+from time import monotonic
 
 # RPICamera and AirSimCamera are imported inside the MISSION branch below, not
 # here: importing RPICamera at module level pulls in picamera2, which only
@@ -103,7 +104,7 @@ async def run(self: Takeoff) -> State:
                 # overshoot margin: every leg holds LEG_ALTITUDE_M, so climbing
                 # past it just means descending back down on the first leg.
                 await self.drone.takeoff(LEG_ALTITUDE_M, margin=0.0)
-                self.drone.startTime=time()
+                self.drone.startTime = monotonic()
                 await asyncio.sleep(5)
 
                 return POIF(self.drone, self.flight_settings, self.interdrone)
@@ -143,15 +144,17 @@ async def run(self: Takeoff) -> State:
                 else:
                     await self.interdrone.send_start_mission(tuple([1]))
                 await self.drone.takeoff(MISSION_ALTITUDE_M)
-                self.drone.startTime = time()
+                self.drone.startTime = monotonic()
+                # Peers avoid us, and our side-mate claims work, from where we actually are.
+                peers = tuple(self.flight_settings.other_drones_in_mission)
+                if peers and self.drone.position_stream is None:
+                    self.drone.position_stream = asyncio.create_task(
+                        self.interdrone.stream_positions(peers)
+                    )
                 await asyncio.sleep(5)
 
-                # CalcScanPath's own _maze_started check calls
-                # start_maze_navigation() the first time it sees a fresh
-                # Pathfinder -- no separate "initial" state is needed, and
-                # InitialCalcScanPath's old logic predates Pathfinder
-                # entirely (raw Graph/nodeGraph slicing by drone ID, none
-                # of which the maze-style A/B/C design still uses).
+                # CalcScanPath starts the planner the first time it runs
+                # (planner.start_if_needed) -- no separate "initial" state.
                 return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
             if self.interdrone.get_cmd_msg() == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
                 if self.drone.id == 1:
@@ -191,37 +194,16 @@ Takeoff.run_callable = run
 
 def configureField(state: Takeoff) -> None:
     """
-    Builds this drone's Pathfinder and node field from the mission config --
-    GAMBLER/SOLOGAMBLER only. An ASSISTANT never plans its own route (see
-    the leader/follower design in flight/pathfinding/tests/droneWorkflowTest.py's
-    simulate_leader_follower_pair): it flies whatever segment-B waypoints its
-    paired GAMBLER hands it over interdrone comms, so building a second,
-    unused Pathfinder for it would be dead weight at best and a second
-    source of truth to keep in sync at worst.
+    Builds this drone's copy of its side's planner (Drone.planner) and the agent that drives
+    it (Drone.side, flight/pathfinding/side_agent.py) from the mission config. Every drone
+    gets both: a side's drones are equals.
 
-    Parameters
-    ----------
-    state : Takeoff
-        The running Takeoff state, whose flight_settings carry the mission
-        field corners, altitude, and this drone's ID/pairing/role info.
+    Raises ValueError here, on the ground, if the field corners don't trace a simple
+    counter-clockwise quadrilateral (see flight/pathfinding/frame.py).
     """
-    if state.flight_settings.role == Role.ASSISTANT:
-        return
+    # Local import: calc_scan_path_impl's footprint constants are the planner's too.
+    from state_machine.states.impl.calc_scan_path_impl import OVERLAP, SHAPE_SIZE_FT
 
-    missionFieldCorners = []
-    for corner in state.flight_settings.mission_field_corners:
-        missionFieldCorners.append((corner["lat"], corner["lon"]))
-
-    startEdge = "bottom" if state.flight_settings.start_side == Side.START else "top"
-
-    pathfinder = Pathfinder(
-        missionFieldCorners,
-        state.flight_settings.max_flight_height,
-        90,
-        state.flight_settings.current_drone_ID,
-    )
-    # Pathfinder.__init__ already sets Pathfinder.instance to this object.
-    pathfinder.buildNodeField(
-        (state.flight_settings.start_coord["lat"], state.flight_settings.start_coord["lon"]),
-        startEdge=startEdge,
-    )
+    state.drone.planner = make_planner(state.flight_settings, SHAPE_SIZE_FT, OVERLAP)
+    state.drone.side = SideAgent(state.drone.planner, state.drone, state.flight_settings,
+                                 state.interdrone)

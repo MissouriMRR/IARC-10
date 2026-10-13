@@ -12,6 +12,14 @@ from interdrone_communication.json_message_utilities import JsonMessageUtilities
 from state_machine.flight_settings import FlightSettings
 
 
+# A message that must not be lost is requeued when its socket write fails, after
+# RESEND_BACKOFF_S, doubling up to RESEND_BACKOFF_MAX_S -- and dropped after
+# MAX_RESEND_ATTEMPTS, so a dead peer can't hold the send loop forever.
+RESEND_BACKOFF_S = 0.1
+RESEND_BACKOFF_MAX_S = 2.0
+MAX_RESEND_ATTEMPTS = 30
+
+
 # Used by connection_pool to store TCP connections to other servers.
 @dataclass
 class PersistentConnection:
@@ -222,6 +230,10 @@ class Client:
                 MessageType.RECONFIRM_WAYPOINTS,
                 MessageType.EMERGENCY_LAND,
                 MessageType.LAND,
+                # Mission data a drone can't safely lose: a drone that never hears of a
+                # mine plans through it.
+                MessageType.SHARE_PHOTOS,
+                MessageType.CROSS_PAIR_MINE_RELAY,
             }
             match message.id:
                 # If ping message failed to send, send a PING_NACK to self server
@@ -237,12 +249,30 @@ class Client:
                         )
                     )
                 case _ if message.id in messages_that_need_resend:
-                    logging.debug(
-                        "Failed to send %s to %s; requeueing",
-                        message.id.name,
-                        message.drones_to_send_data,
-                    )
-                    await self.client_in_data.put(message)
+                    # Back off, and give up on a peer that stays unreachable, so a dead
+                    # drone can't hold the send loop (EMERGENCY_LAND and LAND never give up).
+                    # The count rides on the message itself (not serialized: not a field).
+                    attempt = getattr(message, "resend_attempts", 0) + 1
+                    uncapped = message.id in (MessageType.EMERGENCY_LAND, MessageType.LAND)
+                    if attempt > MAX_RESEND_ATTEMPTS and not uncapped:
+                        logging.warning(
+                            "Giving up on %s to %s after %d attempts",
+                            message.id.name,
+                            message.drones_to_send_data,
+                            attempt - 1,
+                        )
+                    else:
+                        message.resend_attempts = attempt
+                        logging.debug(
+                            "Failed to send %s to %s; requeueing (attempt %d)",
+                            message.id.name,
+                            message.drones_to_send_data,
+                            attempt,
+                        )
+                        delay = min(RESEND_BACKOFF_S * 2 ** (attempt - 1), RESEND_BACKOFF_MAX_S)
+                        asyncio.get_running_loop().call_later(
+                            delay, self.client_in_data.put_nowait, message
+                        )
                 case _:
                     # Everything else is dropped here. That is fine for a stream like
                     # POSITION_REPORT, but an app-bound reply is the only thing the app

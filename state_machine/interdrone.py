@@ -25,7 +25,6 @@ from state_machine.flight_settings import FlightSettings
 # import, so it must come before dronekit.
 from state_machine.drone import CrossPairMineReport, Drone, SharedPhotoReport
 import dronekit
-from flight.pathfinder import Pathfinder
 from interdrone_communication.message_types import Message, MessageType
 from state_machine.drone_state import DroneState
 from enum import Enum
@@ -559,30 +558,15 @@ class Interdrone:
         return
 
     # Also used for distributing mines
-    async def send_segment_b_waypoints(
-        self,
-        drones_to_send_data: tuple[int, ...],
-        waypoints: list[tuple[int, int]],
-    ) -> None:
+    async def send_side_job(self, job, drones_to_send_data: tuple[int, ...]) -> None:
         """
-        Message ID = 595
-        Send segment B waypoints to specified drones.
-        Waypoints is a list of (lat, lon) tuples.
+        Message ID = 610
+        The job this drone is working on, to its side-mate and the other side: (group, key,
+        (x, y)) in the field's local feet (claims.py), or None. The mate's copy of the side's
+        planner never hands that job to anyone else; the other side only keeps clear of it.
+        Resent on change and every second; not acked.
         """
-        for target_drone in drones_to_send_data:
-            state = self.get_drone_state_from_id(target_drone)
-            if state is not None:
-                segment_message: Message = Message.create(
-                    id=MessageType.SEND_SEGMENT_B_WAYPOINTS,
-                    drones_to_send_data=(target_drone,),
-                    sender_id=self.flight_settings.current_drone_ID,
-                    data={"waypoints": waypoints},
-                )
-                self.send(segment_message)
-                # Mark peer as needing an update if relevant
-                state.waypoint_up_to_date = False
-
-        return
+        self._send_data(MessageType.SIDE_JOB, {"job": job}, drones_to_send_data)
 
     async def reached_waypoint(
         self, drones_to_send_data: tuple[int, ...], waypoint: Waypoint
@@ -711,12 +695,10 @@ class Interdrone:
     async def share_photos(self, photos: list[dict[str, Any]], drones_to_send_data: tuple[int, ...]) -> None:
         """
         Message ID = 575
-        Sends this drone's own photo/mine reports to drones_to_send_data --
-        an ASSISTANT's own paired GAMBLER (self.flight_settings.
-        paired_drone), not other_drones_in_mission: broadcasting a pair's
-        own segment-B photo reports to the WHOLE swarm would hand an
-        unrelated pair mine/coverage data for a stretch of field that has
-        nothing to do with its own Pathfinder.
+        Sends this drone's own photo/mine reports to its side-mate
+        (self.flight_settings.paired_drone), whose copy of the side's
+        planner applies them. The other side gets footprints and mines
+        through CROSS_PAIR_COVERAGE / CROSS_PAIR_MINE_RELAY instead.
 
         photos : list of {"cornerCoordinates": [4 (lat, lon) tuples],
         "mines": [(lat, lon), ...]} -- matches EXPECTED_SCHEMA exactly, see
@@ -738,13 +720,9 @@ class Interdrone:
     async def send_checksum(self, checksum: str, drones_to_send_data: tuple[int, ...]) -> None:
         """
         Message ID = 580
-        Field.mineHash() -- verifies the receiver agrees on the same set
-        of known mines (order/id-independent -- see that method's own
-        docstring). drones_to_send_data, not other_drones_in_mission: this
-        only means anything between two drones that each have their own
-        Pathfinder (a GAMBLER/SOLOGAMBLER pair or cross-pair), unlike
-        SHARE_PHOTOS/most other messages here which broadcast within a
-        pair or the whole swarm.
+        The planner's mine_hash() -- verifies the receiver agrees on the same
+        set of known mines (order-independent). Sent to the other side's
+        drones, which each compare it with their own copy of the planner.
         """
         checksum_message: Message = Message.create(
             id=MessageType.FIELD_CHECKSUM,
@@ -763,7 +741,7 @@ class Interdrone:
         """
         Message ID = 581
         Reply to FIELD_CHECKSUM -- whether the receiver's own
-        Field.mineHash() matched the sent checksum, so the sender can log
+        mine_hash() matched the sent checksum, so the sender can log
         a mismatch without needing its own copy of the receiver's hash.
         """
         checksum_ack_message: Message = Message.create(
@@ -780,19 +758,13 @@ class Interdrone:
         return
 
     async def send_cross_pair_mine_relay(
-        self, mine_lat: float, mine_lon: float, mine_obstacle_hash: str, drones_to_send_data: tuple[int, ...]
+        self, mine_lat: float, mine_lon: float, relay_id: str, drones_to_send_data: tuple[int, ...]
     ) -> None:
         """
         Message ID = 599
-        CROSS-PAIR: reports a locally-discovered mine to the other pair's
-        (or solo drone's) gambler -- drones_to_send_data is that specific
-        drone (see FlightSettings.cross_pair_partner_id), not
-        other_drones_in_mission -- this is gambler-to-gambler only, unlike
-        SHARE_PHOTOS (gambler-to-its-own-assistant). mine_obstacle_hash is
-        this sender's own Pathfinder.instance's PolygonObstacle.
-        obstacle_hash for the mine -- position-derived, so the receiver
-        can reference this exact mine in a later send_cross_pair_patched_span
-        reply without needing a shared numeric id.
+        A mine this side found, to every drone of the other side
+        (FlightSettings.partner_side_drones). relay_id is the sender's
+        position-derived id for the mine, echoed back in the ack.
         """
         mine_relay_message: Message = Message.create(
             id=MessageType.CROSS_PAIR_MINE_RELAY,
@@ -801,7 +773,7 @@ class Interdrone:
             data={
                 "mine_lat": mine_lat,
                 "mine_lon": mine_lon,
-                "mine_obstacle_hash": mine_obstacle_hash,
+                "relay_id": relay_id,
             },
         )
 
@@ -810,7 +782,7 @@ class Interdrone:
         return
 
     async def send_cross_pair_mine_relay_ack(
-        self, mine_obstacle_hash: str, drones_to_send_data: tuple[int, ...]
+        self, relay_id: str, drones_to_send_data: tuple[int, ...]
     ) -> None:
         """
         Message ID = 600
@@ -824,7 +796,7 @@ class Interdrone:
             drones_to_send_data=drones_to_send_data,
             sender_id=self.flight_settings.current_drone_ID,
             data={
-                "mine_obstacle_hash": mine_obstacle_hash,
+                "relay_id": relay_id,
             },
         )
 
@@ -832,90 +804,99 @@ class Interdrone:
 
         return
 
-    async def send_cross_pair_patched_span(
+    def _send_data(self, message_id: MessageType, data: dict[str, Any], drones_to_send_data: tuple[int, ...]) -> None:
+        self.send(
+            Message.create(
+                id=message_id,
+                drones_to_send_data=drones_to_send_data,
+                sender_id=self.flight_settings.current_drone_ID,
+                data=data,
+            )
+        )
+
+    async def send_cross_pair_point_a(self, lat: float, lon: float, drones_to_send_data: tuple[int, ...]) -> None:
+        """
+        Message ID = 604
+        This side's point A, from its speaker to the other side's drones,
+        which aim their forward gap at it. Streamed (resent as it changes and on a heartbeat), so a lost
+        one only leaves the partner briefly aiming at a stale point.
+        """
+        self._send_data(MessageType.CROSS_PAIR_POINT_A, {"lat": float(lat), "lon": float(lon)}, drones_to_send_data)
+
+    async def send_cross_pair_coverage(
+        self, corners: list[tuple[float, float]], drones_to_send_data: tuple[int, ...]
+    ) -> None:
+        """
+        Message ID = 605
+        One of this drone's photo footprints, to the other side's drones, so
+        they can count that ground as checked where the two sides meet. Losing one only costs a re-photo.
+        """
+        self._send_data(
+            MessageType.CROSS_PAIR_COVERAGE,
+            {"corners": [(float(lat), float(lon)) for lat, lon in corners]},
+            drones_to_send_data,
+        )
+
+    async def send_cross_pair_chain(
         self,
-        mine_obstacle_hash: str,
-        patched_span: list[tuple[float, float]],
+        route: list[tuple[float, float]],
+        complete: bool,
+        mine_hash: str,
         drones_to_send_data: tuple[int, ...],
     ) -> None:
         """
-        Message ID = 601
-        CROSS-PAIR: reply to a CROSS_PAIR_MINE_RELAY, sent back to the
-        discovering pair once this drone's own Pathfinder.
-        patch_confirmed_span actually made a local splice in response
-        (self.last_patched_span is not None -- see Pathfinder.
-        add_discovered_mine's own prefer_local_patch docstring). Only
-        ever call this when a patch was actually made; nothing needs a
-        reply when check_path_envelopment's own unconditional full
-        recompute handled it instead.
-
-        The discovering pair is the one that should go re-verify/
-        photograph patched_span (it's physically nearby, even though the
-        patch landed in the PATCHING pair's own confirmed history -- see
-        patch_confirmed_span's own docstring for why).
+        Message ID = 606
+        The top side speaker's route, to the bottom side (drone 1 joins it
+        with its own into the full-field report). Resent until CROSS_PAIR_CHAIN_ACK.
         """
-        patched_span_message: Message = Message.create(
-            id=MessageType.CROSS_PAIR_PATCHED_SPAN,
-            drones_to_send_data=drones_to_send_data,
-            sender_id=self.flight_settings.current_drone_ID,
-            data={
-                "mine_obstacle_hash": mine_obstacle_hash,
-                "patched_span": patched_span,
+        self._send_data(
+            MessageType.CROSS_PAIR_CHAIN,
+            {
+                "route": [(float(lat), float(lon)) for lat, lon in route],
+                "complete": bool(complete),
+                "mine_hash": mine_hash,
             },
+            drones_to_send_data,
         )
 
-        self.send(patched_span_message)
-
-        return
-
-    async def send_cross_pair_patched_span_ack(
-        self, mine_obstacle_hash: str, drones_to_send_data: tuple[int, ...]
+    async def send_cross_pair_chain_ack(
+        self, mine_hash: str, drones_to_send_data: tuple[int, ...]
     ) -> None:
         """
-        Message ID = 602
-        Reply to CROSS_PAIR_PATCHED_SPAN -- confirms the discovering pair
-        actually has the verification waypoints queued
-        (Drone.pending_verification_waypoints), not just that the message
-        left the socket.
+        Message ID = 607
+        Drone 1 -> the top side: the routes are joined around these mines; its speaker can
+        leave (if its own mine hash still matches).
         """
-        patched_span_ack_message: Message = Message.create(
-            id=MessageType.CROSS_PAIR_PATCHED_SPAN_ACK,
-            drones_to_send_data=drones_to_send_data,
-            sender_id=self.flight_settings.current_drone_ID,
-            data={
-                "mine_obstacle_hash": mine_obstacle_hash,
-            },
-        )
+        self._send_data(MessageType.CROSS_PAIR_CHAIN_ACK, {"mine_hash": mine_hash}, drones_to_send_data)
 
-        self.send(patched_span_ack_message)
-
-        return
-
-    async def send_cross_pair_point_a_sync(
-        self, point_a_lat: float, point_a_lon: float, drones_to_send_data: tuple[int, ...]
+    async def send_cross_pair_mine_sync(
+        self, mines: list[tuple[float, float]], drones_to_send_data: tuple[int, ...]
     ) -> None:
         """
-        Message ID = 604
-        Tells the other pair/solo drone where this pair's segment-A search
-        currently ends (Pathfinder.maze_a_path[0]), so it can retarget its
-        own approach onto this point instead of the field's far edge (see
-        Pathfinder.retarget_approach_target). Not acked, not resent on
-        failure -- same reasoning as report_position: a continuous stream
-        where a dropped one is superseded by the next point_A move.
+        Message ID = 609
+        Every mine this side knows, from its speaker to the other side's drones, which add
+        any they lack.
+        Sent periodically: a relay the network accepted and then lost is never resent (only
+        socket failures are), so this is what makes the two mine sets converge.
         """
-        point_a_sync_message: Message = Message.create(
-            id=MessageType.CROSS_PAIR_POINT_A_SYNC,
-            drones_to_send_data=drones_to_send_data,
-            sender_id=self.flight_settings.current_drone_ID,
-            data={
-                "point_a_lat": point_a_lat,
-                "point_a_lon": point_a_lon,
-            },
+        self._send_data(
+            MessageType.CROSS_PAIR_MINE_SYNC,
+            {"mines": [(float(lat), float(lon)) for lat, lon in mines]},
+            drones_to_send_data,
         )
 
-        self.send(point_a_sync_message)
-
-        return
+    async def stream_positions(self, peers: tuple[int, ...], hz: float = 5.0) -> None:
+        """Send POSITION_REPORT to peers every 1/hz s until cancelled (the mapping mission's
+        stream; POIF runs its own). A failed report is logged and the stream goes on."""
+        while True:
+            try:
+                position = self.drone.vehicle.location.global_relative_frame
+                await self.report_position(peers, position.lat, position.lon, position.alt)
+            except asyncio.CancelledError:
+                raise
+            except Exception as ex:
+                logging.warning("Position report failed, continuing: %s", ex)
+            await asyncio.sleep(1.0 / hz)
 
     async def send_paths_to_app(self, path: str, map_data_ready: bool = True) -> None:
         """
@@ -948,12 +929,10 @@ class Interdrone:
         on why only drone 1's copy is meant to be read externally).
 
         Called PROACTIVELY, not just in reply to REQUEST_MAP_DATA:
-        CalcScanPath's own _confirm_b_into_mission_path calls this right
-        after every stretch that settles (Drone.extend_mission_path),
-        and AppShare calls it once more with the mission's own final,
-        post-ExpandNodes route (EndRun's wholesale resync) -- so the app
-        sees the path update live as the mission progresses instead of
-        only whenever it happens to ask.
+        CalcScanPath's _finish_scan calls this when this side's route is
+        done, and AppShare calls it once more with the mission's final
+        route (EndRun's wholesale resync) -- so the app sees the path
+        without having to ask.
         """
         if self.flight_settings.current_drone_ID != 1:
             return
@@ -1734,53 +1713,20 @@ class Interdrone:
                                     )
                                     self.send(reconfirm_waypoints_message)
                                 self.drone.checkForCollision(state.list_of_waypoints)
-                            # PLACEHOLDER -- not implemented yet (see the
-                            # coordinating-4-drones plan's leader/follower
-                            # design, flight/pathfinding/tests/droneWorkflowTest.py's
-                            # simulate_leader_follower_pair): for an ASSISTANT
-                            # receiving its paired GAMBLER's segment-B waypoints,
-                            # this is where they'd need to actually reach flight
-                            # logic -- e.g. handing state.list_of_waypoints to
-                            # this drone's own goto/waypoint-queue state (see
-                            # Drone.gotoWaypoint) so the assistant starts flying
-                            # them, not just holding them in DroneState. Left
-                            # deliberately unimplemented for now.
+                            # Held in DroneState for collision avoidance only; the
+                            # mapping mission's work comes from each drone's own
+                            # planner, not from peers' waypoints.
 
                         case MessageType.NEW_WAYPOINTS_ACK:
                             state = self.get_drone_state_from_id(message.sender_id)
                             if state is not None:
                                 state.waypoint_up_to_date = True
-                        case MessageType.SEND_SEGMENT_B_WAYPOINTS:
-                            # GAMBLER -> its own paired ASSISTANT: the
-                            # segment-B waypoints this drone should fly.
-                            # self.drone.waypoints is a plain flight
-                            # queue, not a live Pathfinder, so this is
-                            # applied directly rather than staged the way
-                            # CROSS_PAIR_MINE_RELAY/SHARE_PHOTOS are.
-                            # Replaces (not appends) the queue, mirroring
-                            # how _run_gambler rebuilds its OWN local
-                            # queue fresh from get_places_to_check_maze
-                            # every round -- b_places it resends here is
-                            # the CURRENT still-uncovered set, not
-                            # necessarily new. Known gap: if this drone
-                            # hadn't finished flying the PREVIOUS batch
-                            # yet, that partial progress is discarded --
-                            # same accepted class of simplification as
-                            # ASSISTANT_IDLE_TIMEOUT_S's own stopgap
-                            # (calc_scan_path_impl.py), pending a real
-                            # completion handshake.
-                            new_b_waypoints = [
-                                Waypoint(
-                                    self.flight_settings.current_drone_ID, lat, lon, name=f"scan_B_{i}"
-                                )
-                                for i, (lat, lon) in enumerate(message.data["waypoints"])
-                            ]
-                            self.drone.resetWaypoints(new_b_waypoints)
-                            flight_log.event(
-                                "segment_b_waypoints_recv",
-                                peer=message.sender_id,
-                                count=len(new_b_waypoints),
-                            )
+                        case MessageType.SIDE_JOB:
+                            # Latest wins; read by this drone's side agent when it plans.
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
+                            self.drone.peer_jobs[message.sender_id] = message.data["job"]
                         case MessageType.REACHED_WAYPOINT:
                             state = self.get_drone_state_from_id(message.sender_id)
 
@@ -1825,9 +1771,7 @@ class Interdrone:
                             # list_of_waypoints/last_reached_waypoint, used
                             # for collision avoidance) -- it doesn't yet
                             # trigger anything on THIS drone's own flight
-                            # logic in response (e.g. a GAMBLER reacting to
-                            # its paired ASSISTANT finishing a leg). Left
-                            # deliberately unimplemented for now.
+                            # logic in response.
                         case MessageType.POSITION_REPORT:
                             state = self.get_drone_state_from_id(message.sender_id)
                             if state is not None:
@@ -1894,13 +1838,23 @@ class Interdrone:
                                     mines=mines,
                                 )
 
-                                # Stage + flag, never mutate a live
-                                # Pathfinder from this (concurrent)
+                                # Stage + flag, never mutate the
+                                # planner from this (concurrent)
                                 # receive task -- same rule
                                 # CROSS_PAIR_MINE_RELAY follows. Drained
                                 # synchronously by CalcScanPath's own
                                 # _drain_photo_reports.
-                                if corner_coordinates:
+                                failed_at = photo.get("failedAt")
+                                if failed_at is not None:
+                                    # A photo that produced no footprint: a miss in this
+                                    # copy too, so a dead camera can't be sent back forever.
+                                    self.drone.pending_photo_reports.append(
+                                        SharedPhotoReport(
+                                            [], [],
+                                            failed_at=(float(failed_at[0]), float(failed_at[1])),
+                                        )
+                                    )
+                                elif corner_coordinates or mines:
                                     self.drone.pending_photo_reports.append(
                                         SharedPhotoReport(corner_coordinates, mines)
                                     )
@@ -1920,24 +1874,24 @@ class Interdrone:
                             if state is not None:
                                 state.touch()
                         case MessageType.FIELD_CHECKSUM:
-                            # Pure read + reply -- Field.mineHash() never
+                            # Pure read + reply -- mine_hash() never
                             # mutates anything, so (unlike a relayed mine)
                             # this is safe to answer directly from this
                             # loop's own task rather than staging it for
-                            # CalcScanPath. No Pathfinder (ASSISTANT, or a
-                            # sender that hasn't called configureField yet)
+                            # CalcScanPath. No planner (a drone that hasn't
+                            # called configureField yet)
                             # can't be compared against -- log and skip
                             # rather than crash this loop.
-                            pf = Pathfinder.instance
-                            if pf is None:
+                            planner = self.drone.planner
+                            if planner is None:
                                 logging.info(
                                     "drone %d: FIELD_CHECKSUM from drone %d, but this drone has"
-                                    " no Pathfinder to compare against",
+                                    " no planner to compare against",
                                     self.flight_settings.current_drone_ID,
                                     message.sender_id,
                                 )
                             else:
-                                matched = pf.nodeField.mineHash() == message.data["checksum"]
+                                matched = planner.mine_hash() == message.data["checksum"]
                                 if not matched:
                                     logging.warning(
                                         "drone %d: FIELD_CHECKSUM mismatch with drone %d",
@@ -1953,22 +1907,19 @@ class Interdrone:
                                     message.sender_id,
                                 )
                         case MessageType.CROSS_PAIR_MINE_RELAY:
-                            # Stage + flag, never mutate a live Pathfinder
-                            # from this loop's own (concurrent) task -- see
+                            # Stage + flag, never mutate the planner from
+                            # this loop's own (concurrent) task -- see
                             # CrossPairMineReport's own docstring.
-                            # CalcScanPath drains this synchronously via
-                            # add_discovered_mine(..., prefer_local_patch=True).
+                            # CalcScanPath drains this synchronously.
                             self.drone.pending_cross_pair_mines.append(
                                 CrossPairMineReport(
                                     lat=message.data["mine_lat"],
                                     lon=message.data["mine_lon"],
-                                    obstacle_hash=message.data["mine_obstacle_hash"],
-                                    discovering_drone_id=message.sender_id,
                                 )
                             )
                             self.drone.replan_needed = "cross_pair_mine_relay"
                             await self.send_cross_pair_mine_relay_ack(
-                                message.data["mine_obstacle_hash"], drones_to_send_data=(message.sender_id,)
+                                message.data["relay_id"], drones_to_send_data=(message.sender_id,)
                             )
                         case MessageType.CROSS_PAIR_MINE_RELAY_ACK:
                             # No resend-on-timeout mechanism exists yet for
@@ -1978,42 +1929,37 @@ class Interdrone:
                                 "drone %d: CROSS_PAIR_MINE_RELAY_ACK from drone %d for mine %s",
                                 self.flight_settings.current_drone_ID,
                                 message.sender_id,
-                                message.data["mine_obstacle_hash"][:12],
+                                message.data["relay_id"][:12],
                             )
-                        case MessageType.CROSS_PAIR_PATCHED_SPAN:
-                            # Same stage-+-flag rule as CROSS_PAIR_MINE_RELAY
-                            # above -- these points get queued for Scan to
-                            # fly and re-photograph, not applied to a
-                            # Pathfinder directly (nothing was discovered
-                            # here, this is verification).
-                            self.drone.pending_verification_waypoints.extend(message.data["patched_span"])
-                            self.drone.replan_needed = "cross_pair_patched_span"
-                            await self.send_cross_pair_patched_span_ack(
-                                message.data["mine_obstacle_hash"], drones_to_send_data=(message.sender_id,)
+                        case MessageType.CROSS_PAIR_POINT_A:
+                            # Latest wins; applied by CalcScanPath (never touch the planner
+                            # from this task). No replan flag: every drone replans after
+                            # every photo anyway.
+                            self.drone.pending_partner_point_a = (
+                                message.data["lat"],
+                                message.data["lon"],
                             )
-                        case MessageType.CROSS_PAIR_PATCHED_SPAN_ACK:
-                            logging.debug(
-                                "drone %d: CROSS_PAIR_PATCHED_SPAN_ACK from drone %d for mine %s",
-                                self.flight_settings.current_drone_ID,
-                                message.sender_id,
-                                message.data["mine_obstacle_hash"][:12],
-                            )
-                        case MessageType.CROSS_PAIR_POINT_A_SYNC:
-                            # Same stage-+-flag rule as CROSS_PAIR_MINE_RELAY
-                            # -- Pathfinder.retarget_approach_target touches
-                            # the live graph (adds/removes a floating node,
-                            # recomputes maze_a_path/maze_b_path), so it can
-                            # only run synchronously from CalcScanPath (see
-                            # its own _apply_point_a_sync), never from this
-                            # loop's own concurrent task. A single slot, not
-                            # a queue -- see Drone.pending_point_a_sync's own
-                            # docstring for why only the latest matters. Not
-                            # acked (see send_cross_pair_point_a_sync).
-                            self.drone.pending_point_a_sync = (
-                                message.data["point_a_lat"],
-                                message.data["point_a_lon"],
-                            )
-                            self.drone.replan_needed = "cross_pair_point_a_sync"
+                        case MessageType.CROSS_PAIR_COVERAGE:
+                            self.drone.pending_partner_coverage.append(list(message.data["corners"]))
+                        case MessageType.CROSS_PAIR_CHAIN:
+                            # Always kept, even after joining: EndRun drops a join whose
+                            # mine hash the partner no longer has.
+                            self.drone.partner_route = list(message.data["route"])
+                            self.drone.partner_route_complete = message.data["complete"]
+                            self.drone.partner_route_mine_hash = message.data["mine_hash"]
+                            if self.drone.route_joined:
+                                await self.send_cross_pair_chain_ack(
+                                    self.drone.joined_mine_hash, (message.sender_id,)
+                                )
+                        case MessageType.CROSS_PAIR_CHAIN_ACK:
+                            self.drone.partner_route_ack_hash = message.data.get("mine_hash")
+                        case MessageType.CROSS_PAIR_MINE_SYNC:
+                            # Staged like a relay (the planner dedupes by square). No replan
+                            # flag: every drone drains relays on every pass anyway.
+                            for mine_lat, mine_lon in message.data["mines"]:
+                                self.drone.pending_cross_pair_mines.append(
+                                    CrossPairMineReport(lat=float(mine_lat), lon=float(mine_lon))
+                                )
                         case MessageType.EMERGENCY_LAND:
                             # Duplicates are expected, not exceptional: drone 1
                             # fans the command out, the client loops

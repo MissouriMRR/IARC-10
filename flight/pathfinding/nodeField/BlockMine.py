@@ -1,42 +1,33 @@
-from shapely.geometry import Polygon
-from flight.pathfinding.common import nodeDirection
+from flight.pathfinding.common import DIRECTION_VECTOR, SAFETY_RADIUS_FT
 from flight.pathfinding.nodeField.polygonObstacle import PolygonObstacle
 
 
 class BlockMine(PolygonObstacle):
-    def __init__(self, mineNodes: list, origin: tuple = None):
-        vertices = [(n.x, n.y) for n in mineNodes]
-        super().__init__(vertices, mineNodes, True)
-        # Globally-unique-per-drone identifier -- assigned by Field
-        # (_selfConnect), None until then.
-        self.id = None
-        # The mine's position at first detection, in the field's shared
-        # local coordinate frame -- fixed at construction and never touched
-        # by expand(), so Field.mineHash (and this obstacle's own
-        # obstacle_hash, see PolygonObstacle) stay stable across expansion
-        # rather than drifting as the safety radius grows. Overrides
-        # PolygonObstacle's own default (that polygon's plain centroid,
-        # set moments ago by super().__init__() above) with the mine's
-        # true discovery position when one is given -- falls back to that
-        # same centroid default for a BlockMine built without going
-        # through Field.addFromProtoMine (e.g. directly in tests).
-        self.origin = (
-            origin if origin is not None else (self.polygon.centroid.x, self.polygon.centroid.y)
-        )
+    """One mine: the convex hull of the side points of its unsafe squares (protoMine).
+
+    - nodes: one per hull vertex, each with ONE direction (a real mine: a 4-node diamond)
+    - origin: the mine's snapped square centre, fixed for good (mineHash uses it)
+    - radius: current safety radius; expand() adds to it
+    - squares: (col, row) of the unsafe squares at discovery
+    - grows: True (blocked zones do not)
+    """
+
+    grows = True
+
+    def __init__(self, mineNodes, origin, radius=SAFETY_RADIUS_FT, squares=()):
+        super().__init__([list(mineNodes)], origin)
+        self.radius = radius
+        self.squares = list(squares)
 
     def expand(self, distance):
-        for node in self.nodes:
-            if node.direction == nodeDirection.UP:
-                node.y += distance
-            elif node.direction == nodeDirection.DOWN:
-                node.y -= distance
-            elif node.direction == nodeDirection.LEFT:
-                node.x -= distance
-            elif node.direction == nodeDirection.RIGHT:
-                node.x += distance
-        self.vertices = [(n.x, n.y) for n in self.nodes]
-        self.xMin = min(v[0] for v in self.vertices)
-        self.xMax = max(v[0] for v in self.vertices)
-        self.yMin = min(v[1] for v in self.vertices)
-        self.yMax = max(v[1] for v in self.vertices)
-        self.polygon = Polygon(self.vertices)
+        """Move every node `distance` along its one direction.
+
+        - a diamond stays a diamond: nodes only move along the axes, never diagonally
+        """
+        ring = self.rings[0]
+        for node in ring:
+            vx, vy = DIRECTION_VECTOR[node.direction]
+            node.x += vx * distance
+            node.y += vy * distance
+        self.radius += distance
+        self._setRings([ring])

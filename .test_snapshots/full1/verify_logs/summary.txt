@@ -1,0 +1,51 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         45      44       1      0     709s    1614s
+nodefield    24      24       0      0      44s     273s
+cellfield     1       1       0      0      67s      67s
+sweep        90      90       0      0     289s    3537s
+flight        9       7       2      0     347s    1231s
+pytest        1       0       0      1      15s      15s
+lint          1       1       0      0      10s      10s
+TOTAL       171                            709s
+
+FAILURES (3):
+--- unit test_rotated_footprints_still_finish: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+      File "C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\full1\flight\pathfinding\pathnode\test_pathnode.py", line 571, in test_rotated_footprints_still_finish
+        assert m.failure is None and e["complete"] and e["unseen_cells"] == 0, (yaw, m.failure, e)
+    AssertionError: (45.0, 'hit tick cap', {'complete': False, 'joined': True, 'route_mine_squares': 0, 'spans_field': True, 'bad_edges_known': 0, 'bad_edges_hidden': 0, 'unseen_cells': 5, 'route_cells_in_danger': 0})
+--- flight multi-3-dense: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       error       : none
+       mines found : 48 / 60 true
+       seen cells  : 2178
+       captures    : 290
+    -- drone 3 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 48 / 60 true
+       seen cells  : 2206
+       captures    : 232
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-4-dense#3: no 'RESULT: PASS'; route not 'full field, continuous, clear'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 60 / 60 true
+       seen cells  : 2711
+       captures    : 360
+    -- drone 4 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 301.4s
+       error       : none
+       mines found : 56 / 60 true
+       seen cells  : 2379
+       captures    : 299
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+lint: 53 warnings
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\full1\verify_logs
