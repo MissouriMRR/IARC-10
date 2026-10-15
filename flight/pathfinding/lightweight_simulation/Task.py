@@ -14,7 +14,7 @@ class Task:
     """
     def run_for_time(self, time: float) -> tuple[bool, Any | None]:
         self.remaining_time -= time
-        if self.remaining_time == 0:
+        if self.remaining_time <= 0:
             self.finished = True
             return (True, None)
         return (False, None)

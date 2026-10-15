@@ -37,3 +37,8 @@ class TaskManager:
                 min_time = task[0].get_remaining_time()
         return min_time
 
+    def debug_print(self):
+        for task in self.tasks:
+            print(task.task.get_remaining_time(), end = " ")
+        print()
+
