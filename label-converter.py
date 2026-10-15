@@ -7,9 +7,9 @@ Moving images to the appropriate directories and trashing unnecessary files.
 Labels should be generated from labelme JSON files.
 """
 
-root_dir = "label_space"
-label_dir = "dataset/labels/val"
-image_dir = "dataset/images/val"
+root_dir = "label-space"
+label_dir = "dataset/labels/train"
+image_dir = "dataset/images/train"
 
 images_to_move = []
 files_to_trash = []
@@ -18,6 +18,8 @@ for root, dirs, files in os.walk(root_dir):
 
 
     for file in files:
+
+        print(file)
 
         name = file.split('.')[0]
         extension = file.split('.')[-1]

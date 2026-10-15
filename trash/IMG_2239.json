@@ -1,0 +1,36 @@
+{
+  "version": "7.8.1",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "1",
+      "points": [
+        [
+          2857.50390625,
+          1783.30078125
+        ],
+        [
+          3061.1151066246557,
+          1894.9553623774568
+        ],
+        [
+          3013.34375,
+          1982.0703125
+        ],
+        [
+          2809.7325496253443,
+          1870.4157313725432
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "shape_type": "oriented_rectangle",
+      "flags": {},
+      "mask": null
+    }
+  ],
+  "imagePath": "IMG_2239.jpg",
+  "imageData": null,
+  "imageHeight": 4284,
+  "imageWidth": 5712
+}
