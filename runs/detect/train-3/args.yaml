@@ -1,7 +1,7 @@
 task: detect
 mode: train
 model: yolo26n.pt
-data: data.yaml
+data: ./data.yaml
 epochs: 5
 time: null
 patience: 100
@@ -111,4 +111,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: tracktrack.yaml
-save_dir: /home/camcam/Projects/IARC-10/runs/detect/train-3
+save_dir: /home/camcam/Projects/multirotor/IARC-10/runs/detect/train-3

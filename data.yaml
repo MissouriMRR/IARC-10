@@ -1,9 +1,9 @@
 # Paths to your dataset
 path: ./datasets
 
-test: /images/test
-train: /images/train
-val: /images/val
+test: images/test
+train: images/train
+val: images/val
 
 
 # Classes
