@@ -6,7 +6,7 @@ Wants=batman-net.service
 
 [Service]
 Type=simple
-# Optional overrides: WINDOWS_HOST_IP, MAVPROXY_BIN
+# Optional overrides: WINDOWS_HOST_IP, EXTRA_OUTPUTS, MAVPROXY_BIN
 EnvironmentFile=-/etc/default/mavlink-relay
 ExecStart=/usr/local/bin/vm_mavlink_relay.sh %i
 Restart=always
