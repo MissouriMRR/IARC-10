@@ -2,11 +2,11 @@ task: obb
 mode: train
 model: runs/obb/train/weights/best.pt
 data: ./data.yaml
-epochs: 5
+epochs: 100
 time: null
 patience: 100
 batch: 16
-imgsz: 1024
+imgsz: 640
 save: true
 save_period: -1
 cache: false

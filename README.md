@@ -30,10 +30,12 @@ The **train_model.py** file can be used to train models. To do so you must set t
 
 The easiest way to evaluate if the model is functioning properly is to got to its training directory.
 This should be at runs/[obb or detect]/train.
-Here there are a variety of files that give insight into the functioning of the model.
-These easiest to understand are the **train_batch0.jpg** and **val_batch0_labels.jpg** images.
-These images show the bounding boxes that are given to the mines by the model. 
-This isn't a very professional way to look at the data but I honestly haven't figured out the rest yet.
+
+There you can find are a variety of files that give insight into the functioning of the model.
+One such file is the **val_batch0_pred.jpg** image.
+This image shows the bounding boxes that are given to the mines by the model. 
+Another way to evaluate the model is through the **confusion_matrix.png**.
+This displays the relationship between the models predicted locations of mines and the actual.
 
 ## Creating the dataset
 
@@ -49,6 +51,9 @@ Once you have you images uploaded, you can create the labels. The labels should 
 
 After the labels are created you can run the **label-converter.py** file to move them into the correct places. You can edit the destinations of the images and labels by changing the **image_dir** and **label_dir** files.
 
-## Editing the codebase
+## Data Organization
 
-Honestly I might add info on this later but for now I am to lazy. If you need to change something just read the [Yolo Documentation](https://docs.ultralytics.com/usage/python) first or just figure it out. If something goes wrong we always have github :\).
+The way that data is organized is in correspondence with the [Yolo Documentation](https://docs.ultralytics.com/usage/python) which I highly recommend you read through. 
+The main things you need to understand is what **data.yaml** does and how the **datasets** directory works
+
+Honestly I might add info on this later but for now I am to lazy. If you need to change something just read  first or just figure it out. If something goes wrong we always have github :\).
