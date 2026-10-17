@@ -1,0 +1,16 @@
+[Unit]
+# Runs on the BATMAN VM, one instance per drone: systemctl enable --now mavlink-relay{1..4}
+Description=MAVLink relay for drone %i (mesh -> Mission Planner on Windows)
+After=network.target batman-net.service
+Wants=batman-net.service
+
+[Service]
+Type=simple
+# Optional overrides: WINDOWS_HOST_IP, MAVPROXY_BIN
+EnvironmentFile=-/etc/default/mavlink-relay
+ExecStart=/usr/local/bin/vm_mavlink_relay.sh %i
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
