@@ -24,6 +24,10 @@ PORT="$((14550 + DRONE_ID))"
 # WINDOWS_HOST_IP explicitly to the Windows address the VM can reach.
 WINDOWS_HOST_IP="${WINDOWS_HOST_IP:-$(ip route show default | awk '/default/ {print $3; exit}')}"
 MAV_STATE_DIR="${MAV_STATE_DIR:-/var/lib/mavlink-relay/drone$DRONE_ID}"
+# Additional destinations, space-separated, e.g. "169.254.97.202" or "169.254.97.202:15000".
+# An entry without a port gets this drone's port (14550+id). Each one is a full two-way link,
+# like Mission Planner's, so a GCS there can send commands to the drone too.
+EXTRA_OUTPUTS="${EXTRA_OUTPUTS:-}"
 # ─────────────────────────────────────────────────────────────────
 
 WINDOWS_HOST_IP="${WINDOWS_HOST_IP//[[:space:]]/}"
@@ -38,16 +42,26 @@ if [ -z "$MAVPROXY_BIN" ]; then
     exit 1
 fi
 
+OUT_ARGS=(--out=udp:"$WINDOWS_HOST_IP":"$PORT")
+for dest in $EXTRA_OUTPUTS; do
+    [[ "$dest" == *:* ]] || dest="$dest:$PORT"
+    OUT_ARGS+=(--out=udp:"$dest")
+done
+
 mkdir -p "$MAV_STATE_DIR"
 
 echo "[INFO] Drone $DRONE_ID: mesh udpin 0.0.0.0:$PORT -> Mission Planner $WINDOWS_HOST_IP:$PORT"
+for dest in $EXTRA_OUTPUTS; do
+    [[ "$dest" == *:* ]] || dest="$dest:$PORT"
+    echo "[INFO] Drone $DRONE_ID: also -> $dest"
+done
 
 # --streamrate=-1 stops this relay requesting stream rates (MAVProxy's default is 4 Hz). The
 # Pi's MAVProxy already sets them, and a second requester would override them for the
 # flight code too.
 exec "$MAVPROXY_BIN" \
     --master=udpin:0.0.0.0:"$PORT" \
-    --out=udp:"$WINDOWS_HOST_IP":"$PORT" \
+    "${OUT_ARGS[@]}" \
     --streamrate=-1 \
     --state-basedir="$MAV_STATE_DIR" \
     --non-interactive
