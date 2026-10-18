@@ -77,6 +77,16 @@ The relay sends to the VM's default gateway. That gateway is the Windows host un
 Default Switch and under VirtualBox NAT. With a bridged adapter or VMware NAT, set
 `WINDOWS_HOST_IP=<windows ip>` in `/etc/default/mavlink-relay`.
 
+To send each drone's stream to more places as well, list them in `EXTRA_OUTPUTS` in the same
+file, separated by spaces. An entry without a port uses the drone's port:
+
+```bash
+# /etc/default/mavlink-relay
+EXTRA_OUTPUTS="169.254.97.202"   # second VM on the mesh, gets drone N on 1455N
+```
+
+Each extra destination is a full two-way link, so a GCS there can command the drones too.
+
 ### Mission Planner
 
 Connect with **UDP** and enter the port for the drone you want (for example 14551 for drone 1).

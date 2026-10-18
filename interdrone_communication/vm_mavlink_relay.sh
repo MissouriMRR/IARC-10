@@ -50,6 +50,10 @@ done
 
 mkdir -p "$MAV_STATE_DIR"
 
+# systemd only sets HOME when the unit has User=, and MAVProxy treats a missing HOME as
+# Windows and dies with KeyError: 'LOCALAPPDATA' looking for ~/.mavproxy.
+export HOME="${HOME:-/root}"
+
 echo "[INFO] Drone $DRONE_ID: mesh udpin 0.0.0.0:$PORT -> Mission Planner $WINDOWS_HOST_IP:$PORT"
 for dest in $EXTRA_OUTPUTS; do
     [[ "$dest" == *:* ]] || dest="$dest:$PORT"
