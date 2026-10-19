@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 
-model_path = f"runs/obb/train/weights/best.pt"
+model_path = f"runs/obb/train-3/weights/best.pt"
 
 model = YOLO(model_path)  # load the best model
 

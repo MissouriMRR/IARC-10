@@ -7,14 +7,16 @@ Moving images to the appropriate directories and trashing unnecessary files.
 Labels should be generated from labelme JSON files.
 """
 
-root_dir = "label-space"
-label_dir = "dataset/labels/train"
-image_dir = "dataset/images/train"
+label_space_dir = "label-space"
+
+data_dir = "datasets"
+label_dir = f"{data_dir}/labels/train"
+image_dir = f"{data_dir}/images/train"
 
 images_to_move = []
 files_to_trash = []
 
-for root, dirs, files in os.walk(root_dir):
+for root, dirs, files in os.walk(label_space_dir):
 
 
     for file in files:
@@ -25,7 +27,7 @@ for root, dirs, files in os.walk(root_dir):
         extension = file.split('.')[-1]
 
 
-        if extension == "jpg" or extension == "png":
+        if extension == "jpg" or extension == "png" or extension == "jpeg":
 
             if name + ".json" in files:
                 images_to_move.append(file)
@@ -34,27 +36,29 @@ for root, dirs, files in os.walk(root_dir):
 
             with open(label_dir + "/" + name + ".txt", 'w') as label_file:
 
-                label_file.write("0 ")
+                
 
 
-                data = json.load(open(root_dir + "/" + file, 'r'))
+                data = json.load(open(label_space_dir + "/" + file, 'r'))
 
                 height = data["imageHeight"]
                 width = data["imageWidth"]
                     
 
                 for shape in data["shapes"]:
+                    label_file.write("0 ")
                     for point in shape["points"]:
                         label_file.write(f"{point[0]/width} {point[1]/height} ")
+                    label_file.write("\n")
 
             files_to_trash.append(file)
 
 
 for image in images_to_move:
-    os.replace(root_dir + "/" + image, image_dir + "/" + image)
+    os.replace(label_space_dir + "/" + image, image_dir + "/" + image)
 
 for file in files_to_trash:
-    os.replace(root_dir + "/" + file, "trash/" + file)
+    os.replace(label_space_dir + "/" + file, "trash/" + file)
 
             
 

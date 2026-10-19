@@ -1,5 +1,7 @@
 # New Yolo Trainer
 
+NOTE it does not currently function.
+
 ## Training the model
 
 ### Creating a model

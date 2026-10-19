@@ -1,8 +1,8 @@
 task: obb
 mode: train
-model: yolo26n-obb.yaml
-data: ./data.yaml
-epochs: 2
+model: runs/obb/train-2/weights/last.pt
+data: data.yaml
+epochs: 100
 time: null
 patience: 100
 batch: 16
@@ -13,7 +13,7 @@ cache: false
 device: ''
 workers: 8
 project: null
-name: train
+name: train-3
 exist_ok: false
 pretrained: true
 cls_remap: true
@@ -111,4 +111,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: tracktrack.yaml
-save_dir: /home/camcam/Projects/multirotor/IARC-10/runs/obb/train
+save_dir: /home/camcam/Projects/multirotor/IARC-10/runs/obb/train-3

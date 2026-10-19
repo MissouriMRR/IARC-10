@@ -1,0 +1,7 @@
+datasets/images/train/*
+datasets/images/val/*
+datasets/labels/val/*
+datasets/labels/train/*
+label-space/*
+trash/*
+.venv
