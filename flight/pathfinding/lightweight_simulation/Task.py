@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Generator
 
 """
 Class representing a generic task, For actual tasks a child class should be created that sets the runtime of the task and contains any logic/return values of the task
@@ -27,12 +27,12 @@ class Task:
         return self.remaining_time
 
 """
-Class representing a wrapper for containing a task and its generator, for actual tasks a child class should be created and used with a child class of the Task class
+Class representing a wrapper for containing a task and its generator
 """
 class TaskWrapper:
-    def __init__(self, task: Task, gen: Iterator[Task]):
+    def __init__(self, task: Task, gen: Generator[Task, Any, Any]) -> None:
         self.task: Task = task
-        self.gen: Iterator[Task] = gen
+        self.gen: Generator[Task, Any, Any] = gen
         self.finished: bool = False
 
     """
@@ -43,3 +43,9 @@ class TaskWrapper:
         if rv[0] == True:
             self.finished = True
             self.gen.send(rv[1])
+
+    def get_task(self) -> Task:
+        return self.task
+
+    def check_finished(self) -> bool:
+        return self.finished

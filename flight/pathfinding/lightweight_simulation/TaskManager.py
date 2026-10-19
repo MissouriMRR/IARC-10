@@ -1,6 +1,5 @@
 from Task import Task, TaskWrapper
 from Drone import Drone
-from collections.abc import Iterator
 
 
 """
@@ -29,12 +28,12 @@ class TaskManager:
     Returns the smallest remaining time of the tasks in the self.task list
     """
     def get_min_task_step(self) -> float:
-        if len(self.tasks == 0):
+        if len(self.tasks) == 0:
             return 0
-        min_time: float = self.tasks[0][0].get_remaining_time()
+        min_time: float = self.tasks[0].get_task().get_remaining_time()
         for task in self.tasks[1:]:
-            if task[0].get_remaining_time() < min_time:
-                min_time = task[0].get_remaining_time()
+            if task.get_task().get_remaining_time() < min_time:
+                min_time = task.get_task().get_remaining_time()
         return min_time
 
     def debug_print(self):
