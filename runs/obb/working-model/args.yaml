@@ -1,6 +1,6 @@
 task: obb
 mode: train
-model: runs/obb/train-2/weights/last.pt
+model: runs/obb/working-model/weights/last.pt
 data: data.yaml
 epochs: 100
 time: null
@@ -13,7 +13,7 @@ cache: false
 device: ''
 workers: 8
 project: null
-name: train-3
+name: train
 exist_ok: false
 pretrained: true
 cls_remap: true
@@ -111,4 +111,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: tracktrack.yaml
-save_dir: /home/camcam/Projects/multirotor/IARC-10/runs/obb/train-3
+save_dir: /home/camcam/Projects/multirotor/IARC-10/runs/obb/train
