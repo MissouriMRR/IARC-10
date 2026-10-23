@@ -1,0 +1,129 @@
+{
+    "Set 1": [
+        {
+            "name": "Waypoint 1 S1",
+            "latitude": 37.9485265,
+            "longitude": -91.78591437
+        },
+        {
+            "name": "Waypoint 2 S1",
+            "latitude": 37.9485265,
+            "longitude": -91.78586872
+        },
+        {
+            "name": "Waypoint 3 S1",
+            "latitude": 37.9485265,
+            "longitude": -91.78582307
+        },
+        {
+            "name": "Waypoint 4 S1",
+            "latitude": 37.9485265,
+            "longitude": -91.78577742
+        },
+        {
+            "name": "Waypoint 5 S1",
+            "latitude": 37.9485265,
+            "longitude": -91.78573176
+        },
+        {
+            "name": "Waypoint 6 S1",
+            "latitude": 37.9484905,
+            "longitude": -91.78573176
+        },
+        {
+            "name": "Waypoint 7 S1",
+            "latitude": 37.9484905,
+            "longitude": -91.78577742
+        },
+        {
+            "name": "Waypoint 8 S1",
+            "latitude": 37.9484905,
+            "longitude": -91.78582307
+        },
+        {
+            "name": "Waypoint 9 S1",
+            "latitude": 37.9484905,
+            "longitude": -91.78586872
+        },
+        {
+            "name": "Waypoint 10 S1",
+            "latitude": 37.9484905,
+            "longitude": -91.78591437
+        },
+        {
+            "name": "Waypoint 11 S1",
+            "latitude": 37.9484545,
+            "longitude": -91.78591437
+        },
+        {
+            "name": "Waypoint 12 S1",
+            "latitude": 37.9484545,
+            "longitude": -91.78586872
+        },
+        {
+            "name": "Waypoint 13 S1",
+            "latitude": 37.9484545,
+            "longitude": -91.78582307
+        },
+        {
+            "name": "Waypoint 14 S1",
+            "latitude": 37.9484545,
+            "longitude": -91.78577742
+        },
+        {
+            "name": "Waypoint 15 S1",
+            "latitude": 37.9484545,
+            "longitude": -91.78573176
+        },
+        {
+            "name": "Waypoint 16 S1",
+            "latitude": 37.9484185,
+            "longitude": -91.78573176
+        },
+        {
+            "name": "Waypoint 17 S1",
+            "latitude": 37.9484185,
+            "longitude": -91.78577742
+        },
+        {
+            "name": "Waypoint 18 S1",
+            "latitude": 37.9484185,
+            "longitude": -91.78582307
+        },
+        {
+            "name": "Waypoint 19 S1",
+            "latitude": 37.9484185,
+            "longitude": -91.78586872
+        },
+        {
+            "name": "Waypoint 20 S1",
+            "latitude": 37.9484185,
+            "longitude": -91.78591437
+        },
+        {
+            "name": "Waypoint 21 S1",
+            "latitude": 37.9483825,
+            "longitude": -91.78591437
+        },
+        {
+            "name": "Waypoint 22 S1",
+            "latitude": 37.9483825,
+            "longitude": -91.78586872
+        },
+        {
+            "name": "Waypoint 23 S1",
+            "latitude": 37.9483825,
+            "longitude": -91.78582307
+        },
+        {
+            "name": "Waypoint 24 S1",
+            "latitude": 37.9483825,
+            "longitude": -91.78577742
+        },
+        {
+            "name": "Waypoint 25 S1",
+            "latitude": 37.9483825,
+            "longitude": -91.78573176
+        }
+    ]
+}
