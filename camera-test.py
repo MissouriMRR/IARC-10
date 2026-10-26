@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-path_to_model = "runs/obb/train/weights/best.pt"
+path_to_model = "runs/obb/working-model/weights/best.pt"
 
 model = YOLO(path_to_model)
 
