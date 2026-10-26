@@ -439,14 +439,13 @@ if __name__ == "__main__":
     wp_id = 0
 
     # Add Set 1 waypoints (drone 0)
-    for wp_dict in data["Set 1"]:
+    for wp_dict in data["flyzones"]["boundaryPoints"]:
         waypoints.append(
             Waypoint(
                 drone_id=1,
                 lat=wp_dict["latitude"],
                 long=wp_dict["longitude"],
                 waypoint_id=wp_id,
-                name=wp_dict["name"],
             )
         )
         wp_id += 1
