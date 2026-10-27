@@ -53,5 +53,8 @@ class TaskWrapper:
     def get_task(self) -> Task:
         return self.task
 
+    def get_gen(self) -> Generator[Task, Any, Any]:
+        return self.gen
+
     def check_finished(self) -> bool:
         return self.finished
