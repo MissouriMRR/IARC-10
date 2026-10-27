@@ -23,6 +23,10 @@ class TaskManager:
         if (min_task_step < float("inf")):
             for task in self.tasks:
                 task.run_for_time(min_task_step)
+        for i in range(len(self.tasks) - 1, -1, -1):
+            if (self.tasks[i].check_finished()):
+                self.tasks.pop(i)
+        
 
     """
     Returns the smallest remaining time of the tasks in the self.task list
