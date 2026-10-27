@@ -1,0 +1,12 @@
+* text=auto eol=crlf
+
+# Files that are executed inside Linux containers must keep LF endings. With CRLF, the
+# shebang line reads as "#!/bin/bash\r", so the kernel looks for an interpreter literally
+# named "/bin/bash\r". The exec fails and the error names the *script* rather than the
+# interpreter -- "No such file or directory" for a file that plainly exists.
+*.sh text eol=lf
+*.parm text eol=lf
+*.service text eol=lf
+Containerfile text eol=lf
+*.Containerfile text eol=lf
+Dockerfile text eol=lf
