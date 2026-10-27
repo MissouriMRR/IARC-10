@@ -19,6 +19,9 @@ class Task:
             return (True, None)
         return (False, None)
 
+    def get_finished(self) -> bool:
+        return self.finished
+
 
     """
     Returns remaining time of execution for task
@@ -42,7 +45,10 @@ class TaskWrapper:
         rv: tuple[bool, Any | None] = self.task.run_for_time(time)
         if rv[0] == True:
             self.finished = True
-            self.gen.send(rv[1])
+            try:
+                self.gen.send(rv[1])
+            except StopIteration:
+                pass
 
     def get_task(self) -> Task:
         return self.task
