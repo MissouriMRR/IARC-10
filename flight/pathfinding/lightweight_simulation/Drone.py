@@ -13,18 +13,23 @@ from enum import Enum
 Class for representing a drone and its function. If needed a subclass can be made for different drones.
 """
 class Drone:
+    drone_id = 0
     def __init__(self, max_speed: float = 2, acc: float = 1, pos: tuple[float, float] = (0, 0), alt: float = 0) -> None:
         self.max_speed: float = max_speed
         self.speed: float = 0
         self.acc: float = acc
         self.pos: tuple[float, float] = pos
         self.alt: float = alt
+        Drone.drone_id += 1
+        self.id: int = Drone.drone_id
 
     """
     Contains the logic for the drone. Yields tasks when necassary and operates on task results if necessary.
+    
     """
     def task_generator(self) -> Generator[Task, Any, Any]:
-        pass
+        yield ChangeAltitudeTask(self, 10)
+        
 
     def set_position(self, pos: tuple[float, float]) -> None:
         self.pos: tuple[float, float] = pos
@@ -51,8 +56,6 @@ class Drone:
         return self.speed
 
 
-
-    
 """
 Task class for moving a drone between two points horizontally (constant altitude)
 """
@@ -84,7 +87,6 @@ class GoToTask(Task):
             return (True, None)
         return (False, None)
 
-
 """
 Task class for moving a drone to a new altitude
 """
@@ -112,7 +114,6 @@ class ChangeAltitudeTask(Task):
             self.finished = True
             return (True, None)
         return (False, None)
-    
 
 class MovementStage(Enum):
     ACCELERATING = 1
@@ -181,17 +182,3 @@ class MovementSequence:
     
     def get_duration(self) -> float:
         return self.duration
-
-
-
-
-
-
-        
-
-
-
-            
-        
-
-
