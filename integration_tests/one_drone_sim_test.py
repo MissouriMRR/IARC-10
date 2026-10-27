@@ -8,11 +8,12 @@ running it, not just reading it.
 Only the hardware boundary is faked:
   - dronekit/picamera2 don't exist in this dev environment at all (see
     _hardware_shims.py) -- a minimal shim lets the real modules import.
-  - MockVehicle stands in for dronekit.Vehicle. It TELEPORTS instead of
-    flying (simple_goto/simple_takeoff snap position immediately) -- every
-    real polling loop in move_to/gotoWaypoint/Drone.arm/Drone.takeoff
-    converges on its first check. The goal is exercising the real flight-
-    control CODE PATHS, not real flight dynamics.
+  - MockVehicle stands in for dronekit.Vehicle. Its position comes from a
+    Motion model (vehicle_motion.py): TeleportMotion snaps to every goto
+    (the default here: every polling loop converges on its first check),
+    CruiseMotion flies a straight line over real time (the multi-drone test
+    uses it, so peers see each other in transit). The goal is exercising the
+    real flight-control CODE PATHS, not real flight dynamics.
   - MockCamera subclasses vision.Cameras.baseCamera.BaseCamera directly,
     so get_image_corner_coordinates/get_pixel_coordinate -- the real FOV/
     mount-offset/ray-casting geometry scan_impl.py and drone_share_impl.py
@@ -52,6 +53,8 @@ from vision.common.drone_coordinates import DronePose, GimbalPose
 from vision.common.image import Image as VisionImage
 
 from flight.pathfinding.iarc_report import format_iarc_path
+
+from integration_tests.vehicle_motion import Fix, Motion, TeleportMotion
 
 from state_machine.drone import Drone, RANGEFINDER3_MAVLINK_ID
 from state_machine.flight_settings import FlightSettings, SimMode
@@ -118,9 +121,9 @@ class _Location:
 
 
 class _LocationBundle:
-    def __init__(self, lat: float, lon: float, alt: float):
-        self.global_relative_frame = _Location(lat, lon, alt)
-        self.global_frame = _Location(lat, lon, alt)
+    def __init__(self, fix: Fix):
+        self.global_relative_frame = _Location(fix.lat, fix.lon, fix.alt)
+        self.global_frame = _Location(fix.lat, fix.lon, fix.alt)
 
 
 class _Attitude:
@@ -131,16 +134,16 @@ class _Attitude:
 
 
 class MockVehicle:
-    """dronekit.Vehicle stand-in. See module docstring for the teleport
-    rationale. Setting mode to RTL/LAND simulates the autopilot's own
-    autonomous descend-and-disarm instantly -- Land.return_to_launch and
-    EmergencyLand both poll for exactly that outcome, and this mock has no
-    real flight dynamics to produce it otherwise (their wait loops would
-    spin forever against a MockVehicle that never actually descends on its
-    own)."""
+    """dronekit.Vehicle stand-in. Where it is comes from its Motion (vehicle_motion.py):
+    TeleportMotion (the default; every goto lands at once) or CruiseMotion (flies there over
+    time, so peers see it in transit). `location` is read fresh from the motion each time.
 
-    def __init__(self, start_lat: float, start_lon: float):
-        self.location = _LocationBundle(start_lat, start_lon, 0.0)
+    Setting mode to RTL/LAND puts it on the ground and disarms at once -- Land.return_to_launch
+    and EmergencyLand both poll for exactly that outcome, and this mock has no descent
+    dynamics to produce it otherwise."""
+
+    def __init__(self, start_lat: float, start_lon: float, motion: Motion | None = None):
+        self.motion: Motion = motion or TeleportMotion(start_lat, start_lon)
         self.attitude = _Attitude()
         self.home_location = _Location(start_lat, start_lon, 0.0)
         self._mode = dronekit.VehicleMode("STABILIZE")
@@ -152,6 +155,10 @@ class MockVehicle:
         self._listeners: dict[str, list] = {}
 
     @property
+    def location(self) -> _LocationBundle:
+        return _LocationBundle(self.motion.position())
+
+    @property
     def mode(self):
         return self._mode
 
@@ -159,19 +166,16 @@ class MockVehicle:
     def mode(self, value) -> None:
         self._mode = value
         if value.name in ("RTL", "LAND"):
-            self.location.global_relative_frame.alt = 0.0
+            self.motion.touch_down()
             self.armed = False
 
     def simple_goto(self, location, groundspeed: float | None = None) -> None:
-        self.location.global_relative_frame.lat = location.lat
-        self.location.global_relative_frame.lon = location.lon
-        if location.alt is not None:
-            self.location.global_relative_frame.alt = location.alt
-        self.location.global_frame.lat = location.lat
-        self.location.global_frame.lon = location.lon
+        alt = location.alt if location.alt is not None else self.motion.position().alt
+        self.motion.goto(location.lat, location.lon, alt, groundspeed)
 
     def simple_takeoff(self, alt: float) -> None:
-        self.location.global_relative_frame.alt = alt
+        here = self.motion.position()
+        self.motion.goto(here.lat, here.lon, alt, None)
 
     def add_message_listener(self, name: str, fn) -> None:
         self._listeners.setdefault(name, []).append(fn)
@@ -209,10 +213,19 @@ async def _rangefinder_feed(vehicle: MockVehicle) -> None:
 _SIM_CONTEXT: dict = {}
 
 
-class MockCamera(BaseCamera):
+class TruthCamera(BaseCamera):
+    """A fake camera and mine detector over a ground-truth minefield (one- and multi-drone).
+
+    - Capture: a blank image; the footprint is the real camera geometry (BaseCamera).
+    - Detect: each mine inside the footprint is reported ONCE per camera, boxed at the
+      pixel where it really lies in the frame.
+    - Locate: get_pixel_coordinate gives such a pixel's mine its exact position (a perfect
+      localiser), so every drone that sees a mine reports the same spot.
+    """
+
     IMAGE_SIZE = (640, 480)
 
-    def __init__(self, vision_config: dict):
+    def __init__(self, vision_config: dict, pose_provider, true_mines_latlon):
         mount = vision_config.get("cameraMountRotationDeg", {})
         super().__init__(
             h_fov_deg=vision_config.get("hFovDeg", 0.0),
@@ -222,9 +235,10 @@ class MockCamera(BaseCamera):
                 yaw=mount.get("yaw", 0.0), pitch=mount.get("pitch", 0.0), roll=mount.get("roll", 0.0)
             ),
         )
-        self._pose_provider = _SIM_CONTEXT["pose_provider"]
-        self._true_mines_latlon: list[tuple[float, float]] = _SIM_CONTEXT["true_mines_latlon"]
+        self._pose_provider = pose_provider
+        self._true_mines_latlon: list[tuple[float, float]] = true_mines_latlon
         self._reported: set[int] = set()
+        self._located: dict[tuple[float, float], tuple[float, float]] = {}   # pixel -> mine
         self.capture_count = 0
 
     def initialize_camera(self) -> None:
@@ -233,6 +247,24 @@ class MockCamera(BaseCamera):
     def capture_image(self, only_metadata: bool) -> VisionImage:
         self.capture_count += 1
         return VisionImage(PILImage.new("RGB", self.IMAGE_SIZE), {})
+
+    def get_pixel_coordinate(self, px, py, image_width, image_height, drone):
+        mine = self._located.get((px, py))
+        if mine is not None:
+            return mine
+        return super().get_pixel_coordinate(px, py, image_width, image_height, drone)
+
+    @staticmethod
+    def _pixel_of(point, corners, width, height):
+        """Pixel of a ground point inside the footprint (corners: top-left, top-right,
+        bottom-left, bottom-right in lat/lon; a nadir footprint is a parallelogram)."""
+        (tl_lat, tl_lon), (tr_lat, tr_lon), (bl_lat, bl_lon), _br = corners
+        ax, ay = tr_lat - tl_lat, tr_lon - tl_lon
+        bx, by = bl_lat - tl_lat, bl_lon - tl_lon
+        dx, dy = point[0] - tl_lat, point[1] - tl_lon
+        det = ax * by - ay * bx
+        u, v = (dx * by - dy * bx) / det, (ax * dy - ay * dx) / det
+        return u * (width - 1), v * (height - 1)
 
     def capture_and_detect_mines(self) -> list[Detection]:
         pose: DronePose = self._pose_provider()
@@ -244,17 +276,25 @@ class MockCamera(BaseCamera):
         polygon = [top_left, top_right, bottom_right, bottom_left]
 
         detections = []
-        for i, (mine_lat, mine_lon) in enumerate(self._true_mines_latlon):
-            if i in self._reported:
+        for i, mine in enumerate(self._true_mines_latlon):
+            if i in self._reported or not _point_in_latlon_polygon(*mine, polygon):
                 continue
-            if _point_in_latlon_polygon(mine_lat, mine_lon, polygon):
-                self._reported.add(i)
-                cx, cy = width / 2.0, height / 2.0
-                detections.append(Detection(0.92, (cx, cy, 20, 20), (width, height)))
+            self._reported.add(i)
+            px, py = self._pixel_of(mine, corners, width, height)
+            self._located[(px, py)] = mine
+            detections.append(Detection(0.92, (px, py, 20, 20), (width, height)))
         return detections
 
     def capture_and_detect_apriltags(self) -> list[Detection]:
         return []
+
+
+class MockCamera(TruthCamera):
+    """The one-drone test's camera: pose and mines from the module-level _SIM_CONTEXT."""
+
+    def __init__(self, vision_config: dict):
+        super().__init__(vision_config, _SIM_CONTEXT["pose_provider"],
+                         _SIM_CONTEXT["true_mines_latlon"])
 
 
 def _make_pose_provider(vehicle: MockVehicle):
@@ -299,6 +339,12 @@ class MockInterdrone:
 
     def update_state(self, state) -> None:
         self.current_state_name = type(state).__name__
+
+    async def report_own_position(self) -> None:
+        pass
+
+    async def announce_landing(self) -> None:
+        pass
 
     async def ping_drones(self, timeout_sec: float = 2.0) -> bool:
         return True
@@ -445,7 +491,7 @@ def check_reported_route(planner, mission_path) -> list[str]:
     ys = sorted((pts[0][1], pts[-1][1]))
     if ys[0] > 0.01 or abs(ys[1] - planner.field_h) > 0.01:
         problems.append(f"does not span the field: ends at y={pts[0][1]:.2f} and y={pts[-1][1]:.2f}")
-    if planner.planner.zones.crosses(pts):
+    if planner.backend.crosses(pts):
         problems.append("crosses a known mine")
     return problems
 
@@ -469,7 +515,7 @@ def _report(result: dict) -> bool:
     planner = drone.planner
     if planner is not None:
         true_count = len(result["true_mines_latlon"])
-        print(f"mines: discovered={len(planner.planner.discovered)} / true={true_count}")
+        print(f"mines: discovered={len(planner.backend.mines())} / true={true_count}")
         print(f"reported route        : {len(drone.mission_path)} points")
         try:
             print("iarc path (first 5 lines):")

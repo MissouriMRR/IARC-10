@@ -38,6 +38,9 @@ async def run(self: Land) -> None:
             self.drone.position_stream.cancel()
             self.drone.position_stream = None
 
+        # Tell the others first: they stop waiting for this drone and stop keeping clear of
+        # where it was (a side-mate or the other side would otherwise wait for it to the end).
+        await self.interdrone.announce_landing()
         # Instruct the drone to land
         self.drone.vehicle.airspeed = 20
         await self.drone.return_to_launch()

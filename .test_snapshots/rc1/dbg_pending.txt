@@ -1,0 +1,5 @@
+inbox 1 0 []
+inbox 2 603 [((1, 'POSITION_REPORT'), 73), ((1, 'SHARE_PHOTOS'), 6), ((1, 'SHARE_PHOTOS_ACK'), 9), ((1, 'SIDE_JOB'), 22), ((3, 'CROSS_PAIR_CHAIN'), 13), ((3, 'CROSS_PAIR_COVERAGE'), 16), ((3, 'CROSS_PAIR_MINE_SYNC'), 13), ((3, 'CROSS_PAIR_POINT_A'), 18), ((3, 'FIELD_CHECKSUM'), 2), ((3, 'POSITION_REPORT'), 73), ((3, 'SIDE_JOB'), 34), ((4, 'CROSS_PAIR_COVERAGE'), 120), ((4, 'CROSS_PAIR_MINE_RELAY'), 5), ((4, 'POSITION_REPORT'), 73), ((4, 'SIDE_JOB'), 126)]
+inbox 3 0 []
+inbox 4 0 []
+  first: []

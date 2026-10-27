@@ -1,20 +1,38 @@
 """One side's path-node planner: the core shared by the flight code and the simulator.
 
-A side is one or two drones working from one edge of the field. The side's lead (its
-lower-id drone) owns this planner and plans for every drone of the side; which drone flies
-what is decided by claims (claims.py), not by role. Everything is in local feet; the flight
-code wraps it in lat/lon (flight/pathfinding/mission_planner.py).
+A side is one or two drones working from one edge. Every drone keeps its own copy of the
+side's planner and plans for every drone of the side; which drone flies what is decided by
+claims (claims.py) plus the jobs the drones announce, not by role. Everything is in local
+feet; the flight code wraps it in lat/lon (flight/pathfinding/mission_planner.py).
 
-What it is made of (one module each):
-- chain.py      the route so far: path nodes joined by checked / pending / forward links
-- routes.py     known obstacles (mine zones, blocked squares) and shortest paths around them
-- target.py     what the forward gap aims at: the partner side's point A, or the far edge
-- coverage.py   photographed squares, what a stretch needs, misses, photo placement
-- mine_rule.py  repairing the chain when an obstacle appears
-- shortcuts.py  replacing checked sections with shorter paths
-- work.py       the photos still to take, in priority groups
-- join.py       joining the two sides' routes
-- claims.py     which drone takes which work
+What it is made of (one module each; PathNodePlanner is the side's mission state and wires
+the rest):
+- config.py        names, enums (Edge, LinkKind, ...) and PlannerConfig
+- geometry.py      field constants and cell helpers
+- polyline.py      helpers on polylines
+- log.py           counters and the bounded event log
+- engines/         PathEngine (base.py, the shortest-path seam), ZoneMap (zonemap.py);
+                   ENGINES and make_engine in __init__.py
+- routes.py        known obstacles (mine zones, blocked squares) over an engine; shortest paths
+- target.py        Target (seam): what the forward gap aims at -- FarEdgeTarget (1-2 drones) or
+                   PartnerTarget, the partner side's point A (3-4 drones)
+- chain.py         the route so far: path nodes joined by checked / pending / forward links
+- coverage.py      photographed squares, misses; asks its placement for the rest
+- placement.py     PhotoPlacement (seam): what a stretch needs and where its photos go, one
+                   subclass per CoverageMode
+- mine_rule.py     MineRule: repairing the chain when an obstacle appears (apply is the entry)
+- shortcuts.py     replacing checked sections with shorter paths
+- work.py          the photos still to take, in priority groups
+- work_sources.py  WorkSource (seam): one producer of work per group
+- claims.py        ClaimBook: which drone takes which work
+- coordination.py  SideCoordinator: claims, takeover, keep-apart and make-way -> one queue per
+                   drone
+- join.py          joining the two sides' routes
+- level_control.py LevelController (planner.levels): the expanding-mines sequence -- ready,
+                   snapshots, growth by level, rollback (pure parts: pathfinding/levels.py)
+- session.py       PathNodeBackend: the SearchBackend (search_backend.py) over this planner
+
+The seams, what a new subclass must implement, and how-to recipes: docs/architecture.md.
 
 Order of events for each photo (session.py does this for both the simulator and the flight
 code): record_footprint, then add_mine for its mines, then advance() -- path nodes are laid
@@ -23,20 +41,21 @@ only after the photo's mines are in.
 
 import dataclasses
 import hashlib
-import math
 
 from flight.pathfinding.pathnode import join as join_mod
 from flight.pathfinding.pathnode import mine_rule
 from flight.pathfinding.pathnode.chain import Chain, Link, PathNode
-from flight.pathfinding.pathnode.claims import ClaimBook
 from flight.pathfinding.pathnode.config import (GROUPS, Edge, Group, LinkKind, Placer,
                                                 PlannerConfig, Source)
-from flight.pathfinding.pathnode.coverage import Coverage, cell_centre
-from flight.pathfinding.pathnode.geometry import CELL, snap_to_cell_center
+from flight.pathfinding.pathnode.coordination import SideCoordinator
+from flight.pathfinding.pathnode.coverage import Coverage
+from flight.pathfinding.pathnode.engines import make_engine
+from flight.pathfinding.pathnode.geometry import snap_to_cell_center
+from flight.pathfinding.pathnode.level_control import LevelController
 from flight.pathfinding.pathnode.log import PlannerLog
 from flight.pathfinding.pathnode.routes import Routes
 from flight.pathfinding.pathnode.shortcuts import Shortcuts
-from flight.pathfinding.pathnode.target import Target
+from flight.pathfinding.pathnode.target import make_target
 from flight.pathfinding.pathnode.work import Work
 
 __all__ = ["PathNodePlanner", "GROUPS", "Group", "Source"]
@@ -53,26 +72,22 @@ class PathNodePlanner:
           The target is then the partner's point A, at its entry until the first relay.
           None aims at the far edge.
         - drones: the side's drone ids (claim keys), in tie-break order -- ascending id, so the
-          lead claims first.
+          lower id claims first.
         - config: a PlannerConfig; or pass its fields as keyword options.
         """
         self.config = config or PlannerConfig(**options)
         self.field_w, self.field_h = float(field_w), float(field_h)
         self.start_edge = Edge(start_edge)
-        self.drones = tuple(drones)
-        self.claims = ClaimBook(self.drones)
-        self.last_plan = {d: [] for d in self.drones}
         self.discovered = []            # every known mine, (x, y)
         self.blocked = set()            # squares given up on (see coverage.py)
         self.partner_route = []         # the partner's latest route (check_join)
         self.failure = None
         self.log = PlannerLog()
-        self.routes = Routes(self.field_w, self.field_h)
-        self.target = Target(self.field_w, self.field_h, self.start_edge, partner_entry_x,
-                             self.routes)
+        self.routes = Routes(make_engine(self.config.engine, self.field_w, self.field_h))
+        self.target = make_target(self.field_w, self.field_h, self.start_edge, partner_entry_x,
+                                  self.routes)
         self.coverage = Coverage(self.field_w, self.field_h, self.config)
-        y0 = 0.0 if self.start_edge == Edge.BOTTOM else self.field_h
-        entry = PathNode(float(entry_x), y0, Placer.ENTRY)
+        entry = PathNode(float(entry_x), self.start_edge.y(self.field_h), Placer.ENTRY)
         self.chain = Chain([entry], [])
         route, _gids = self.target.route_from(entry.xy)
         if route is None:
@@ -82,6 +97,9 @@ class PathNodePlanner:
                                [Link(LinkKind.FORWARD, route)])
         self.shortcuts = Shortcuts(self.chain, self.routes, self.coverage, self.config, self.log)
         self.work = Work(self.chain, self.routes, self.coverage, self.shortcuts, self.config)
+        self.coordinator = SideCoordinator(drones, self.config, self.work, self.coverage,
+                                           self.field_w, self.field_h)
+        self.levels = LevelController(self)
 
     def use_chain(self, chain):
         """Replace the chain's contents (a hand-built Chain, e.g. Chain.build) -- for tests and
@@ -92,7 +110,7 @@ class PathNodePlanner:
     def reconfigure(self, **changes):
         """Change PlannerConfig fields mid-mission (tests, tuning)."""
         self.config = dataclasses.replace(self.config, **changes)
-        for part in (self.coverage, self.shortcuts, self.work):
+        for part in (self.coverage, self.shortcuts, self.work, self.coordinator):
             part.config = self.config
 
     # -- state -----------------------------------------------------------------------------
@@ -105,8 +123,20 @@ class PathNodePlanner:
         return self.chain.links
 
     @property
-    def zones(self):
-        return self.routes.zones
+    def drones(self):
+        return self.coordinator.drones
+
+    @property
+    def claims(self):
+        return self.coordinator.claims
+
+    @property
+    def last_plan(self):
+        return self.coordinator.last_plan
+
+    @property
+    def engine(self):
+        return self.routes.engine
 
     @property
     def seen(self):
@@ -144,10 +174,19 @@ class PathNodePlanner:
     def route(self):
         return self.chain.route()
 
+    @property
+    def level(self):
+        """The growth level the zones are at (0 = the original safety radius)."""
+        return self.routes.level
+
     def mine_hash(self):
         """Order-independent hash of the known mines (each snapped to its square)."""
         cells = sorted(snap_to_cell_center(x, y) for x, y in self.discovered)
         return hashlib.sha256(repr(cells).encode("utf-8")).hexdigest()
+
+    def level_hash(self):
+        """mine_hash() and the level together: equal on two copies iff same mines, same level."""
+        return hashlib.sha256(repr((self.level, self.mine_hash())).encode("utf-8")).hexdigest()
 
     def footprint_cells(self, x, y):
         return self.coverage.footprint_cells(x, y)
@@ -182,6 +221,7 @@ class PathNodePlanner:
         self.log.count("blocked_squares")
         self.log.event("blocked", c, r)
         mine_rule.apply(self, self.routes.add_square(c, r), Source.PARTNER)
+        self.levels.after_obstacle()
 
     # -- mines -----------------------------------------------------------------------------
     def add_mine(self, x, y, source):
@@ -196,23 +236,23 @@ class PathNodePlanner:
             return False
         self.discovered.append((float(x), float(y)))
         mine_rule.apply(self, self.routes.add_mine(x, y), source)
+        self.levels.after_obstacle()
         return True
 
     # -- the partner side ------------------------------------------------------------------
     def set_partner_point_a(self, x, y):
         """Retarget the forward gap at the partner's latest point A. Once met, only stored."""
         target = self.target
-        if not target.partner or self.failure:
+        if not target.has_partner or self.failure:
             return
-        if (float(x), float(y)) == target.partner_a:
+        if not target.retarget((x, y)):
             return      # the heartbeat resends an unchanged point A; new mines replan on their own
-        target.partner_a = (float(x), float(y))
         f = self.chain.forward_index()
         if f is None:
             return
         route, _ = target.route_from(self.chain.nodes[f].xy)
         if route is None:
-            self.log.event("stale-target", target.partner_a)
+            self.log.event("stale-target", (float(x), float(y)))
             return
         self.chain.nodes[f + 1] = PathNode(*route[-1], Placer.TARGET)
         self.chain.links[f].poly = route
@@ -241,24 +281,48 @@ class PathNodePlanner:
         if not self.met or len(self.partner_route) < 2:
             return None
         joined = self.join(self.partner_route)
-        if joined is None and self.start_edge == Edge.BOTTOM:
+        if joined is None and self.start_edge.yields_in_crosswise_join:
             self._reopen_toward(self.partner_route[-1])
         return joined
 
     def _reopen_toward(self, point):
         """Turn the met target into an ordinary node and open a forward gap to `point`."""
-        self.target.partner_a = (float(point[0]), float(point[1]))
+        point = (float(point[0]), float(point[1]))
+        self.target.retarget(point)
+        if self._open_gap():
+            self.log.event("reopen", self.chain.nodes[-2].xy, point)
+
+    def _open_gap(self):
+        """Turn the met target into an ordinary node and open a forward gap to the (new) target.
+        Returns whether a route was found."""
         end = self.chain.nodes[-1]
         route, _gids = self.target.route_from(end.xy)
         if route is None:
-            self.log.event("reopen-failed", self.target.partner_a)
-            return
+            self.log.event("reopen-failed", end.xy)
+            return False
         self.chain.nodes[-1] = PathNode(end.x, end.y, Placer.FORWARD)
         self.chain.nodes.append(PathNode(*route[-1], Placer.TARGET))
         self.chain.links.append(Link(LinkKind.FORWARD, route))
         self.log.count("reopens")
-        self.log.event("reopen", end.xy, self.target.partner_a)
         self.advance()
+        return True
+
+    def partner_lost(self):
+        """The partner side is gone for good: aim at its last point A, then carry on to the far
+        edge, so this side's own photos check the lost side's half too."""
+        self.target = self.target.lost()
+        self.levels.partner_lost()
+        self._follow_target()
+
+    def _follow_target(self):
+        """Once the chain has reached its target, move on to the Target it hands over to
+        (target.after_met; most targets hand over to themselves) and open a gap toward it."""
+        nxt = self.target.after_met()
+        if nxt is self.target or not self.met:
+            return
+        old, self.target = self.target, nxt
+        if not self._open_gap():
+            self.target = old
 
     # -- planning --------------------------------------------------------------------------
     def advance(self):
@@ -270,11 +334,12 @@ class PathNodePlanner:
         seen = self.coverage.all_seen
         f = chain.forward_index()
         # Never close the gap against a stand-in target (see target.py).
-        if f is not None and (not self.target.partner or self.target.is_partner):
+        if f is not None and self.target.may_close():
             chain.advance_link(chain.links[f], Placer.FORWARD, seen)
-        for link in [k for k in chain.links if k.kind == LinkKind.PENDING]:
+        for link in chain.pending_links():
             chain.advance_link(link, Placer.SPAN, seen)
         self.shortcuts.update(self.met)
+        self._follow_target()
 
     def groups(self):
         """The photos still to take, one list per Group (work.py)."""
@@ -282,160 +347,34 @@ class PathNodePlanner:
             return [[] for _ in Group]
         return self.work.groups()
 
-    def plan(self, positions, held=None, me=None, others=None):
+    def plan(self, positions, held=None, me=None, others=None, lost=()):
         """
         Takes:
         - positions: drone id -> (x, y), where each of the side's drones is; None for a drone
-          that is lost (its work goes to the others).
+          that is gone (ignored entirely: no claims, no keep-apart).
         - held: drone id -> the job it announced (claims.ClaimBook.update). The side-mates'
           jobs are held from them; the other side's only steer the drones apart.
-        - me: the drone this copy of the planner belongs to, if any. If this copy gives it
-          nothing to fly -- no work, or only work it must keep clear of, while its side-mates
-          announced they have no job -- it takes the others' queued work instead: all but the
-          job each of them announced. The side-mate's own copy may not have that work at all
-          (the two copies can differ while messages are in flight), so nobody else would do
-          it.
-        - others: drone id -> (x, y) for the other side's drones; a lost, stale or unknown
-          one is left out (or None) and ignored. Its work is not ours (its planner is its
-          own) -- we only keep clear of it, by the same rule as within the side.
+        - me: the drone this copy of the planner belongs to, if any (coordination.py: it takes
+          over work the others hold in their queues when this copy gives it nothing to fly).
+        - others: drone id -> (x, y) for the other side's drones -- the last known position
+          if one has gone quiet (the caller drops it only after a long silence); None or
+          missing is ignored. Its work is not ours (its planner is its own) -- we only keep
+          clear of it, by the same rule as within the side.
+        - lost: side drone ids that went quiet. Their LAST KNOWN position is in positions and
+          last announced job in held. Only their work is handed to the others, and even then
+          the sequence of the job a lost drone last announced stays reserved (it is probably
+          still flying it), and its last position and job keep blocking (keep-apart, the same
+          distances as a live drone). The caller drops it from `lost` (position None) after a
+          long silence, and when it is heard again it is an ordinary drone (its announced
+          job wins as usual).
 
-        Does: advance(), then updates the claims (claims.py), keeps the drones apart
-        (keep_away_ft, keep_clear_ft).
+        Does: advance(), then hands the work to the SideCoordinator (coordination.py): claims,
+        keep-apart.
 
         Returns: drone id -> [(x, y, group), ...] in flying order. Also kept as last_plan;
         each drone's current job is claims.heads[drone].
         """
         if self.failure:
-            self.last_plan = {d: [] for d in self.drones}
-            return self.last_plan
+            return self.coordinator.clear()
         self.advance()      # anything already checked must close before we plan more photos
-        others = {d: tuple(p) for d, p in (others or {}).items()
-                  if p is not None and d not in self.drones}
-        held = held or {}
-        side_held = {d: job for d, job in held.items() if d in self.drones}
-        other_held = {d: job for d, job in held.items() if d in others}
-        plan = self.claims.update(self.groups(), positions, side_held)
-        idle = {d for d, job in side_held.items() if job is None}
-        kept = self._keep_apart(plan, positions, idle, others, other_held)
-        if me is not None and (not plan.get(me) or (not kept.get(me)
-                                                    and idle >= set(self.drones) - {me})):
-            announced = {tuple(map(float, job[2])) for d, job in side_held.items()
-                         if job is not None and d != me}
-            plan[me] = plan.get(me, []) + [q for d in self.drones if d != me for q in plan[d]
-                                           if tuple(map(float, q[:2])) not in announced]
-            # Work taken over is no longer the other drone's next photo: left there, it would
-            # keep this drone away from its own new queue (keep-apart) and nobody would fly it.
-            taken = {tuple(map(float, q[:2])) for q in plan[me]}
-            for d in self.drones:
-                if d != me:
-                    plan[d] = [q for q in plan[d] if tuple(map(float, q[:2])) not in taken]
-            kept = self._keep_apart(plan, positions, idle, others, other_held)
-        self.last_plan = kept
-        if me is not None:
-            self._make_way(me, plan, positions, {**side_held, **other_held}, others)
-        # Each drone's job is what it will actually fly first, so a job it had to give up here
-        # isn't announced -- and held from the other drone -- for nothing. The exception is a
-        # drone held back by a drone it must not fly near (it has work but nothing it may fly,
-        # or only a spare photo _make_way sent it to): it announces the job it waits for, so
-        # the other drone (whose copy may not know the job) makes way for it.
-        for d, queue in self.last_plan.items():
-            if d == me and plan.get(me) and (not queue or self.claims.job_at(queue[0]) is None):
-                queue = plan[me]
-            self.claims.heads[d] = self.claims.job_at(queue[0]) if queue else None
-        return self.last_plan
-
-    def _make_way(self, me, plan, positions, held, others):
-        """Break a keep-apart standoff by moving out of the way. The drone is sent to a spare
-        photo on ground where none is needed, clear of the job and of the other drones (the
-        last group, so it is not a job). Whoever must give way:
-        - the higher-id drone, when a lower-id drone announced a job within keep_away_ft of
-          it (a lower id keeps its ground: ties go that way); or
-        - a non-lead drone of the side, when every drone's queue was emptied by _keep_apart
-          while work is left; or
-        - any drone with nothing to do itself, when a higher-id drone announced a job within
-          keep_clear_ft of it -- that drone cannot fly a photo next to it, and no other move
-          would free the job."""
-        gap, clear = self.config.keep_away_ft, self.config.keep_clear_ft
-        spot_gap = max(gap, clear) + 0.5
-        if (not self.config.keep_away_ft or positions.get(me) is None
-                or self.last_plan.get(me)):
-            return
-        here = positions[me]
-        # A lower drone's next photo is kept keep_away_ft clear of this drone (_keep_apart);
-        # a higher drone's only keep_clear_ft from an idle one.
-        jobs = [tuple(map(float, job[2])) for d, job in held.items()
-                if job is not None and d < me and math.dist(job[2], here) < gap]
-        if not jobs and not plan.get(me):
-            jobs = [tuple(map(float, job[2])) for d, job in held.items()
-                    if job is not None and d > me and math.dist(job[2], here) < clear]
-        if (not jobs and self.drones.index(me) != 0
-                and not any(self.last_plan.values())):
-            jobs = [tuple(q[:2]) for queue in plan.values() for q in queue]
-            jobs = [min(jobs, key=lambda j: (math.dist(j, here), j))] if jobs else []
-        if not jobs:
-            return
-        job = jobs[0]
-        around = [p for d, p in positions.items() if d != me and p is not None]
-        around += list(others.values())
-        needed = self.work.needed_squares()
-        reach = self.coverage.aim_radius() + CELL
-        margin = max(self.config.shape_size_ft) / 2
-        for radius in (spot_gap + 1.0, spot_gap + 4.0, spot_gap + 8.0):
-            spots = []
-            for k in range(16):
-                a = k * math.pi / 8
-                x, y = job[0] + radius * math.cos(a), job[1] + radius * math.sin(a)
-                if not (margin <= x <= self.field_w - margin and margin <= y <= self.field_h - margin):
-                    continue
-                if any(math.dist((x, y), p) < spot_gap for p in around + jobs):
-                    continue
-                if any(math.dist(cell_centre(c, r), (x, y)) <= reach for c, r in needed):
-                    continue
-                spots.append((math.dist((x, y), here), x, y))
-            if spots:
-                _d, x, y = min(spots)
-                self.last_plan[me] = [(x, y, len(GROUPS) - 1)]
-                return
-
-    def _keep_apart(self, plan, positions, idle=(), others=None, other_held=None):
-        """Keep the drones physically apart; the photos dropped here stay work for later.
-        Ties go to the lower id (every drone of the bottom side is lower than any of the
-        top side), so two drones can never block each other:
-        - a higher-id drone skips photos within keep_away_ft of a lower-id drone's position
-          and of its next photo (of its position only within keep_clear_ft if that drone has
-          nothing queued, or announced it has no job -- its own copy has no work, so the
-          queue this copy gives it is never flown). A lower drone of the other side has
-          no queue here: its announced job stands in for its next photo, and it counts as
-          working until it announces none;
-        - a lower-id drone skips only photos within keep_clear_ft of a higher-id drone's
-          position (just over the flight code's 1.2 m separation floor)."""
-        gap, clear = self.config.keep_away_ft, self.config.keep_clear_ft
-        others, other_held = others or {}, other_held or {}
-        if not gap or (len(self.drones) < 2 and not others):
-            return plan
-        out = {}
-        for d, queue in plan.items():
-            near = []           # (point, distance to keep from it)
-            for o in self.drones:
-                if o == d or positions.get(o) is None:
-                    continue
-                if self.drones.index(o) < self.drones.index(d):
-                    # An idle lower drone stays put, so only the clear distance is needed:
-                    # else a job within gap of it, and of the higher drone, is never flown.
-                    working = bool(plan.get(o)) and o not in idle
-                    near.append((positions[o], gap if working else min(gap, clear)))
-                    if working:
-                        near.append((plan[o][0][:2], gap))
-                else:
-                    near.append((positions[o], min(gap, clear)))
-            for o, pos in others.items():
-                if o < d:
-                    job = other_held.get(o)
-                    working = o not in other_held or job is not None
-                    near.append((pos, gap if working else min(gap, clear)))
-                    if job is not None:
-                        near.append((job[2], gap))
-                else:
-                    near.append((pos, min(gap, clear)))
-            out[d] = [q for q in queue if all(math.dist(q[:2], p) >= r for p, r in near)]
-        return out
+        return self.coordinator.plan(self.groups(), positions, held, me, others, lost)

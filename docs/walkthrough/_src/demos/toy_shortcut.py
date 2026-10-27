@@ -12,7 +12,7 @@ m = Mission(mines, drones=2, field_w=40.0, field_h=120.0, entry_x=20.0,
 p = m.planners[1]
 print("failure:", m.failure, "| stats:", {k: v for k, v in p.stats.items() if v})
 for e in p.events:
-    if e[0].startswith("shortcut"):
+    if e[0] == "shortcut":
         kind, tier, a, b, section, new = e
         print(f"{kind}: tier={tier} anchors {tuple(round(v, 1) for v in a)} -> "
               f"{tuple(round(v, 1) for v in b)}  section {section:.1f} ft replaced by {new:.1f} ft")

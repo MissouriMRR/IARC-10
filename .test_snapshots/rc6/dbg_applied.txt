@@ -1,0 +1,9 @@
+('cov', 1) 210
+('cov', 2) 8
+('cov', 3) 67
+('mines', 1) 191
+('mines', 2) 3
+('mines', 3) 157
+('photos', 1) 9
+('photos', 2) 47
+('photos', 3) 0

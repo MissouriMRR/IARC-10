@@ -1,0 +1,69 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         71      71       0      0     337s    2448s
+nodefield    24      24       0      0     125s     290s
+cellfield     1       1       0      0      70s      70s
+sweep        90      78      12      0     339s    3853s
+flight       21      19       2      0      44s     356s
+pytest        1       1       0      0      89s      89s
+lint          1       1       0      0       8s       8s
+TOTAL       209                            396s
+
+FAILURES (14):
+--- sweep d-104: exit 1
+    d seed=104 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.00 min_side=8.00 ticks=165
+--- sweep d-108: exit 1
+    d seed=108 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.40 min_side=7.71 ticks=164
+--- sweep d-110: exit 1
+    d seed=110 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.83 min_side=8.25 ticks=199
+--- sweep e-116: exit 1
+    e seed=116 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.40 min_side=8.00 ticks=237
+--- sweep e-117: exit 1
+    e seed=117 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.11 min_side=8.00 ticks=186
+--- sweep e-127: exit 1
+    e seed=127 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.08 min_side=8.00 ticks=153
+--- sweep e-128: exit 1
+    e seed=128 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.16 min_side=7.50 ticks=152
+--- sweep f-202: exit 1
+    f seed=202 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=10.03 min_side=8.00 ticks=166
+--- sweep f-204: exit 1
+    f seed=204 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.69 min_side=8.00 ticks=182
+--- sweep f-207: exit 1
+    f seed=207 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=9.91 min_side=8.00 ticks=171
+--- sweep f-208: exit 1
+    f seed=208 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.16 min_side=8.00 ticks=193
+--- sweep f-213: exit 1
+    f seed=213 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.91 min_side=7.50 ticks=170
+--- flight multi-3-dense#1: no 'RESULT: PASS'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 8 / 60 true
+       seen cells  : 1230
+       captures    : 9
+    -- drone 3 (top side) --------------------------------------------
+       final state : Land
+       elapsed     : 28.5s
+       error       : none
+       mines found : 9 / 60 true
+       seen cells  : 1381
+       captures    : 48
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-3-dense#2: no 'RESULT: PASS'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 8 / 60 true
+       seen cells  : 1230
+       captures    : 9
+    -- drone 3 (top side) --------------------------------------------
+       final state : Land
+       elapsed     : 28.6s
+       error       : none
+       mines found : 9 / 60 true
+       seen cells  : 1375
+       captures    : 55
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+lint: 54 warnings
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\fin2\verify_logs\20261026-155845

@@ -4,7 +4,7 @@
 
 **What this chapter covers.** A route built by the mine rule is often longer than it needs to be: when a mine is found, the route detours around it, and later discoveries can make an earlier detour unnecessary or leave a zig-zag. `pathnode/shortcuts.py` looks for **checked sections of the chain that a shorter path could replace**, tests them by photographing the shorter path, and splices it in.
 
-> **Status.** The path lengths come from `Routes.shortest`, whose geometry (`ZoneMap`) is due to be replaced (chapter 2); the interface stays the same.
+> **Status.** The path lengths come from `Routes.shortest`, whose geometry is a `PathEngine` (`ZoneMap` by default, chapter 2).
 
 ## 8.1 The idea, from the module docstring
 
@@ -62,12 +62,12 @@ The splice itself is `Chain.replace(i, j, poly, Placer.SHORTCUT)` (chain.py): it
 
 ## 8.5 How a trial gets its photos
 
-`Work.groups()` (chapter 3) adds each tier's trial as one more sequence:
+`Work.groups()` (chapter 3) asks one `ShortcutSource` per tier (`work_sources.py`) for its work; each adds that tier's trial as one more sequence:
 
-{{snip: flight/pathfinding/pathnode/work.py :: for tier in Tier: => out[TIER_GROUP[tier]] = [(("shortcut", tr.a.xy, tr.b.xy), +1}}
+{{snip: flight/pathfinding/pathnode/work_sources.py :: class ShortcutSource => return set() if tr is None}}
 
 - key `("shortcut", a_xy, b_xy)`: named by its **anchor geometry**, so every drone's copy names the same trial the same way (the ClaimBook uses keys to honour a mate's announced job).
-- The photos are `places_along(tr.poly)`, in walking order from anchor `a`.
+- The photos are `coverage.places_along(tr.poly)`, in walking order from anchor `a`.
 - **Priority.** The BIG trial is group 1 (just below PATH, **above** the ADJACENT rings, "so squares beside a section about to be replaced aren't photographed for nothing"); the ordinary trial is group 3 (below ADJACENT). A drone flies everything it holds in a higher group first.
 
 ## 8.6 Real runs
@@ -76,7 +76,7 @@ The splice itself is `Chain.replace(i, j, poly, Placer.SHORTCUT)` (chain.py): it
 
 {{run: demos/toy_shortcut.py}}
 
-Both were free: the shorter path was already photographed, so `_apply_free` spliced it as soon as `advance()` ran. The first replaced a 61.6 ft section from the entry with a 49.9 ft path.
+Three of the four were free (`instant_shortcuts: 3`): the shorter path was already photographed, so `_apply_free` spliced it as soon as `advance()` ran. The first replaced a 59.9 ft section from the entry with a 49.9 ft path. The fourth went through a trial; one other candidate was given up (`shortcuts_given_up: 1`).
 
 **A trial from start to finish.** A hook on `Shortcuts.update` prints drone 1's trials each time they change:
 

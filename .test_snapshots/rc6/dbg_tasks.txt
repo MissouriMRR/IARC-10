@@ -1,0 +1,12 @@
+=== t=30.00415022200002
+Task-13 one_drone_sim_test.py:203:_rangefinder_feed > tasks.py:718:sleep
+Task-1 dbg_extra.py:55:w > multi_drone_sim_test.py:348:run_simulation
+Task-4 multi_drone_sim_test.py:295:_run_one_drone > tasks.py:507:wait_for > state_machine.py:124:run3
+Task-5 interdrone.py:2161:interdrone_loop1 > tasks.py:718:sleep
+Task-8 state_machine.py:137:_run1 > dbg_run.py:51:w1 > end_run_impl.py:233:run1 > end_run_impl.py:134:_join_with_partner1 > tasks.py:718:sleep
+Task-14 state_machine.py:137:_run3 > dbg_run.py:51:w3 > end_run_impl.py:233:run3 > end_run_impl.py:134:_join_with_partner3 > tasks.py:718:sleep
+Task-15 interdrone.py:899:stream_positions1 > tasks.py:718:sleep
+Task-2 multi_drone_sim_test.py:295:_run_one_drone > tasks.py:507:wait_for > state_machine.py:124:run1
+Task-6 one_drone_sim_test.py:203:_rangefinder_feed > tasks.py:718:sleep
+Task-12 interdrone.py:2161:interdrone_loop3 > tasks.py:718:sleep
+Task-17 interdrone.py:899:stream_positions3 > tasks.py:718:sleep

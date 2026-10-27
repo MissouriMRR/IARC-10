@@ -15,10 +15,11 @@ for label, side_drones, edge, partner in (("drone 1 (bottom side, has a partner 
                                           ("drone 3 (top side, has a partner side)", (3, 4), "top", True),
                                           ("solo/2-drone mission (no partner side)", (1, 2), "bottom", False)):
     mp = MissionPlanner(corners, mid, edge, side_drones, partner, shape_size_ft=(8.52, 6.44))
-    p = mp.planner
+    p = mp.backend.planner
     print(f"--- {label}")
     print(f"field {mp.field_w:.1f} x {mp.field_h:.1f} ft, cells {p.coverage.seen.width} x {p.coverage.seen.height}")
     print("nodes :", [(n.placed_by.value, round(n.x, 1), round(n.y, 1)) for n in p.nodes])
     print("links :", [(k.kind.value, [(round(x, 1), round(y, 1)) for x, y in k.poly]) for k in p.links])
-    print("target: partner =", p.target.partner, "partner_a =", p.target.partner_a, "is_partner =", p.target.is_partner)
+    t = p.target
+    print("target: partner =", t.has_partner, "partner_a =", getattr(t, "partner_a", None), "may_close =", t.may_close())
     print("claims:", p.claims.drones, "| failure:", p.failure)

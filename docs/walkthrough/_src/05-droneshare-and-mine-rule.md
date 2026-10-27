@@ -4,7 +4,7 @@
 
 **What this chapter covers.** After `Scan` photographs a spot, `DroneShare` does "the actual check": it looks for a mine in that spot, tells the planner, and tells everyone else. When the planner learns of a mine it runs **the mine rule** (`pathnode/mine_rule.py`), which repairs the route around the new obstacle. This is the most intricate logic in the mission.
 
-> **Status.** The per-drone code is in final verification. The obstacle geometry under `routes.py` is still `ZoneMap` and is due to be replaced (chapter 2); the mine rule only asks `Routes` the questions listed there (`contains`, `crosses`, `route`, `corners`, `add_mine`, `add_square`).
+> **Status.** The per-drone code is in final verification. The obstacle geometry under `routes.py` is a `PathEngine` (`ZoneMap` by default, chapter 2); the mine rule only asks `Routes` the questions listed there (`contains`, `crosses`, `route`, `corners`, `add_mine`, `add_square`).
 
 ## 5.1 DroneShare.run
 
@@ -66,7 +66,9 @@ The three jobs, in order:
 
 ## 5.4 The mine rule
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: The mine rule: repairing => only re-bridge.}}
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: The mine rule: repairing => _replan_pending.}}
+
+The entry point is `mine_rule.apply(pl, gid, source)`, which runs one `MineRule` object. Each step below is a method of that class, called in order by `MineRule.run`; the three link cases are one method each.
 
 In plain words: *delete what the obstacle sits on, re-plan what it crosses, throw away whatever got cut off, join the two live ends with a shortest path, and, if this side found the mine right at the frontier, move the frontier past it.*
 
@@ -78,36 +80,38 @@ Definitions:
 
 ### Rule 0 and 1: move the entry, delete nodes inside, cut checked links
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: def apply(pl, gid, source): => log.count("nodes_in_mine", len(dead))}}
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def run => self._rebridge(f1, f2, frags) :: def _clear_entry => self.log.count("nodes_in_mine", len(self.dead))}}
 
-- If the **entry** is inside the new obstacle, `_shift_entry` moves it along the entry edge to the nearest clear 2 ft square (`entry_shifts`). If none is clear, `pl.failure = "entry fully blocked"` and planning stops.
-- `dead` = every path node whose position is inside an obstacle now, **except the last** (the target is virtual and is never deleted).
+- `_clear_entry`: if the **entry** is inside the new obstacle, `_shift_entry` moves it along the entry edge to the nearest clear 2 ft square (`entry_shifts`). If none is clear, `pl.failure = "entry fully blocked"` and planning stops.
+- `_delete_nodes_inside`: `dead` = every path node whose position is inside an obstacle now, **except the last** (the target is virtual and is never deleted).
 - `broken` = the indices of links that are cut (see rule 2).
 
 ### Rule 2: re-plan what the obstacle crosses
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: fwd_route = None => log.count("replans")}}
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def _repair_links => self._replan_pending(i, link, a, b) :: def _cut_checked => self.log.count("replans") :: def _replan_pending => self.log.count("replans")}}
 
-For every link that **crosses** the obstacle and does not touch a dead node (links at a dead node are skipped; the fragment logic below handles them):
-- a **CHECKED** link is **cut** (`broken`): the ground was verified before the mine appeared and can no longer be trusted; it is not re-planned in place.
-- a **PENDING** link is re-planned as the shortest path between its two nodes (`routes.route`).
-- the **FORWARD** link is re-planned by `target.route_from(a.xy)` (shortest path to the target from point A) and the target node is refreshed. This route is remembered in `fwd_route` for the jump rule.
+`_repair_links` visits every link that **crosses** the obstacle and does not touch a dead node (links at a dead node are skipped; the fragment logic below handles them):
+- `_cut_checked`: a **CHECKED** link is **cut** (`broken`): the ground was verified before the mine appeared and can no longer be trusted; it is not re-planned in place.
+- `_replan_pending`: a **PENDING** link is re-planned as the shortest path between its two nodes (`routes.route`).
+- `_replan_forward`: the **FORWARD** link is re-planned by `target.route_from(a.xy)` (shortest path to the target from point A) and the target node is refreshed. This route is remembered in `fwd_route` for the jump rule.
 
 ### Rule 3: find the fragments and the orphans
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: frags, cur = [], [] => f2 = next(}}
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def _split_into_fragments => return f1, f2, frags}}
 
-Walk the nodes in order; a dead node, or a broken link, ends the current fragment. `f1` is the fragment that contains the entry (index 0), `f2` the one that contains the target. Every other fragment is an **orphan**: it is dropped, **whether or not it lies inside the obstacle** (it is disconnected from both roots, so no route can use it).
+`_split_into_fragments` walks the nodes in order; a dead node, or a broken link, ends the current fragment. `f1` is the fragment that contains the entry (index 0), `f2` the one that contains the target. Every other fragment is an **orphan**: it is dropped, **whether or not it lies inside the obstacle** (it is disconnected from both roots, so no route can use it).
 
 ### Rule 4: bridge the two roots (or stay put if they are still joined)
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: if f1 is f2: => return}}
+`MineRule.run` branches on the fragments:
 
-If `f1 is f2`, nothing was cut off; the chain is still one piece. The only thing left to decide is the jump (rule 5).
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def run => self._rebridge(f1, f2, frags)}}
 
-If they differ, the chain was cut in two:
+If `f1 is f2`, nothing was cut off; the chain is still one piece. The only thing left to decide is the jump (rule 5, `_jump_past_mine`).
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: log.count("orphans", sum(len(f) => chain.links = [chain.links[i] for i in f1[:-1]] + mid_links + tail_links}}
+If they differ, the chain was cut in two and `_rebridge` joins it:
+
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def _rebridge => chain.links = [chain.links[i] for i in f1[:-1]] + mid_links + tail_links}}
 
 - `u` is the last node of the entry's fragment. If everything on the far side is gone except the target (`frontier`), the new link is **the forward gap** from `u` to the target. Otherwise it is a **PENDING** link from `u` to the first node `v` of the target's fragment (a `bridge`).
 - If there is **no route at all** from `u`, the entry's fragment is walled in. `_reroute_from_entry` tries other squares along the entry edge, nearest first, for one that has a route (the whole entry fragment is then discarded as orphaned). If none does, `pl.failure` is set to "no route from ... to ...": planning has failed for this side.
@@ -115,7 +119,7 @@ If they differ, the chain was cut in two:
 
 ### Rule 5: the jump (point A moves past the mine)
 
-{{snip: flight/pathfinding/pathnode/mine_rule.py :: def _frontier_links => return [], [Link(LinkKind.FORWARD, pts)]}}
+{{snip: flight/pathfinding/pathnode/mine_rule.py :: def _jump_past_mine => chain.set_target(chain.links[-1].poly[-1]) :: def _frontier_links => return [], [Link(LinkKind.FORWARD, pts)]}}
 
 When a drone of **this side** found a mine that affects the **frontier** (the forward link had to be re-planned, or the bridge reaches the target), point A does not stay before the mine and wait for the detour to be photographed. It **jumps** to the **last corner of that mine's obstacle group** that the new route bends around (`gids[k] == gid`):
 

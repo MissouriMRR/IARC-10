@@ -594,7 +594,13 @@ class Interdrone:
         return
 
     async def report_position(
-        self, drones_to_send_data: tuple[int, ...], lat: float, lon: float, alt: float
+        self,
+        drones_to_send_data: tuple[int, ...],
+        lat: float,
+        lon: float,
+        alt: float,
+        leg_to: tuple[float, float] | None = None,
+        leg_clock: int = 0,
     ) -> None:
         """
         Message ID = 552
@@ -616,10 +622,20 @@ class Interdrone:
             id=MessageType.POSITION_REPORT,
             drones_to_send_data=drones_to_send_data,
             sender_id=self.flight_settings.current_drone_ID,
-            data={"lat": lat, "lon": lon, "alt": alt},
+            data={"lat": lat, "lon": lon, "alt": alt, "leg_to": leg_to, "leg_clock": leg_clock},
         )
         self.send(position_message)
         return
+
+    async def report_own_position(self) -> None:
+        """Send POSITION_REPORT now, with the leg this drone claims (Drone.claim_leg), to every
+        other drone. Called every stream tick, and straight away when a leg is claimed."""
+        position = self.drone.vehicle.location.global_relative_frame
+        await self.report_position(
+            tuple(self.flight_settings.other_drones_in_mission),
+            position.lat, position.lon, position.alt,
+            self.drone.leg_to, self.drone.leg_stamp,
+        )
 
     async def send_survey_start(self) -> None:
         """
@@ -891,7 +907,8 @@ class Interdrone:
         while True:
             try:
                 position = self.drone.vehicle.location.global_relative_frame
-                await self.report_position(peers, position.lat, position.lon, position.alt)
+                await self.report_position(peers, position.lat, position.lon, position.alt,
+                                           self.drone.leg_to, self.drone.leg_stamp)
             except asyncio.CancelledError:
                 raise
             except Exception as ex:
@@ -941,10 +958,20 @@ class Interdrone:
         else:
             await self.send_paths_to_app("", map_data_ready=False)
 
+    async def announce_landing(self, repeats: int = 3, gap_s: float = 0.1) -> None:
+        """Tell every other drone this one is landing (MISSION_END), `repeats` times: the
+        message is not acked, and a drone that never hears it waits for this one until its
+        silence times out (MATE_GONE_S)."""
+        for i in range(repeats):
+            if i:
+                await asyncio.sleep(gap_s)
+            await self.send_mission_end()
+
     async def send_mission_end(self) -> None:
         """
         Message ID = 585
-        Sends mission_end message to all other drones
+        Sends mission_end message to all other drones: this drone is landing and will say
+        nothing more (the receivers stop waiting for it and stop keeping clear of it).
         """
         mission_end_message: Message = Message.create(
             id=MessageType.MISSION_END,
@@ -1781,6 +1808,13 @@ class Interdrone:
                                     message.data["lon"],
                                     message.data["alt"],
                                 )
+                                state.set_leg(message.data["leg_to"], message.data["leg_clock"])
+                                self.drone.observe_leg_clock(message.data["leg_clock"])
+                        case MessageType.MISSION_END:
+                            state = self.get_drone_state_from_id(message.sender_id)
+                            if state is not None:
+                                state.touch()
+                                state.mission_over = True
                         case MessageType.REACHED_WAYPOINT_ACK:
 
                             state = self.get_drone_state_from_id(message.sender_id)

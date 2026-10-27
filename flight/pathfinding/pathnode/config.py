@@ -33,8 +33,24 @@ class Source(str, Enum):
 
 
 class Edge(str, Enum):
+    """The field edge a side enters from."""
     BOTTOM = "bottom"       # y = 0
     TOP = "top"             # y = field_h
+
+    def y(self, field_h):
+        """The edge's y coordinate on a field field_h feet tall."""
+        return 0.0 if self is Edge.BOTTOM else float(field_h)
+
+    @property
+    def opposite(self):
+        """The far edge: where a side entering here heads."""
+        return Edge.TOP if self is Edge.BOTTOM else Edge.BOTTOM
+
+    @property
+    def yields_in_crosswise_join(self):
+        """Whether a side entering here gives way when both sides meet crosswise
+        (planner.check_join): the bottom side re-opens its gap, the top side waits."""
+        return self is Edge.BOTTOM
 
 
 class CoverageMode(str, Enum):
@@ -101,6 +117,7 @@ class PlannerConfig:
       the flight code holds a leg at (waypoint.COLLISION_RADIUS = 2.01 m = 6.6 ft): a photo
       nearer than that to a peer is held until the peer moves, and aborts after 15 s.
       keep_away_ft stays above it, so a tie has a winner.
+    - engine: which PathEngine finds shortest paths (a key of engines.ENGINES).
     """
     shape_size_ft: tuple = (6.0, 4.0)
     overlap: float = 0.1
@@ -114,6 +131,7 @@ class PlannerConfig:
     shortcut_ft_per_photo: float = 2.0
     keep_away_ft: float = 10.0
     keep_clear_ft: float = 7.5
+    engine: str = "zonemap"
 
     def __post_init__(self):
         object.__setattr__(self, "coverage", CoverageMode(self.coverage))

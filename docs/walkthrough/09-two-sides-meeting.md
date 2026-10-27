@@ -14,69 +14,81 @@
 
 ## 9.2 The target: `Target.route_from`
 
+`Target` (`target.py`) is abstract (`has_partner`, `route_from`, `may_close`, `retarget`); `make_target` picks `FarEdgeTarget` (no partner side) or `PartnerTarget` (a partner side):
+
 ```python
-# flight/pathfinding/pathnode/target.py:11-61
-class Target:
-    def __init__(self, field_w, field_h, start_edge, partner_entry_x, routes):
+# flight/pathfinding/pathnode/target.py:14-44, 79-107
+class Target(ABC):
+    """
+    What the planner's forward gap closes on.
+
+    Contract:
+    - has_partner: whether a partner side exists (class attribute).
+    - route_from(frm): shortest route from `frm` to the target.
+    - may_close(): whether the gap may be declared closed against the target as it stands.
+    - retarget(point): move the target to the partner's point A; False when nothing changed.
+    """
+    has_partner = False
+
+    def __init__(self, field_w, field_h, start_edge, routes):
         """
         - start_edge: this side's entry edge; the target is on or towards the other one.
-        - partner_entry_x: set when there is a partner side. Its point A starts at its entry
-          until the first relay arrives. None aims at the far edge.
         """
         self.field_w = field_w
-        self.far_y = field_h if Edge(start_edge) == Edge.BOTTOM else 0.0
-        self.partner = partner_entry_x is not None
-        self.partner_a = (float(partner_entry_x), self.far_y) if self.partner else None
-        # False while heading for a stand-in (see route_from): the gap must not be declared
-        # closed against it.
-        self.is_partner = False
+        self.far_y = Edge(start_edge).opposite.y(field_h)
         self._routes = routes
 
+    @abstractmethod
     def route_from(self, frm):
-        """Shortest route from `frm` to the target, as (points, gids) -- (None, None) if none.
+        """Shortest route from `frm` to the target, as (points, gids) -- (None, None) if none."""
 
-        Far edge: straight ahead when that is clear, else the far-edge point with the
-        shortest route.
+    @abstractmethod
+    def may_close(self):
+        """Whether the gap may close against the target as it stands: False while it is only a
+        stand-in (see PartnerTarget.route_from). Valid after the latest route_from."""
 
-        Partner: its point A. If that is inside an obstacle this side knows about, head for
-        the obstacle corner nearest it -- the partner applies the same rule and re-places
-        its point A just outside -- and is_partner goes False meanwhile."""
+    @abstractmethod
+    def retarget(self, point):
+    ...
+class PartnerTarget(Target):
+    """The partner side's latest point A; at its entry until the first relay arrives."""
+    has_partner = True
+
+    def __init__(self, field_w, field_h, start_edge, partner_entry_x, routes):
+        super().__init__(field_w, field_h, start_edge, routes)
+        self.partner_a = (float(partner_entry_x), self.far_y)
+        # False while heading for a stand-in (see route_from): the gap must not be declared
+        # closed against it.
+        self._on_partner = False
+
+    def route_from(self, frm):
+        """Its point A. If that is inside an obstacle this side knows about, head for the
+        obstacle corner nearest it -- the partner applies the same rule and re-places its
+        point A just outside -- and may_close() goes False meanwhile. With no route to either,
+        the far edge."""
         routes = self._routes
-        self.is_partner = False
-        if self.partner:
-            if not routes.contains(*self.partner_a):
-                r = routes.route(frm, self.partner_a)
-                if r[0] is not None:
-                    self.is_partner = True
-                    return r
-            corners = sorted(routes.corners(), key=lambda v: math.dist(v, self.partner_a))
-            for v in corners[:8]:
-                r = routes.route(frm, v)
-                if r[0] is not None:
-                    return r
-        straight = (min(max(frm[0], 0.0), self.field_w), self.far_y)
-        if not routes.contains(*straight) and routes.zones.clear_line(frm, straight):
-            return [tuple(frm), straight], [None, None]
-        best = (None, None)
-        best_len = math.inf
-        for k in range(int(self.field_w // CELL)):
-            cand = ((k + 0.5) * CELL, self.far_y)
-            if routes.contains(*cand):
-                continue
-            r = routes.shortest(frm, cand)
-            if r is not None and poly_len(r[0]) < best_len:
-                best, best_len = r, poly_len(r[0])
-        return best
+        self._on_partner = False
+        if not routes.contains(*self.partner_a):
+            r = routes.route(frm, self.partner_a)
+            if r[0] is not None:
+                self._on_partner = True
+                return r
+        corners = sorted(routes.corners(), key=lambda v: math.dist(v, self.partner_a))
+        for v in corners[:8]:
+            r = routes.route(frm, v)
+            if r[0] is not None:
+                return r
+        return self._far_edge_route(frm)
 ```
 
 - `route_from(frm)` returns the shortest route (points, obstacle group ids) from a point to the target, or `(None, None)`.
-- **With a partner**: first try a route to `partner_a` itself. If `partner_a` is not inside an obstacle this side knows about and a route exists, `is_partner = True`: the target is real.
-- **Stand-in**: if the partner's point A lies **inside an obstacle this side knows** (for instance a mine this side found and the partner has not heard yet), the route heads for the **nearest obstacle corner** to it instead (up to 8 corners tried), and `is_partner` stays `False`. The partner applies the same rule and re-places *its* point A just outside the obstacle; when the relay arrives, the stand-in is replaced by the real thing.
-- **Without a partner**: straight ahead to the far edge if clear, else the far-edge point (one per 2 ft cell) with the shortest route.
-- `is_partner` matters in `advance()`:
+- **With a partner**: first try a route to `partner_a` itself. If `partner_a` is not inside an obstacle this side knows about and a route exists, `may_close()` is `True`: the target is real.
+- **Stand-in**: if the partner's point A lies **inside an obstacle this side knows** (for instance a mine this side found and the partner has not heard yet), the route heads for the **nearest obstacle corner** to it instead (up to 8 corners tried), and `may_close()` stays `False`. The partner applies the same rule and re-places *its* point A just outside the obstacle; when the relay arrives, the stand-in is replaced by the real thing.
+- **Without a partner** (`FarEdgeTarget`): straight ahead to the far edge if clear, else the far-edge point (one per 2 ft cell) with the shortest route.
+- `may_close()` matters in `advance()`:
 
 ```python
-# flight/pathfinding/pathnode/planner.py:264-274
+# flight/pathfinding/pathnode/planner.py:287-297
     def advance(self):
         """Lay path nodes over everything now checked -- the forward gap from point A and
         every pending span from its start -- then update the shortcuts."""
@@ -86,7 +98,7 @@ class Target:
         seen = self.coverage.all_seen
         f = chain.forward_index()
         # Never close the gap against a stand-in target (see target.py).
-        if f is not None and (not self.target.partner or self.target.is_partner):
+        if f is not None and self.target.may_close():
             chain.advance_link(chain.links[f], Placer.FORWARD, seen)
 ```
 
@@ -111,21 +123,20 @@ sequenceDiagram
 3. `apply_inbox` (last step of the inbox) calls `MissionPlanner.partner_point_a` -> `SideSession.partner_point_a` -> `PathNodePlanner.set_partner_point_a`:
 
 ```python
-# flight/pathfinding/pathnode/planner.py:202-222
+# flight/pathfinding/pathnode/planner.py:225-244
     def set_partner_point_a(self, x, y):
         """Retarget the forward gap at the partner's latest point A. Once met, only stored."""
         target = self.target
-        if not target.partner or self.failure:
+        if not target.has_partner or self.failure:
             return
-        if (float(x), float(y)) == target.partner_a:
+        if not target.retarget((x, y)):
             return      # the heartbeat resends an unchanged point A; new mines replan on their own
-        target.partner_a = (float(x), float(y))
         f = self.chain.forward_index()
         if f is None:
             return
         route, _ = target.route_from(self.chain.nodes[f].xy)
         if route is None:
-            self.log.event("stale-target", target.partner_a)
+            self.log.event("stale-target", (float(x), float(y)))
             return
         self.chain.nodes[f + 1] = PathNode(*route[-1], Placer.TARGET)
         self.chain.links[f].poly = route
@@ -147,16 +158,17 @@ Each side's forward link runs from its point A to the *other side's* point A. Ph
 
 ```text
 tick  0: bottom side A=( 12.0,  0.0) gap= 80.0 ft | top side A=( 12.0, 80.0) gap= 80.0 ft
-tick  1: bottom side A=(  7.9, 22.0) gap= 59.0 ft | top side A=( 16.1, 62.0) gap= 63.0 ft
-tick  2: bottom side A=( 18.1, 22.0) gap= 40.0 ft | top side A=( 16.1, 62.0) gap= 40.0 ft
-tick  3: bottom side A=( 17.8, 28.0) gap= 28.2 ft | top side A=( 16.4, 56.1) gap= 28.2 ft
-tick  4: bottom side A=( 17.4, 35.9) gap= 16.3 ft | top side A=( 20.1, 52.0) gap= 16.3 ft
-tick  5: bottom side A=( 18.4, 41.7) gap=  6.4 ft | top side A=( 19.4, 48.1) gap=  6.4 ft
-tick  6: bottom side A=( 19.4, 48.1) gap= closed | top side A=( 18.4, 41.7) gap= closed
+tick  2: bottom side A=( 12.0, 11.5) gap= 56.5 ft | top side A=( 12.0, 68.0) gap= 56.5 ft
+tick  3: bottom side A=( 12.1, 20.0) gap= 40.2 ft | top side A=( 16.1, 60.0) gap= 40.7 ft
+tick  4: bottom side A=(  7.9, 22.0) gap= 32.8 ft | top side A=( 14.8, 54.1) gap= 32.8 ft
+tick  5: bottom side A=(  3.9, 28.0) gap= 28.9 ft | top side A=( 20.1, 52.0) gap= 28.9 ft
+tick  6: bottom side A=(  7.8, 33.8) gap= 14.9 ft | top side A=( 16.2, 46.2) gap= 14.9 ft
+tick  7: bottom side A=( 11.7, 39.6) gap=  0.5 ft | top side A=( 12.0, 40.0) gap=  0.5 ft
+tick 10: bottom side A=( 12.0, 40.0) gap= closed | top side A=( 11.7, 39.6) gap= closed
 bottom met: True | top met: True
-top route as sent in CROSS_PAIR_CHAIN: [(12.0, 80.0), (14.0, 71.3), (16.1, 62.0), (19.9, 54.5)] ... to [18.4, 41.7]
-bottom route: [(12.0, 0.0), (15.6, 11.9), (17.4, 17.6), (18.1, 20.0)] ... to [19.4, 48.1]
-joined (bottom entry -> top entry): [(12.0, 0.0), (15.6, 11.9), (17.4, 17.6), (18.1, 20.0), (18.1, 22.0), (17.8, 28.0), (17.4, 35.9), (18.4, 41.7), (19.4, 48.1), (20.1, 52.0), (20.1, 54.0), (19.9, 54.5), (16.1, 62.0), (14.0, 71.3), (12.0, 80.0)]
+top route as sent in CROSS_PAIR_CHAIN: [(12.0, 80.0), (12.0, 68.0), (15.8, 62.4), (16.1, 62.0)] ... to [11.7, 39.6]
+bottom route: [(12.0, 0.0), (12.0, 11.5), (10.1, 15.5), (6.1, 22.2)] ... to [12.0, 40.0]
+joined (bottom entry -> top entry): [(12.0, 0.0), (12.0, 11.5), (10.1, 15.5), (6.1, 22.2), (3.9, 26.0), (3.9, 28.0), (7.8, 33.8), (11.7, 39.6), (12.0, 40.0), (16.2, 46.2), (20.1, 52.0), (20.1, 54.0), (18.0, 57.2), (16.1, 60.0), (16.1, 62.0), (15.8, 62.4), (12.0, 68.0), (12.0, 80.0)]
 ```
 
 - **ticks 0 to 6:** both sides' gaps shrink together (they are the same gap, seen from each end). Each jump (ticks 2 to 4: the mine rule moving point A past a mine) moves that side's point A sideways and the other side re-aims.
@@ -164,7 +176,7 @@ joined (bottom entry -> top entry): [(12.0, 0.0), (15.6, 11.9), (17.4, 17.6), (1
 - **tick 7:** both forward links are gone (`gap closed`): `chain.forward_index()` is `None`, so `PathNodePlanner.met` is true on both sides:
 
 ```python
-# flight/pathfinding/pathnode/planner.py:124-126, 140-142
+# flight/pathfinding/pathnode/planner.py:147-149, 163-165
     def met(self):
         """The forward gap is closed: the chain reaches the target."""
         return self.failure is None and self.chain.forward_index() is None
@@ -226,7 +238,7 @@ def join(own, partner, routes, coverage, log):
 
 - `join_routes`: find the first point along **own** that matches (within `ROUTE_MATCH_FT` = 0.01 ft) a vertex of **partner** or lies on a partner segment; the result is `own[:i+1]` followed by the partner's points before that spot, **reversed** (so the joined route reads bottom entry to top entry).
 - `join` adds a fallback when relay loss left the two halves overlapping but sharing no point: bridge the closest pair of points **within 30 ft** (`MAX_BRIDGE_FT`), only with a straight line that crosses no obstacle *and* whose squares are all photographed, "so the bridge is as verified as any checked link".
-- `MissionPlanner.join_latlon` also rejects a joined route that `zones.crosses`: it must not touch any obstacle *this* copy knows.
+- `MissionPlanner.join_latlon` also rejects a joined route that `engine.crosses`: it must not touch any obstacle *this* copy knows.
 
 The last line of the toy output shows the joined route from bottom entry (12, 0) to top entry (12, 80).
 
@@ -235,7 +247,7 @@ The last line of the toy output shows the joined route from bottom entry (12, 0)
 `PathNodePlanner.check_join` is what drone 1's `EndRun` calls (chapter 10):
 
 ```python
-# flight/pathfinding/pathnode/planner.py:228-262
+# flight/pathfinding/pathnode/planner.py:250-285
     def check_join(self, partner_route):
         """
         Takes: the partner side's latest route.
@@ -252,23 +264,24 @@ The last line of the toy output shows the joined route from bottom entry (12, 0)
         if not self.met or len(self.partner_route) < 2:
             return None
         joined = self.join(self.partner_route)
-        if joined is None and self.start_edge == Edge.BOTTOM:
+        if joined is None and self.start_edge.yields_in_crosswise_join:
             self._reopen_toward(self.partner_route[-1])
         return joined
 
     def _reopen_toward(self, point):
         """Turn the met target into an ordinary node and open a forward gap to `point`."""
-        self.target.partner_a = (float(point[0]), float(point[1]))
+        point = (float(point[0]), float(point[1]))
+        self.target.retarget(point)
         end = self.chain.nodes[-1]
         route, _gids = self.target.route_from(end.xy)
         if route is None:
-            self.log.event("reopen-failed", self.target.partner_a)
+            self.log.event("reopen-failed", point)
             return
         self.chain.nodes[-1] = PathNode(end.x, end.y, Placer.FORWARD)
         self.chain.nodes.append(PathNode(*route[-1], Placer.TARGET))
         self.chain.links.append(Link(LinkKind.FORWARD, route))
         self.log.count("reopens")
-        self.log.event("reopen", end.xy, self.target.partner_a)
+        self.log.event("reopen", end.xy, point)
         self.advance()
 
 ```

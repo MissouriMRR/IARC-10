@@ -33,12 +33,39 @@ class PathNode:
 
 @dataclass(eq=False)
 class Link:
+    """One stretch of route between two path nodes.
+
+    Takes: kind (LinkKind) and poly (the points from its first node to its second).
+    Ask it what it is with the is_* properties instead of comparing `kind` to LinkKind.
+    """
     kind: LinkKind
     poly: list
     uid: int = field(default_factory=itertools.count().__next__)  # names a pending span
 
+    @property
+    def is_checked(self):
+        """Photographed ground."""
+        return self.kind == LinkKind.CHECKED
+
+    @property
+    def is_pending(self):
+        """A planned detour (span) still to photograph."""
+        return self.kind == LinkKind.PENDING
+
+    @property
+    def is_forward(self):
+        """The gap from point A to the target."""
+        return self.kind == LinkKind.FORWARD
+
+    @property
+    def is_unchecked(self):
+        """Still to photograph: pending or forward."""
+        return self.kind != LinkKind.CHECKED
+
 
 class Chain:
+    """Nodes joined by links (module docstring); edits keep the invariant, check() proves it."""
+
     def __init__(self, nodes, links):
         self.nodes = nodes
         self.links = links
@@ -63,11 +90,11 @@ class Chain:
         for i, k in enumerate(self.links):
             assert math.dist(k.poly[0], self.nodes[i].xy) < 1e-6, i
             assert math.dist(k.poly[-1], self.nodes[i + 1].xy) < 1e-6, i
-        assert sum(k.kind == LinkKind.FORWARD for k in self.links) <= 1
+        assert sum(k.is_forward for k in self.links) <= 1
 
     # -- queries ---------------------------------------------------------------------------
     def forward_index(self):
-        return next((i for i, k in enumerate(self.links) if k.kind == LinkKind.FORWARD), None)
+        return next((i for i, k in enumerate(self.links) if k.is_forward), None)
 
     def point_a(self):
         f = self.forward_index()
@@ -81,14 +108,18 @@ class Chain:
         return pts
 
     def all_checked(self):
-        return all(k.kind == LinkKind.CHECKED for k in self.links)
+        return all(k.is_checked for k in self.links)
 
     def has_pending(self):
-        return any(k.kind == LinkKind.PENDING for k in self.links)
+        return any(k.is_pending for k in self.links)
 
     def unchecked(self):
         """The forward gap and every pending span."""
-        return [k for k in self.links if k.kind in (LinkKind.PENDING, LinkKind.FORWARD)]
+        return [k for k in self.links if k.is_unchecked]
+
+    def pending_links(self):
+        """Every pending span (not the forward gap)."""
+        return [k for k in self.links if k.is_pending]
 
     def index(self, node):
         return next((k for k, n in enumerate(self.nodes) if n is node), None)
@@ -96,7 +127,7 @@ class Chain:
     def section(self, i, j):
         """Length of the chain from node i to node j, or None unless it is all checked."""
         links = self.links[i:j]
-        if not links or any(k.kind != LinkKind.CHECKED for k in links):
+        if not links or not all(k.is_checked for k in links):
             return None
         return sum(poly_len(k.poly) for k in links)
 

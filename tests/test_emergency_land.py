@@ -133,6 +133,7 @@ def _interdrone(drone: FakeDrone, settings: FlightSettings, **kwargs: Any) -> In
     interdrone.drone = drone  # type: ignore[assignment]
     interdrone.drone_states = []
     interdrone.cmd_msg = CMD_MSG.NONE
+    interdrone.max_messages_per_tick = 25
     interdrone.interdrone_messages = {}
     interdrone.networking = FakeNetworking(kwargs.get("incoming"))  # type: ignore[assignment]
     return interdrone

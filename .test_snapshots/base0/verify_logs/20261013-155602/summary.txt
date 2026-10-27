@@ -1,0 +1,6 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         69      69       0      0     493s    5358s
+TOTAL        69                            493s
+
+ALL PASSED
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\base0\verify_logs\20261013-155602

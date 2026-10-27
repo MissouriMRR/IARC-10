@@ -40,6 +40,13 @@ class DroneState:
         # Altitude that came with that position, for logging and for telling a
         # genuine horizontal conflict from two drones at different heights.
         self._live_altitude: float | None = None
+        # The leg this drone says it is flying (its position report carries it) and the leg
+        # clock of that claim: Drone.claim_leg. None while it is not flying a mapping leg.
+        self._leg_to: tuple[float, float] | None = None
+        self._leg_clock: int = 0
+        # This drone said it is landing (MISSION_END): it will send nothing more, and its last
+        # position is where it set off from, not somewhere it still blocks.
+        self.mission_over: bool = False
         # When we last heard anything from this drone (monotonic clock). None
         # until the first message. A drone that goes silent — crashed, landed on
         # a failsafe, lost comms — must eventually stop blocking the swarm: its
@@ -173,6 +180,21 @@ class DroneState:
         self._live_altitude = alt
         self._live_position_at = time.monotonic()
 
+    @property
+    def leg_to(self) -> tuple[float, float] | None:
+        """Where this drone's reported leg ends, or None (no leg claimed in its last report)."""
+        return self._leg_to
+
+    @property
+    def leg_clock(self) -> int:
+        """The clock of this drone's leg claim (see Drone.claim_leg)."""
+        return self._leg_clock
+
+    def set_leg(self, leg_to, clock: int) -> None:
+        """Record the leg a position report claims (leg_to None: none) and its clock."""
+        self._leg_to = None if leg_to is None else (float(leg_to[0]), float(leg_to[1]))
+        self._leg_clock = int(clock)
+
     def position_is_stale(self, max_age_s: float) -> bool:
         """True when no position report has arrived recently enough to trust.
 
@@ -237,10 +259,16 @@ class DroneState:
         on its hover point was modelled at the waypoint it had been *sent to*,
         five metres away, so its neighbour flew straight onto it.
 
+        A drone that claims a leg (position report with a leg end) occupies the stretch
+        from its position to that end: it is moving, so the point it was at is not where
+        it will be when the leg of a drone starting now is flown.
+
         Falls back to the planned segment when no recent report exists, since a
         conservative guess beats no guess.
         """
         if self._live_position is not None and not self.position_is_stale(max_age_s):
+            if self._leg_to is not None:
+                return (self._live_position, self._leg_to)
             return (self._live_position, self._live_position)
         return self.occupied_segment()
 

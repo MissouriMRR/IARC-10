@@ -60,7 +60,9 @@ When `done()` first turns true, `CalcScanPath` calls `_finish_scan`:
 
 {{snip: state_machine/states/impl/end_run_impl.py :: planner = self.drone.planner => return AppShare(}}
 
-- **No partner side** (1 or 2 drones): `mission_path = planner.route_latlon()`, the chain's whole route (all links, including any PENDING or FORWARD stretch left when a time-out cut the scan short; nothing marks those as unverified in this branch).
+- **No partner side** (1 or 2 drones): first `_settle_with_mate` (below), then `mission_path = planner.route_latlon()`, the chain's whole route (all links, including any PENDING or FORWARD stretch left when a time-out cut the scan short; nothing marks those as unverified in this branch).
+
+  `_settle_with_mate`: while the side-mate still has a job (`side.mate_busy`) it keeps applying the inbox and sending heartbeats, and returns `CalcScanPath` if a late photo reopens the side. The mate announces "no job" after its last photo (`SIDE_JOB` follows `SHARE_PHOTOS`), so once that is heard every photo of the mate has been applied. Without this wait a drone whose copy finished first left with a stale mine set (flight harness `2 dense`). Gives up `JOIN_GRACE_S` after the time-out.
 - **Partner side**: `_join_with_partner` (below). It returns `CalcScanPath` if a late relayed mine re-opened this side, else `None` with `mission_path` set.
 
 ### The join protocol

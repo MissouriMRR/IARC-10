@@ -1,12 +1,12 @@
 """Toy run: ONE side (drones 1 and 2, bottom edge) on a 20 ft x 60 ft field, no partner side.
 
-Drives two PathNodePlanner copies through SideSession, the same calls SideAgent makes in
+Drives two PathNodePlanner copies through PathNodeBackend, the same calls SideAgent makes in
 flight. Drone 1's copy is A, drone 2's copy is B. Numbers are feet in the local frame.
 """
 import sys
 sys.path.insert(0, ".")
 from flight.pathfinding.pathnode.planner import PathNodePlanner
-from flight.pathfinding.pathnode.session import SideSession
+from flight.pathfinding.pathnode.session import PathNodeBackend
 from flight.pathfinding.pathnode.config import Edge, PlannerConfig
 
 ALONG, ACROSS = 8.52, 6.44          # the planning footprint calc_scan_path_impl computes at 2 m
@@ -32,7 +32,7 @@ def chain(p):
 
 
 A, B = make(), make()
-sa, sb = SideSession(A), SideSession(B)
+sa, sb = PathNodeBackend.from_planner(A), PathNodeBackend.from_planner(B)
 pos = {1: (10.0, 0.0), 2: (16.0, 0.0)}
 
 print("1. start: chain =", chain(A))

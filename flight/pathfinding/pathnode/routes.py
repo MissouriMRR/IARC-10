@@ -1,24 +1,26 @@
 """Known obstacles and the shortest paths around them, with the caches the planner leans on.
 
-Obstacles are mine zones and blocked squares (coverage.py), all held in one ZoneMap
-(geometry.py). The planner asks the same geometric questions after every photo, so:
+Obstacles are mine zones and blocked squares (coverage.py), all held in one PathEngine
+(engines/base.py; ZoneMap by default). This class uses ONLY that interface. The planner asks the same geometric questions after every photo, so:
 - shortest paths are cached by (from, to);
 - "is this square's centre inside a zone?" is cached per square.
 A new obstacle can only lengthen or block a shortest path, so a cached route it doesn't cross
 is still the shortest, and a cached "no route" stays so: only the routes it crosses are
-dropped (and the "inside" answers near it). `version` counts obstacles, for other caches.
+dropped (and the "inside" answers near it). `version` counts obstacles and level changes, for
+other caches. A level change (set_level) clears all caches.
 """
 
 import numpy as np
 import shapely
 
 from flight.pathfinding.pathnode.config import CACHE_CAP
-from flight.pathfinding.pathnode.geometry import CELL, ZoneMap
+from flight.pathfinding.pathnode.geometry import CELL
 
 
 class Routes:
-    def __init__(self, field_w, field_h):
-        self.zones = ZoneMap(field_w, field_h)
+    def __init__(self, engine):
+        """Takes: a PathEngine instance (see engines.make_engine)."""
+        self.engine = engine
         self.version = 0
         self._paths = {}        # ((ax, ay), (bx, by)) -> (points, gids, LineString) or None
         self._inside = {}       # square -> whether its centre is inside a zone
@@ -26,16 +28,15 @@ class Routes:
     # -- obstacles -------------------------------------------------------------------------
     def add_mine(self, x, y):
         """Add a mine's zone. Returns its group id."""
-        return self._added(self.zones.add_mine(x, y))
+        return self._added(self.engine.add_mine(x, y))
 
     def add_square(self, c, r):
         """Add square (c, r) as an obstacle. Returns its group id."""
-        return self._added(self.zones.add_zone(
-            shapely.box(c * CELL, r * CELL, (c + 1) * CELL, (r + 1) * CELL)))
+        return self._added(self.engine.add_square(c, r))
 
     def _added(self, gid):
         self.version += 1
-        new = self.zones.last_added
+        new = self.engine.last_added
         shapely.prepare(new)
         keys = [k for k, v in self._paths.items() if v is not None]
         if keys:
@@ -49,12 +50,34 @@ class Routes:
                 del self._inside[(c, r)]
         return gid
 
+    # -- growth ----------------------------------------------------------------------------
+    @property
+    def level(self):
+        return self.engine.level
+
+    def set_level(self, k):
+        """Rebuild the engine's zones at growth level k (up or down; see engines/base.py).
+
+        - clears every cache instead of invalidating selectively: zones that shrink free space
+          (cached routes and "no route" answers go stale) and group ids change
+        - version += 1 when the level changed
+        """
+        if k == self.engine.level:
+            return
+        self.engine.set_level(k)
+        self._paths.clear()
+        self._inside.clear()
+        self.version += 1
+
     # -- queries ---------------------------------------------------------------------------
     def contains(self, x, y):
-        return self.zones.contains(x, y)
+        return self.engine.contains(x, y)
 
     def crosses(self, poly):
-        return self.zones.crosses(poly)
+        return self.engine.crosses(poly)
+
+    def clear_line(self, p, q):
+        return self.engine.clear_line(p, q)
 
     def shortest(self, a, b):
         """Shortest path a -> b around every obstacle, as (points, gids), or None. Returns
@@ -63,13 +86,13 @@ class Routes:
         if key not in self._paths:
             if len(self._paths) > CACHE_CAP:
                 self._paths.clear()
-            route = self.zones.shortest_path(*key)
+            route = self.engine.shortest_path(*key)
             self._paths[key] = (None if route is None else
                                 (route[0], route[1], shapely.LineString(route[0])))
         route = self._paths[key]
         if route is None:
             return None
-        return list(route[0]), [None if g is None else self.zones.resolve(g) for g in route[1]]
+        return list(route[0]), [None if g is None else self.engine.resolve(g) for g in route[1]]
 
     def route(self, a, b):
         """shortest(a, b), or (None, None) when there is none."""
@@ -83,9 +106,9 @@ class Routes:
         """Whether square (c, r)'s centre is inside an obstacle."""
         hit = self._inside.get((c, r))
         if hit is None:
-            hit = self._inside[(c, r)] = self.zones.contains((c + 0.5) * CELL, (r + 0.5) * CELL)
+            hit = self._inside[(c, r)] = self.engine.contains((c + 0.5) * CELL, (r + 0.5) * CELL)
         return hit
 
     def corners(self):
         """Every obstacle corner the paths bend around, as (x, y)."""
-        return [(float(x), float(y)) for x, y in self.zones.vertices]
+        return self.engine.corners()

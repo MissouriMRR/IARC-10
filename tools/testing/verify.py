@@ -20,9 +20,10 @@ Suites (--only names):
   pytest     tests/ in WSL; the 3 known test_emergency_land.py failures are tolerated
   lint       pyflakes in WSL; reported, never fails
 
-Logs: <tree>/verify_logs/<job>.log, plus summary.txt and lint_warnings.txt.
-Flight configs are timing sensitive (see docs/testing/tools.md): --serial-flight runs them
-one at a time (still alongside the other suites).
+Logs: <tree>/verify_logs/<timestamp>/<job>.log, summary.txt, lint_warnings.txt; every run
+is also appended to <tree>/verify_logs/summary_all.txt.
+Flight configs are timing sensitive (see docs/testing/tools.md): they run AFTER the heavy
+suites by default (--flight-alongside overlaps them); --serial-flight runs them one at a time.
 
 Examples:
   python tools/testing/verify.py
@@ -74,6 +75,72 @@ _live = set()                 # running Popen objects, for Ctrl-C cleanup
 _live_lock = threading.Lock()
 _abort = threading.Event()
 _print_lock = threading.Lock()
+
+
+PER_JOB_MB = 150              # measured peak of one Windows job: 10-65 MB, x2 for headroom
+RESERVE_MB = 512              # left free for the rest of the machine
+OOM_MARKERS = ("MemoryError", "Unable to allocate", "paging file is too small",
+               "Cannot allocate memory", "out of memory")
+_oom_gate = threading.Lock()  # memory-error retries run one at a time
+_stalls = []                  # (start wall time, seconds) when the machine froze / slept
+
+
+def free_memory_mb():
+    """Free physical memory in MB (Windows ctypes, else psutil); None if unknown."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong),
+                            ("total", ctypes.c_ulonglong), ("avail", ctypes.c_ulonglong),
+                            ("tpage", ctypes.c_ulonglong), ("apage", ctypes.c_ulonglong),
+                            ("tvirt", ctypes.c_ulonglong), ("avirt", ctypes.c_ulonglong),
+                            ("ext", ctypes.c_ulonglong)]
+            st = Status()
+            st.length = ctypes.sizeof(Status)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+            return st.avail // 2 ** 20
+        import psutil
+        return psutil.virtual_memory().available // 2 ** 20
+    except (ImportError, OSError, AttributeError):
+        return None
+
+
+def default_jobs():
+    """Worker count = min(cores - 2, free memory / PER_JOB_MB). Returns (n, why)."""
+    cores = max(1, (os.cpu_count() or 4) - 2)
+    free = free_memory_mb()
+    if free is None:
+        return cores, f"{cores} = cores - 2 (free memory unknown)"
+    by_mem = max(1, int((free - RESERVE_MB) // PER_JOB_MB))
+    n = min(cores, by_mem)
+    why = f"{n} = min(cores - 2 = {cores}, free memory {free} MB -> {by_mem})"
+    return n, why
+
+
+def _keep_awake_and_watch(stop):
+    """Thread body: stop Windows idle-sleeping while verify runs, and log any freeze.
+
+    A gap of 30+ s between two 5 s ticks means the machine was suspended or starved; the
+    timing-sensitive flight configs that overlap it are not trustworthy, so it is reported.
+    """
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)   # CONTINUOUS|SYSTEM
+        except (OSError, AttributeError):
+            pass
+    last = time.time()
+    while not stop.wait(5):
+        now = time.time()
+        if now - last > 30:
+            _stalls.append((last, now - last))
+            with _print_lock:
+                print(f"!! machine stalled/slept for {now - last:.0f}s at "
+                      f"{time.strftime('%H:%M:%S', time.localtime(last))}: jobs running "
+                      f"then are unreliable", flush=True)
+        last = now
 
 
 # -- snapshot ----------------------------------------------------------------------------
@@ -182,6 +249,18 @@ def run_job(job, on_done):
         else:
             job.status, job.note = check(code, text)
         job.output = text
+        if job.status == "fail" and not timed_out and not _abort.is_set()                 and any(m in text for m in OOM_MARKERS):
+            with _oom_gate:                    # infra problem: retry alone, after a pause
+                time.sleep(10)
+                code, text, timed_out = _run_once(job)
+                job.status, job.note = (("fail", f"timed out after {job.timeout}s") if timed_out
+                                        else check(code, text))
+                job.output = text
+                if job.status == "fail" and any(m in text for m in OOM_MARKERS):
+                    job.note = "INFRA: out of memory, not a test failure. " + job.note
+                elif job.status != "fail":
+                    job.note = (job.note + " (passed on retry after a memory error)").strip()
+            break
         if job.status != "fail" or timed_out or _abort.is_set():
             if attempt and job.status == "pass":
                 job.note = (job.note + " (passed on retry)").strip()
@@ -338,7 +417,7 @@ def build_jobs(suites, tree, opts):
         for tag, (n, s0, s1, drop, delay) in std.items():
             for seed in range(s0, s1):
                 code = (f"import sys; sys.path.insert(0, {str(tree / 'tools' / 'testing')!r}); "
-                        f"import sweep; bad, line = sweep.run_seed({(tag, n, seed, drop, delay, 4)!r}); "
+                        f"import sweep; bad, line, _m = sweep.run_seed({(tag, n, seed, drop, delay, 4)!r}); "
                         f"print(line); sys.exit(1 if bad else 0)")
                 jobs.append(Job("sweep", f"{tag}-{seed}", [py, "-c", code], tree, env,
                                 SWEEP_TIMEOUT, key=f"sweep:{tag}:{seed}"))
@@ -358,7 +437,11 @@ def build_jobs(suites, tree, opts):
                                 tree, None, FLIGHT_TIMEOUT + 60, check_flight(kind, drones),
                                 cleanup=lambda: wsl_cleanup(wsl_tree), key=f"flight:{label}"))
     if "pytest" in suites:
-        venv = wsl_path(_project_root(tree) / ".venv")
+        root = _project_root(tree)
+        for f in ("pyproject.toml", "uv.lock"):        # uv needs the project files in the tree
+            if not (tree / f).exists() and (root / f).exists():
+                shutil.copy2(root / f, tree / f)
+        venv = wsl_path(root / ".venv")
         script = (f"cd '{wsl_tree}' && UV_PROJECT_ENVIRONMENT='{venv}' ~/.local/bin/uv run "
                   f"--no-sync --with pytest python -m pytest -q tests")
         jobs.append(Job("pytest", "tests", ["wsl", "-d", DISTRO, "--", "bash", "-c", script],
@@ -442,6 +525,9 @@ def execute(jobs, args, logdir):
         (logdir / (re.sub(r"[^\w.-]+", "_", job.suite + "_" + job.name) + ".log")).write_text(
             f"# {job.suite} {job.name}: {job.status} {job.note}\n# {' '.join(map(str, job.argv))[:300]}\n\n"
             + (job.output or ""), encoding="utf-8")
+        for st, dur in _stalls:
+            if job.start and job.start <= st + dur and job.end >= st:
+                job.note = (job.note + f" (overlaps a {dur:.0f}s machine stall)").strip()
         with _print_lock:
             done[0] += 1
             tag = {"pass": "PASS ", "fail": "FAIL ", "known": "KNOWN"}[job.status]
@@ -449,20 +535,33 @@ def execute(jobs, args, logdir):
             print(f"[{done[0]:3d}/{total}] {tag} {job.suite:<9} {job.name:<40} "
                   f"{job.elapsed:6.1f}s  (t+{time.time() - t0:.0f}s){note}", flush=True)
 
+    stop = threading.Event()
+    threading.Thread(target=_keep_awake_and_watch, args=(stop,), daemon=True).start()
     ordered = sorted(jobs, key=lambda j: -(j.est or 0))
-    serial = [j for j in ordered if j.suite == "flight"] if args.serial_flight else []
-    rest = [j for j in ordered if j not in serial]
+    flight = [j for j in ordered if j.suite == "flight"]
+    rest = [j for j in ordered if j.suite != "flight"]
+    width = 1 if args.serial_flight else max(1, args.flight_jobs)
     pools, futures = [], []
     try:
         main_pool = ThreadPoolExecutor(max_workers=args.jobs)
         pools.append(main_pool)
         futures += [main_pool.submit(run_job, j, on_done) for j in rest]
-        if serial:
-            fp = ThreadPoolExecutor(max_workers=1)
+        if args.flight_alongside:
+            fp = ThreadPoolExecutor(max_workers=width)
             pools.append(fp)
-            futures += [fp.submit(run_job, j, on_done) for j in serial]
-        for f in futures:
-            f.result()
+            futures += [fp.submit(run_job, j, on_done) for j in flight]
+            for f in futures:
+                f.result()
+        else:
+            for f in futures:                      # heavy suites first, harness on a quiet box
+                f.result()
+            if flight:
+                print(f"-- heavy suites done (t+{time.time() - t0:.0f}s); flight harness "
+                      f"now, {width} at a time", flush=True)
+            fp = ThreadPoolExecutor(max_workers=width)
+            pools.append(fp)
+            for f in [fp.submit(run_job, j, on_done) for j in flight]:
+                f.result()
         return True
     except KeyboardInterrupt:
         _abort.set()
@@ -474,6 +573,7 @@ def execute(jobs, args, logdir):
             p.shutdown(wait=False, cancel_futures=True)
         return False
     finally:
+        stop.set()
         for p in pools:
             p.shutdown(wait=True, cancel_futures=True)
 
@@ -504,6 +604,9 @@ def summarize(jobs, wall, logdir, tree):
         if j.suite == "lint" and j.status:
             lines.append(f"lint: {j.note}")
             (logdir / "lint_warnings.txt").write_text("\n".join(_lint_norm(j.output or "")) + "\n")
+    for st, dur in _stalls:
+        when = time.strftime("%H:%M:%S", time.localtime(st))
+        lines.append(f"WARNING: machine stalled/slept {dur:.0f}s at {when}; jobs then are unreliable")
     lines.append(f"logs: {logdir}")
     text = "\n".join(lines)
     (logdir / "summary.txt").write_text(text + "\n", encoding="utf-8")
@@ -521,10 +624,16 @@ def main():
     ap.add_argument("--only", default=",".join(SUITES), help="comma list of suites (default: all)")
     ap.add_argument("--flight-repeat", type=int, default=0, metavar="N",
                     help="run every flight config N times (default: 4 dense x3, others x1)")
-    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) - 2),
-                    help="parallel processes (default: CPU count - 2)")
+    ap.add_argument("--jobs", type=int, default=None,
+                    help="parallel processes (default: min(CPU count - 2, free memory / "
+                         f"{PER_JOB_MB} MB))")
     ap.add_argument("--serial-flight", action="store_true",
-                    help="run the flight configs one at a time (other suites stay parallel)")
+                    help="run the flight configs one at a time (default: all at once)")
+    ap.add_argument("--flight-jobs", type=int, default=9, metavar="N",
+                    help="flight configs running at once (default 9 = all)")
+    ap.add_argument("--flight-alongside", action="store_true",
+                    help="start the flight harness together with the other suites "
+                         "(default: after them, so the timing-sensitive harness has a quiet CPU)")
     ap.add_argument("--lint-baseline", metavar="FILE",
                     help="lint_warnings.txt of an earlier run; new warnings are listed")
     args = ap.parse_args()
@@ -540,15 +649,19 @@ def main():
         label = args.snapshot or "verify-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         tree = take_snapshot(label)
     print(f"tree: {tree}", flush=True)
-    logdir = tree / "verify_logs"
-    logdir.mkdir(exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    logdir = tree / "verify_logs" / stamp
+    logdir.mkdir(parents=True, exist_ok=True)
 
+    why = "--jobs given"
+    if args.jobs is None:
+        args.jobs, why = default_jobs()
     jobs = build_jobs(suites, tree, args)
     old = load_durations()
     for j in jobs:
         j.est = old.get(j.key, DEFAULT_EST[j.suite])
-    mode = "serial" if args.serial_flight else "parallel"
-    print(f"{len(jobs)} jobs, {args.jobs} workers, flight {mode}", flush=True)
+    mode = "serial" if args.serial_flight else "parallel" + (" alongside" if args.flight_alongside else " after")
+    print(f"{len(jobs)} jobs, workers: {args.jobs} ({why}), flight {mode}", flush=True)
 
     t0 = time.time()
     finished = execute(jobs, args, logdir)

@@ -12,6 +12,7 @@ from flight.pathfinding.cellField.cellField import CellField
 from flight.pathfinding.pathnode.chain import Chain
 from flight.pathfinding.pathnode.claims import ClaimBook
 from flight.pathfinding.pathnode.config import GROUPS, MISS_BLOCK, Edge, Placer, Source, Tier
+from flight.pathfinding.pathnode.coordination import SideCoordinator
 from flight.pathfinding.pathnode.join import join_routes
 from flight.pathfinding.pathnode.minefield import generate_true_minefield
 from flight.pathfinding.pathnode.planner import PathNodePlanner
@@ -45,7 +46,7 @@ def _consistent(pl):
 
 
 def _clear(pl):
-    return all(not pl.zones.crosses(k.poly) for k in pl.links)
+    return all(not pl.engine.crosses(k.poly) for k in pl.links)
 
 
 def test_footprint_model_matches_fill_polygon_covered():
@@ -95,7 +96,7 @@ def test_frontier_orphan_deleted_and_gambler_jumps():
     stranded = pl.nodes[2]
     pl.add_mine(40.0, 24.0, PAIR)
     assert pl.failure is None
-    assert not pl.zones.contains(*stranded.xy), "the orphan is outside the mine..."
+    assert not pl.engine.contains(*stranded.xy), "the orphan is outside the mine..."
     assert stranded not in pl.nodes, "...and is deleted anyway"
     assert pl.stats["orphans"] == 1 and pl.stats["jumps"] == 1
     assert [k.kind for k in pl.links] == ["pending", "forward"]
@@ -126,7 +127,7 @@ def test_island_between_two_cuts_is_orphaned_after_meeting():
     pl.add_mine(41.0, 101.0, PAIR)
     assert pl.failure is None
     assert all(n not in pl.nodes for n in island)
-    assert all(not pl.zones.contains(*n.xy) for n in island)
+    assert all(not pl.engine.contains(*n.xy) for n in island)
     assert pl.stats["orphans"] == 4
     assert [k.kind for k in pl.links].count("pending") == 1
     assert _clear(pl) and _consistent(pl)
@@ -412,7 +413,7 @@ def _corners_latlon(order):
 
 
 def test_field_corners_must_go_around_the_edge():
-    from flight.pathfinding.mission_planner import validate_field_corners
+    from flight.pathfinding.frame import validate_field_corners
     validate_field_corners(_corners_latlon([0, 1, 2, 3]))
     try:
         validate_field_corners(_corners_latlon([0, 1, 3, 2]))     # a "Z": bow-tie
@@ -440,22 +441,22 @@ def test_local_frame_is_in_true_feet():
 
 
 def test_latlon_planner_matches_the_local_planner():
-    """The flight-code wrapper: lat/lon in, the same side session inside, a full two-sided
+    """The flight-code wrapper: lat/lon in, the same search backend inside, a full two-sided
     mission through it (one copy per side here, fed both drones' photos), and a mine/join
     round trip."""
     from flight.pathfinding.mission_planner import MissionPlanner
     corners = _corners_latlon([0, 1, 2, 3])
-    t = MissionPlanner(corners, corners[0], "bottom", (1,), False)._t
-    bottom = MissionPlanner(corners, t.local_to_latlon(40, 0), "bottom", (1, 2), True)
-    top = MissionPlanner(corners, t.local_to_latlon(40, 300), "top", (3, 4), True)
+    t = MissionPlanner(corners, corners[0], "bottom", (1,), False).frame
+    bottom = MissionPlanner(corners, t.to_latlon(40, 0), "bottom", (1, 2), True)
+    top = MissionPlanner(corners, t.to_latlon(40, 300), "top", (3, 4), True)
     assert abs(bottom.field_h - 300) < 0.5 and bottom.start_if_needed() is True
     assert bottom.start_if_needed() is None
-    relays = bottom.own_photo(None, [t.local_to_latlon(41, 101)])
-    assert len(relays) == 1 and bottom.own_photo(None, [t.local_to_latlon(41.4, 101.3)]) == []
-    top.partner_mine(*relays[0][:2])
+    relays = bottom.own_photo(None, [t.to_latlon(41, 101)])
+    assert len(relays) == 1 and bottom.own_photo(None, [t.to_latlon(41.4, 101.3)]) == []
+    top.partner_mine(*relays[0])
     assert bottom.mine_hash() == top.mine_hash()
-    pos = {bottom: {1: t.local_to_latlon(40, 0), 2: t.local_to_latlon(40, 0)},
-           top: {3: t.local_to_latlon(40, 300), 4: t.local_to_latlon(40, 300)}}
+    pos = {bottom: {1: t.to_latlon(40, 0), 2: t.to_latlon(40, 0)},
+           top: {3: t.to_latlon(40, 300), 4: t.to_latlon(40, 300)}}
     for _ in range(2000):
         if bottom.done() and top.done():
             break
@@ -481,7 +482,7 @@ def test_latlon_planner_matches_the_local_planner():
     assert joined is not None
     path = [bottom.latlon_to_local(lat, lon) for lat, lon in joined]
     assert path[0][1] < 0.01 and abs(path[-1][1] - bottom.field_h) < 0.01
-    assert not bottom.planner.zones.crosses(path)
+    assert not bottom.backend.crosses(path)
     bottom.iarc_path(joined)
 
 
@@ -612,7 +613,7 @@ def test_kept_routes_are_still_shortest_after_new_mines():
         b = (rng.uniform(0, 80), rng.uniform(0, 300))
         pl.routes.shortest(a, b)
     for k in pl.routes.cached_pairs():
-        cached, fresh = pl.routes.shortest(*k), pl.zones.shortest_path(*k)
+        cached, fresh = pl.routes.shortest(*k), pl.engine.shortest_path(*k)
         assert (cached is None) == (fresh is None), k
         if cached is not None:
             assert abs(poly_len(cached[0]) - poly_len(fresh[0])) < 1e-6, k
@@ -652,7 +653,7 @@ def test_a_higher_id_makes_way_for_the_other_sides_job_on_top_of_it():
     job. (A drone that still has photos to fly just flies them.)"""
     m = Mission(generate_true_minefield(20, 3), drones=1).run()
     pl, here = m.planners[1], m.pos[1]
-    pl.drones, pl.claims = (3,), ClaimBook((3,))        # this copy is drone 3's
+    pl.coordinator.drones, pl.coordinator.claims = (3,), ClaimBook((3,))   # this copy is drone 3's
     job = (0, None, (here[0] + 2.0, here[1]))
     others = {1: (here[0] + 12.0, here[1])}
     pl.plan({3: here}, held={1: job}, me=3, others=others)
@@ -660,6 +661,10 @@ def test_a_higher_id_makes_way_for_the_other_sides_job_on_top_of_it():
     assert len(spare) == 1 and spare[0][2] == len(GROUPS) - 1, spare
     assert math.dist(spare[0][:2], job[2]) >= pl.config.keep_clear_ft
     assert math.dist(spare[0][:2], others[1]) >= pl.config.keep_clear_ft
+    # Standing on the spare photo it is out of the way: no new hop (the nearest ring point
+    # of a different job could flip-flop, and Scan would re-photograph the spot forever).
+    pl.plan({3: spare[0][:2]}, held={1: job}, me=3, others=others)
+    assert pl.last_plan[3] == [], "already clear: it stays put"
 
 
 def test_an_idle_lower_id_makes_way_for_the_other_sides_job_on_top_of_it():
@@ -675,6 +680,99 @@ def test_an_idle_lower_id_makes_way_for_the_other_sides_job_on_top_of_it():
     assert len(spare) == 1 and math.dist(spare[0][:2], job[2]) >= pl.config.keep_clear_ft, spare
     pl.plan({1: here}, me=1, others={3: (here[0] + 8.0, here[1])})
     assert pl.last_plan[1] == [], "no announced job on top of it: it stays put"
+
+
+def test_a_leg_past_an_idle_drone_is_not_queued_but_a_leg_away_from_it_is():
+    """The flight code holds any leg that comes within its radius of a peer, and an idle peer
+    never moves: such a photo is not queued (the peer makes way instead). A leg that only
+    leaves a peer it is already near, or passes clear of it, is fine."""
+    clear = 7.5
+    fly = SideCoordinator._flyable
+    idle = [(51.0, 247.0)]
+    assert fly((47.0, 137.0), [(51.0, 259.0, 0)], [], idle, clear) == [], "passes through it"
+    assert fly((47.0, 137.0), [(51.0, 200.0, 0)], [], idle, clear), "stops short of it"
+    assert fly((70.0, 137.0), [(70.0, 259.0, 0)], [], idle, clear), "passes clear of it"
+    assert fly((51.0, 250.0), [(51.0, 270.0, 0)], [], idle, clear), "only leaves it"
+    near = [((51.0, 100.0), 10.0)]
+    assert fly((47.0, 10.0), [(51.0, 95.0, 0), (51.0, 200.0, 0)], near, [], clear) == [
+        (51.0, 200.0, 0)], "a photo inside a keep distance is skipped, the next is flown"
+
+
+def test_two_drones_that_must_cross_a_corridor_do_not_stall():
+    """Seed 2, 90 mines, two drones: drone 1's only photo lay on a leg through the idle
+    drone 2, and drone 2's photos were all inside drone 1's keep-away: nobody could move."""
+    m = Mission(generate_true_minefield(90, 2), drones=2).run()
+    assert m.failure is None, m.failure
+
+
+def _two_copies():
+    """Drone 1 at point A on a fresh field with its announced job (the forward path), and a
+    fresh copy of the planner for drone 2 (as if it had just started)."""
+    one = PathNodePlanner(80, 300, 40, Edge.BOTTOM, drones=(1, 2))
+    at = one.point_a()
+    far = (at[0], at[1] + 60.0)
+    one.plan({1: at, 2: far}, me=1)
+    job = one.claims.heads[1]
+    assert job is not None and job[1] == "forward", job
+    two = PathNodePlanner(80, 300, 40, Edge.BOTTOM, drones=(1, 2))
+    path = [tuple(p) for k, seq in two.groups()[0] if k == "forward" for p in seq]
+    assert len(path) > 10
+    return two, at, far, job, path
+
+
+def test_idle_drone_takes_no_photo_of_a_sequence_the_other_announced():
+    """Drone 1 announced the forward path: drone 2 (nothing else to do) must not fly any photo
+    of it -- both drones flying the same path is the waste the takeover must not cause."""
+    two, at, far, job, path = _two_copies()
+    plan = two.plan({1: at, 2: far}, held={1: list(job[:2]) + [list(job[2])]}, me=2)
+    assert not [q for q in plan[2] if q[:2] in path], plan[2][:3]
+    # Nothing announced (the other copy may not have the work): it is taken over.
+    two2, at, far, job, path = _two_copies()
+    plan = two2.plan({1: at, 2: far}, held={1: None}, me=2)
+    assert any(q[:2] in path for q in plan[2])
+
+
+def test_a_lost_mate_keeps_blocking_its_last_position_and_job():
+    """Drone 2 goes silent while flying: drone 1 takes over its work but never plans a photo
+    within keep_away/keep_clear of its last position or job, nor any photo of the sequence it
+    announced (it is probably still flying it). Drone 2 the same for a lost drone 1."""
+    cfg = PathNodePlanner(80, 300, 40).config
+    two, at, far, job, path = _two_copies()
+    held = {1: [job[0], job[1], list(job[2])]}
+    plan = two.plan({1: at, 2: far}, held=held, me=2, lost={1})
+    assert not [q for q in plan[2] if q[:2] in path]
+    assert all(math.dist(q[:2], at) >= cfg.keep_away_ft and math.dist(q[:2], job[2]) >= cfg.keep_away_ft
+               for q in plan[2])
+    # Gone (a long silence): ignored entirely, its work is taken over.
+    plan = two.plan({1: None, 2: far}, held={}, me=2)
+    assert any(q[:2] in path for q in plan[2])
+    # Higher-id mate lost: drone 1 keeps keep_clear from its last position.
+    one = PathNodePlanner(80, 300, 40, Edge.BOTTOM, drones=(1, 2))
+    a1 = one.point_a()
+    last2 = (a1[0] + 5.0, a1[1] + 4.0)
+    j2 = (0, "forward", (a1[0] + 5.0, a1[1] + 8.0))
+    plan = one.plan({1: a1, 2: last2}, held={2: j2}, me=1, lost={2})
+    assert all(math.dist(q[:2], last2) >= cfg.keep_clear_ft for q in plan[1])
+    assert not [q for q in plan[1] if q[2] == 0], "the announced forward path stays reserved"
+
+
+def test_a_mate_heard_again_causes_no_duplicate_work():
+    """Drone 2 was lost while drone 1 took over its queue; once it is heard again both copies
+    agree on who holds what, and no photo is queued for both."""
+    one = PathNodePlanner(80, 300, 40, Edge.BOTTOM, drones=(1, 2))
+    two = PathNodePlanner(80, 300, 40, Edge.BOTTOM, drones=(1, 2))
+    at = one.point_a()
+    pos = {1: at, 2: (at[0], at[1] + 60.0)}
+    q2 = two.plan(pos, me=2)
+    job2 = two.claims.heads[2]
+    lost = one.plan(pos, held={2: job2}, me=1, lost={2})
+    pos = {1: lost[1][0][:2] if lost[1] else at, 2: pos[2]}
+    for _ in range(3):
+        p1 = one.plan(pos, held={2: job2}, me=1)
+        p2 = two.plan(pos, held={1: one.claims.heads[1]}, me=2)
+    a = {q[:2] for q in p1[1]}
+    b = {q[:2] for q in p2[2]}
+    assert not (a & b), sorted(a & b)[:3]
 
 
 def test_keep_clear_is_above_the_flight_separation_floor():

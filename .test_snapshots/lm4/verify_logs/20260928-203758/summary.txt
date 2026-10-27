@@ -1,0 +1,39 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+flight        9       7       2      0    1346s    1346s
+TOTAL         9                           1346s
+
+FAILURES (2):
+--- flight multi-3-dense: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       error       : none
+       mines found : 32 / 60 true
+       seen cells  : 2400
+       captures    : 91
+    -- drone 3 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 32 / 60 true
+       seen cells  : 2400
+       captures    : 202
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-4-dense#2: no 'RESULT: PASS'; route not 'full field, continuous, clear'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 31 / 60 true
+       seen cells  : 1993
+       captures    : 150
+    -- drone 4 (top side) --------------------------------------------
+       final state : CalcScanPath
+       elapsed     : 300.0s
+       error       : none
+       mines found : 32 / 60 true
+       seen cells  : 1970
+       captures    : 8034
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+WARNING: machine stalled/slept 51s at 20:52:28; jobs then are unreliable
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\lm4\verify_logs\20260928-203758

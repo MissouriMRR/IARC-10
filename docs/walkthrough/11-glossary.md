@@ -48,7 +48,7 @@ Terms are grouped by topic. "Ch." points to the chapter that explains it in cont
 | **Entry** | The first node, on this side's edge (bottom `y = 0`, top `y = field_h`). |
 | **Point A** | The frontier: the node before the forward link. With no forward link, the target itself. |
 | **Target** | The virtual last node the forward gap aims at: the partner's point A, or a far-edge point. |
-| **Stand-in target** | A corner of an obstacle used while the partner's real point A lies inside an obstacle this side knows (`Target.is_partner = False`; Ch. 9). |
+| **Stand-in target** | A corner of an obstacle used while the partner's real point A lies inside an obstacle this side knows (`Target.may_close() = False`; Ch. 9). |
 | **Jump node / jump** | New point A created past a mine this side found (Ch. 5). |
 | **Span** | A pending link (a detour behind point A); keyed by its far end. |
 | **Met** | The forward gap is closed: the chain reaches the target (`PathNodePlanner.met`). |
@@ -66,7 +66,7 @@ Terms are grouped by topic. "Ch." points to the chapter that explains it in cont
 | **Mine** | A detected mine, snapped to its square's centre. |
 | **Danger zone / obstacle** | Every whole square within 3 ft of a mine's square; overlapping zones merge into a **group** with an id. |
 | **Blocked square** | A square given up after 3 misses; treated as a tiny mine zone (Ch. 4). |
-| **`Routes`** | The planner's interface to obstacles: `add_mine`, `contains`, `crosses`, `shortest`, `corners`. The geometry underneath is being replaced (Ch. 2). |
+| **`Routes`** | The planner's interface to obstacles: `add_mine`, `contains`, `crosses`, `shortest`, `corners`. It wraps a swappable `PathEngine` (`engines/`, Ch. 2). |
 | **Shortest path** | Shortest route around every known obstacle, bending only at zone corners. |
 | **Mine rule** | `mine_rule.apply`: repair the chain when an obstacle appears (Ch. 5). |
 | **Fragment / orphan / bridge** | Pieces of the chain left after the cut; orphans connect to neither root and are deleted; the bridge is the new pending link joining the roots (Ch. 5). |
@@ -96,7 +96,7 @@ Terms are grouped by topic. "Ch." points to the chapter that explains it in cont
 | **Held job** | A job another drone announced; it overrides this copy's own record of that drone (Ch. 3, 7). |
 | **Idle takeover** | A drone with nothing to fly takes its mate's queued work except the announced next photo (Ch. 3). |
 | **Keep-apart** | Dropping photos too close to another drone: `keep_away_ft` 10 ft, `keep_clear_ft` 7.5 ft (both above the flight code's 6.6 ft hold radius). Lower id keeps its ground. Includes the other side's drones (Ch. 3, 9). |
-| **Make way** | Sending a blocked drone to a spare photo out of the way (`_make_way`); the higher id yields to a lower id's announced job within `keep_away_ft`. |
+| **Make way** | Sending a blocked drone to a spare photo out of the way (`SideCoordinator._make_way`); the higher id yields to a lower id's announced job within `keep_away_ft`. |
 
 ## Shortcuts
 

@@ -15,6 +15,7 @@ with `python` replaced by your interpreter).
 | `golden.py` + `golden_compare.py` | did my refactor change ANY behaviour? | recording all 17 cases: several minutes |
 | `repro_cases.py` | do the named hard cases still work? | ~1 min for two cases, a few minutes for all 5 |
 | `benchmark.py` | how efficient / how slow is a mission on the seed-76 field? | about a minute |
+| `verify.py` | is everything still green? (all suites at once, on a frozen copy) | ~7 min on an idle 22-core box, ~17 min with other agents running (was ~40 min serial) |
 | `snapshot.sh`, `flight_snapshot.sh` | test a frozen copy while I keep editing | seconds / 15-20 min |
 
 ## sweep.py
@@ -150,6 +151,91 @@ shape=(8.52, 6.44) outer=2: failure=None makespan=746 photos=142 route=302.9 dan
 ```
 
 `danger=1` with `outer=0` is expected (no safety ring); `outer=2` (the default) gives 0.
+
+## verify.py (the whole ladder on all cores)
+
+Freezes the tree, splits every suite into small jobs and runs them in one process pool.
+Replaces running the unit suite, sweep, flight harness and pytest one after another (~40 min).
+
+```
+python tools/testing/verify.py                              # snapshot + everything
+python tools/testing/verify.py --only unit,sweep,lint       # some suites
+python tools/testing/verify.py --tree .test_snapshots/x     # an existing copy, no new snapshot
+python tools/testing/verify.py --serial-flight              # flight configs one at a time
+```
+
+Options: `--snapshot LABEL` (name the copy, default `verify-<time>`), `--tree PATH` (test that
+folder as is), `--only` (unit, nodefield, cellfield, sweep, flight, pytest, lint), `--jobs N`
+(default cores - 2), `--flight-repeat N`, `--flight-jobs N`, `--serial-flight`,
+`--flight-alongside`, `--lint-baseline FILE`. Exit 0 = everything passed (the 3 known pytest
+failures and pyflakes warnings do not count), 1 = a real failure or timeout, 130 = Ctrl-C.
+
+How it splits the work:
+
+| Suite | Jobs |
+|---|---|
+| unit (`test_pathnode.py`) | one process per `test_*`; the 3 slow loop tests (`every_drone_count`, `band_coverage`, `dropped_and_delayed`) are cut into 12 / 4 / 8 shards of their innermost `for` loop |
+| nodefield | one process per test; `completeness_vs_bruteforce` in 10 shards of layouts |
+| cellfield | whole file, one retry (it has timing asserts) |
+| sweep | one process per seed of `--standard` (90) |
+| flight (WSL) | multi 2, 3, 4, 2 dense, 3 dense, 4 dense (x3), one-drone, each its own process |
+| pytest (WSL) | `tests/`; exactly the 3 known `test_emergency_land.py` failures are tolerated, 44 must pass |
+| lint (WSL) | pyflakes; reported only. `verify_logs/<run>/lint_warnings.txt` (no line numbers) can be passed back as `--lint-baseline` to list only new warnings |
+
+Scheduling: longest job first, using durations cached in `.test_snapshots/verify_durations.json`
+(the first run uses guesses; later runs are better balanced). Timeouts: 30 min per unit job,
+20 min per flight config. Ctrl-C kills all child processes (and leftover harness processes in WSL).
+
+Output: one line per finished job, then a table (suite, jobs, passed, failed, known, wall,
+cpu-sum) and the failing jobs' last 15 output lines. Logs: `<tree>/verify_logs/<timestamp>/<job>.log`
+and `summary.txt`; every run is appended to `<tree>/verify_logs/summary_all.txt`.
+
+### Flight harness under load: run it on a quiet CPU
+
+Earlier flight failures (drones at 0.00 m, "side-mate silent for 20s") were blamed on CPU
+starvation from running many things at once. Measured on the same frozen tree (v5), flight
+harness only, 9 configs per round (4 dense x3), background load sampled every ~11 s
+(total CPU 6-30 % from other agents while the rounds ran):
+
+| Round | Mode | Result (fails of 9) | Wall | Note |
+|---|---|---|---|---|
+| 1 | parallel | 5 (3 dense, 4, 4 dense x3) | 5 min | clean |
+| 1 | serial | 3 (4 dense x3) | 17 min | clean |
+| 2 | parallel | 3 (4 dense x3) | 5 min | clean |
+| 2 | serial | 5 (3 dense, 4, 4 dense x3) | 24 min | 51 s machine stall: not counted |
+| 3 | parallel | 3 (3 dense, 4 dense x2) | 9 min | 245 s machine stall: not counted |
+| 3 | serial | 0 | 10 min | clean |
+
+Reading it:
+- Failures happen in BOTH modes on the same code, with the machine mostly idle (serial round 1:
+  one harness process, CPU 12 % average). Clean rounds: parallel 8 failed of 18 configs, serial
+  3 of 18 (Fisher p = 0.15, not significant). `4 dense` fails in most rounds either way, and
+  serial round 3 passed all 9: the harness is non-deterministic on this tree, so this is a
+  real problem for the flight code, not a CPU-starvation artefact.
+- The machine really does stall or sleep during long runs: `verify.py` saw a 51 s and a 245 s
+  freeze, and one earlier serial run lost 53 minutes (laptop suspended; a 20-minute timeout
+  never fired because the clock was frozen). Any job overlapping a freeze is unreliable:
+  `verify.py` now prints `!! machine stalled/slept ...`, marks those jobs
+  `(overlaps a N s machine stall)` and adds a WARNING line to the summary. It also asks Windows not to
+  idle-sleep while it runs (a closed lid can still suspend the laptop).
+- Running ~170 processes at once (flight alongside the sweep) did make things worse
+  (drones at 0.00 m, 20 s silences), so the default is: heavy suites first, harness after.
+
+Default: the 9 flight configs run all at once, AFTER the CPU-heavy suites (`--flight-alongside`
+overlaps them; `--serial-flight` runs one at a time, ~3x slower). Parallel was not
+distinguishably less reliable than serial on a mostly quiet machine and saves 5-15 minutes.
+If a flight config fails, re-run it before calling it a bug:
+`python tools/testing/verify.py --tree <snapshot> --only flight --serial-flight`.
+A failure that shows up in both modes is real.
+
+### Memory
+
+Default workers = min(cores - 2, free memory / 150 MB), printed at start with the reason (a
+Windows job peaks at 10-65 MB; the other agents' runs can leave only ~1 GB free, which used
+to crash with `MemoryError`). A job whose output contains `MemoryError`, `Unable to allocate`
+and similar is treated as an infrastructure error: it is retried once, alone, after 10 s, and
+if it still runs out of memory it is reported as `INFRA: out of memory, not a test failure`.
+Pass `--jobs N` to override.
 
 ## snapshot.sh and flight_snapshot.sh (test a frozen copy)
 

@@ -1,6 +1,40 @@
 # Design: expanding mines (levels, snapshots, lockstep)
 
-Status: DESIGN ONLY, no code changed. Written against branch `poif-test`.
+Status: stages A and B built (2026-10-26); flight stage next. Section 10 holds the user's decisions; where an earlier section disagrees, section 10 wins.
+## Built so far
+
+- **Stage A (geometry)**: `PathEngine.set_level(k)` / `level` / `STEP_FT`, `Routes.set_level`,
+  `mine_rule.apply_growth` (per-gap bridging, restores the chain when infeasible).
+- **Stage B (planner, backend, simulator)**, all in local feet, no flight code:
+  - `flight/pathfinding/levels.py` (pure): `Snapshot` (frozen), `SnapshotBook` (validity,
+    latest valid, `buffer_width`, the unsafe-squares counter kept beside the frozen snapshots),
+    `LevelGate` + `Verdict` (the lockstep rule), `LevelState` (the announced fact: side, drone,
+    level, ready, capped, seq), `Step` / `LevelStep`.
+  - `pathnode/level_control.py`: `LevelController` (`planner.levels`): `ready`, `snapshot`,
+    `try_advance` (snapshot, gate, grow), `grow`, `rollback`, `recover`, `join_at`, reporting,
+    `growth_fits` (the 1.5x time rule; the clock stays the caller's).
+  - `SearchBackend` level API replaces `expand_margin` (see `search_backend.py`); `MissionPlanner`
+    has lat/lon passthroughs and still has a no-op `expand_margin` because `ExpandNodes` calls it.
+  - `pathnode/sim_levels.py` + `Mission(levels=True, max_levels, tick_budget, expand_ticks,
+    partner_lost_at)`; `sweep.py --levels`.
+- **Not built (flight stage)**: the `LEVEL_STATE` message and heartbeats, `SideAgent` gating,
+  `CalcScanPath` / `ExpandNodes` / `EndRun` changes, the `CROSS_PAIR_CHAIN` level field, the IARC
+  `buffer_width` argument, partner-lost detection. Also the Field engine as the default.
+- **Differences from sections 3-8 (section 10 decides)**:
+  - A snapshot holds route, cells, mine hash, time, level, seq and `spans`; no chain copy and no
+    mutable counters. Counters live in `SnapshotBook` (`unsafe(snap)` = squares that fell inside
+    a zone since it was taken). `compromised` is replaced by validity: a mine on its squares.
+  - `PathNodePlanner.mine_hash()` is unchanged (the Field cross-check test uses its formula);
+    `level_hash()` adds the level, and the backend's `mine_hash()` returns that one.
+  - Rollback after a late mine with no route (`recover`) rebuilds the chain from the latest
+    snapshot at or below each lower level and rechecks it with `apply_growth`; there is no cap
+    message, a `capped` flag in `LevelState` ends the other copies' climb instead.
+  - Ready has no `mate_busy` term yet (flight stage). The gate's "other side ready" is any drone
+    of the other side announcing ready at the level or past it.
+  - The partner-lost hook is `Target.lost()` -> `LostPartnerTarget` (its last point A, then
+    `after_met()` hands over to `FarEdgeTarget`), so the checked half is reused and the rest is
+    photographed by this side.
+
 Scope: the phase after the first complete route exists. Each mine's danger zone grows 2 ft
 per step; the planner re-checks its route, finishes the new work, freezes a snapshot, and
 grows again. Both sides do this in lockstep.
@@ -577,28 +611,29 @@ it on the flight computer.
 
 ---
 
-## 10. Open questions (recommended default)
+## 10. Decisions (user, 2026-09-28; these override any default elsewhere in this doc)
 
-1. **Growth rule**: mitre offset of the outline (square growth, a superset of the circle set
-   `unsafe_cells(x, y, 3 + 2k)`) or re-derive from the circle-touch rule. Default: mitre offset
-   (what `BlockMine.expand` does); slightly more conservative, cheaper.
-2. **Level cap**: none beyond flight time and route survival (as agreed). Default: also a hard
-   stop at level 10 (20 ft) as a bug guard; log it.
-3. **Blocked squares grow?** Default: yes, same clearance as mines (5.2).
-4. **IARC `buffer_width`**: report the level? Default: `buffer_width = level`; confirm the
-   meaning in the rules before flight.
-5. **Latest snapshot compromised** (a late mine at its own level lies on it): spec says latest.
-   Default: latest NON-compromised, else the latest.
-6. **Late mine on the joined route at level `L*`**: drop to `L* - 1` (default) or wait for a
-   new snapshot at `L*` (risks running out of time).
+1. **Growth rule**: a mine is the original protoMine DIAMOND (4 nodes tagged UP / LEFT /
+   DOWN / RIGHT); each step moves every node 2 ft along its tag, so a diamond stays a diamond
+   (city-block growth, never diagonal). Grown mines that overlap merge into the exact union.
+2. **Level cap**: none, except flight time and a surviving route. No level-10 guard.
+3. **Blocked squares do NOT grow** (overrides 5.2's recommendation: use the non-growing
+   alternative).
+4. **IARC `buffer_width`** = the city-block (Manhattan) distance, in squares, from the reported
+   cell path within which there is no known mine: the clearance actually achieved, measured
+   on the reported route, not the level number.
+5. **Which snapshot to report**: the latest VALID one. Valid = no known mine lies directly on
+   the path's squares; mines inside the buffer are fine (`buffer_width` then reports the
+   smaller clearance).
+6. **Late mine on the joined route at level `L*`**: keep flying to re-check / re-route at that
+   level; if time runs out, report the latest valid snapshot (5).
 7. **Expansion near the deadline**: skip if remaining flight time < 1.5x the last measured
-   rebuild+bridge time. Default: yes.
-8. **Partner side lost**: default: stop expanding, report own last snapshot as a half route.
-9. **Join hash check**: strict equality first, then the relaxed geometric check (8.2). Default: as
-   written.
-10. **OUTER while waiting**: fly it (default) or hover to save battery.
-11. **Warm-start incremental graph (5.3 stage 3)**: build only if a full rebuild exceeds about
-    10 s at the expected mine count on the target computer.
+   rebuild+bridge time. Accepted.
+8. **Partner side lost**: do not stop. Target its last point A, then keep checking the lost
+   side's half to its edge with this side's own photos.
+9. **Join hash check**: strict equality first, then the geometric check (8.2). Accepted.
+10. **OUTER while waiting**: fly it. Later this side may help the other side instead.
+11. **Graph per level**: full rebuild first; redesign only if measured too slow.
 
 ---
 

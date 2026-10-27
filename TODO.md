@@ -19,7 +19,7 @@ legacy-planner archive move. Commit when the user decides.
 
 ## Next (in order)
 
-1. [ ] Wire the rebuilt geometry into `pathnode/routes.py` in place of `ZoneMap`:
+1. [ ] Make the rebuilt geometry the default `PathEngine` (selectable today: `PlannerConfig(engine="field")`, `pathnode/engines/`), in place of `ZoneMap`:
       `flight/pathfinding/nodeField/` (`Field`, `FieldConnections.nodeGraph` as the stored graph
       A* routes over; `protoMine`).
   - [ ] Expect different routes: 18/200 more reachable, ~0.02 ft longer on average.

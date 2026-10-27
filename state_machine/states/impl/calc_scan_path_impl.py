@@ -32,8 +32,7 @@ def _camera_footprint_ft(altitude_m: float, config_path: str) -> tuple[float, fl
     """Ground footprint (along_ft, across_ft) of one photo at altitude_m,
     derived from vision/config.json's own hFovDeg/vFovDeg -- straight-
     down flat-ground approximation (2 * altitude * tan(fov / 2)), the
-    same formula flight/pathfinding/path_subdivision.py's own (dead,
-    unreachable) ground_covered_image uses. This is only ever used to
+    a simple flat-ground footprint formula. This is only ever used to
     decide how far apart to SPACE planned waypoints -- Scan's own
     _capture_and_mark_seen computes the REAL per-photo footprint later,
     via full ray-casting (BaseCamera.get_image_corner_coordinates), for
@@ -164,6 +163,11 @@ async def run(self: CalcScanPath) -> State:
             _flag_no_valid_path(self, planner.failure)
             return ExpandNodes(self.drone, self.flight_settings, self.interdrone)
         if planner.done():
+            if own:
+                # Done, but standing in another drone's way: the plan is a spare spot to move
+                # to (coordination._make_way). Fly it; this state comes back, and finishes.
+                self.drone.resetWaypoints(_build_waypoints(self.drone.id, own))
+                return Scan(self.drone, self.flight_settings, self.interdrone)
             await _finish_scan(self, planner)
             return ExpandNodes(self.drone, self.flight_settings, self.interdrone)
 

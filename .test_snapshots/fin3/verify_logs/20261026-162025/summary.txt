@@ -1,0 +1,22 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         71      71       0      0     325s    1471s
+nodefield    24      24       0      0      74s     188s
+cellfield     1       1       0      0      46s      46s
+sweep        90      85       5      0     327s    2495s
+pytest        1       1       0      0      13s      13s
+lint          1       1       0      0      13s      13s
+TOTAL       188                            328s
+
+FAILURES (5):
+--- sweep d-110: exit 1
+    d seed=110 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.83 min_side=8.25 ticks=199
+--- sweep e-128: exit 1
+    e seed=128 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=8.16 min_side=7.50 ticks=152
+--- sweep f-200: exit 1
+    f seed=200 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.83 min_side=8.00 ticks=194
+--- sweep f-212: exit 1
+    f seed=212 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.83 min_side=8.00 ticks=147
+--- sweep f-213: exit 1
+    f seed=213 BAD failure=stalled complete=False spans=True unseen=0 known=0 on_mine=0 min_cross=7.91 min_side=7.98 ticks=172
+lint: 54 warnings
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\fin3\verify_logs\20261026-162025

@@ -16,7 +16,7 @@ flowchart TD
 ## 4.1 Scan.run
 
 ```python
-# state_machine/states/impl/scan_impl.py:231-273
+# state_machine/states/impl/scan_impl.py:240-282
         if self.drone.time_exceeded(self.flight_settings.max_flight_time):
             flight_log.event("scan_time_exceeded")
             return EndRun(self.drone, self.flight_settings, self.interdrone)
@@ -282,7 +282,7 @@ SEPARATION_ABORT_M: float = 1.2
 `CalcScanPath` planned with a fixed rectangle (8.52 x 6.44 ft). The real footprint depends on altitude, attitude and heading, so `Scan` measures it:
 
 ```python
-# state_machine/states/impl/scan_impl.py:82-86, 88-108, 110-129
+# state_machine/states/impl/scan_impl.py:86-90, 92-112, 114-133
         image = camera.capture_image(only_metadata=False)
         if image is None or image.image is None:
             logging.warning("drone %d: camera capture failed -- skipping photo", self.drone.id)
@@ -347,7 +347,7 @@ SEPARATION_ABORT_M: float = 1.2
 ```
 
 ```python
-# flight/pathfinding/pathnode/planner.py:159-164, 173-175, 177-184
+# flight/pathfinding/pathnode/planner.py:182-187, 196-198, 200-207
     def record_footprint(self, corners):
         """A photo's ground footprint (any quadrilateral, corners in order) as coverage; a miss
         for any needed square it was aimed at and didn't cover (see coverage.py)."""
@@ -373,7 +373,7 @@ SEPARATION_ABORT_M: float = 1.2
 - `coverage.record(corners)` marks every 2 ft square **fully inside** the footprint as seen (grown by 1/1000 ft to absorb lat/lon round-off) and returns the footprint centre:
 
 ```python
-# flight/pathfinding/pathnode/coverage.py:100-115
+# flight/pathfinding/pathnode/coverage.py:98-113
     def record(self, corners):
         """Mark every square fully inside a photo's footprint (any quadrilateral, corners in
         order). Grown by FOOTPRINT_SLACK_FT first: a lat/lon round trip can move an edge that
@@ -395,24 +395,19 @@ SEPARATION_ABORT_M: float = 1.2
 - `_misses` then counts a **miss** for each *needed* square this photo was *aimed at* (centre within `aim_radius` of the photo centre) but that is **still unphotographed**:
 
 ```python
-# flight/pathfinding/pathnode/coverage.py:117-134
+# flight/pathfinding/pathnode/coverage.py:152-164
     def count_misses(self, x, y, needed):
         """A photo centred at (x, y) was taken (or failed). Count a miss for every square in
-        `needed` it was aimed at (centre within aim_radius) that is still unphotographed.
-        Returns the squares that have now reached MISS_BLOCK."""
+        `needed` it was aimed at (aimed_at) that is still unphotographed. Call once per
+        waypoint, with its final photo. Returns the squares that have now reached MISS_BLOCK."""
         self.version += 1
-        reach = self.aim_radius()
-        c0, r0 = self.seen.real_to_cell(x, y)
-        n = math.ceil(reach / CELL) + 1
         hopeless = []
-        for c in range(c0 - n, c0 + n + 1):
-            for r in range(r0 - n, r0 + n + 1):
-                if ((c, r) not in needed or self.seen.get(c, r)
-                        or math.dist(cell_centre(c, r), (x, y)) > reach + 1e-9):
-                    continue
-                self.misses[(c, r)] = self.misses.get((c, r), 0) + 1
-                if self.misses[(c, r)] >= MISS_BLOCK:
-                    hopeless.append((c, r))
+        for c, r in sorted(self.aimed_at(x, y)):
+            if (c, r) not in needed or self.seen.get(c, r):
+                continue
+            self.misses[(c, r)] = self.misses.get((c, r), 0) + 1
+            if self.misses[(c, r)] >= MISS_BLOCK:
+                hopeless.append((c, r))
         return hopeless
 ```
 
@@ -424,7 +419,7 @@ SEPARATION_ABORT_M: float = 1.2
 If the footprint still does not cover the square this waypoint was sent to check, the drone climbs and photographs again:
 
 ```python
-# state_machine/states/impl/scan_impl.py:132-139, 161-169
+# state_machine/states/impl/scan_impl.py:136-143, 165-173
         if planner.cell_seen_at(waypoint.lat, waypoint.long) is not False:
             return
 

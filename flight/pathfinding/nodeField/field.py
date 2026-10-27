@@ -19,10 +19,12 @@ import shapely
 from shapely.geometry import Point
 from shapely.ops import unary_union
 
-from flight.pathfinding.common import VERTEX_INFLATE_FT, VISIBILITY_MARGIN_FT, snap_to_cell_center
+from flight.pathfinding.common import (CELL_FT, VERTEX_INFLATE_FT, VISIBILITY_MARGIN_FT,
+                                       snap_to_cell_center)
 from flight.pathfinding.nodeField.BlockMine import BlockMine
 from flight.pathfinding.nodeField.polygonObstacle import PolygonObstacle
 from flight.pathfinding.nodeField.unionObstacle import unionObstacle
+from flight.pathfinding.pathnode.engines.base import STEP_FT, PathEngine
 
 # A line may pass between the pushed corner ring and the grown obstacle: the ring sits
 # VERTEX_INFLATE_FT out, the obstacle is grown VISIBILITY_MARGIN_FT. So "both neighbours on
@@ -38,7 +40,7 @@ def _supports(c1, c2, dist):
 _CHUNK = 128
 
 
-class Field:
+class Field(PathEngine):
     """All known obstacles of a field_w x field_h ft field (local feet, origin bottom-left).
 
     - mines / unionObstacles / polygonObstacles: live standalone mines, unions, other zones
@@ -50,12 +52,13 @@ class Field:
         self.mines = []
         self.unionObstacles = []
         self.polygonObstacles = []
-        self.last_added = None
+        self._last_added = None
         self.blocker = None         # every live obstacle grown by the margin (prepared)
         self._byId = {}             # every obstacle ever made, for resolve()
         self._live = {}             # id -> live obstacle
         self._leaves = []           # every mine / zone, however merged
         self._nextId = 0
+        self._growth = 0.0          # distance every mine is grown from its original diamond
         self.fieldConnection = FieldConnections(self, proposals)
 
     # -- adding ----------------------------------------------------------------------------
@@ -64,9 +67,16 @@ class Field:
         from flight.pathfinding.protoMine import protoMine  # protoMine imports nodeField
         return self.addFromProtoMine(protoMine(x, y))
 
+    def add_square(self, c, r):
+        """Block grid square (c, r). Returns its obstacle id."""
+        return self.add_zone(shapely.box(c * CELL_FT, r * CELL_FT,
+                                         (c + 1) * CELL_FT, (r + 1) * CELL_FT))
+
     def addFromProtoMine(self, proto):
-        return self.addObstacle(BlockMine(proto.nodeVertices, proto.origin, proto.radius,
-                                          proto.squares))
+        mine = BlockMine(proto.nodeVertices, proto.origin, proto.radius, proto.squares)
+        if self._growth:
+            mine.growTo(self._growth)   # a mine found later is built at the current level
+        return self.addObstacle(mine)
 
     def add_zone(self, shape):
         """Add any shapely zone (e.g. a blocked square). Returns its obstacle id."""
@@ -78,7 +88,7 @@ class Field:
         obstacle.id = self._newId()
         self._byId[obstacle.id] = obstacle
         self._leaves.append(obstacle)
-        self.last_added = obstacle.grown
+        self._last_added = obstacle.grown
         absorbed = self._touching(obstacle)
         live = obstacle
         if absorbed:
@@ -130,21 +140,40 @@ class Field:
             o = o.mergedInto
         return o.id
 
-    # -- expanding -------------------------------------------------------------------------
-    def expandField(self, distance):
-        """Grow every mine (also those inside unions) by distance, re-merge, rebuild.
+    # -- growing ---------------------------------------------------------------------------
+    @property
+    def level(self):
+        return round(self._growth / STEP_FT)
 
-        - blocked zones (add_zone) do not grow
+    def set_level(self, k):
+        """Zones at growth level k: every mine STEP_FT * k from its original diamond (base.py).
 
-        Hook: the growth policy (how far, when) is decided by the caller; this only makes the
-        geometry and graph correct for one step.
+        - absolute (rollback works); blocked zones (add_zone) do not grow
+        - full rebuild: regroup the leaves, rebuild blocker and nodeGraph
+        - last_added: what became off limits (new blocker minus old; empty when zones shrank)
         """
+        if k < 0 or k != int(k):
+            raise ValueError(f"level must be a non-negative integer, got {k!r}")
+        if int(k) != self.level:
+            self._growTo(int(k) * STEP_FT)
+
+    def expandField(self, distance):
+        """Grow every mine by a further `distance` (finer than a level step), re-merge, rebuild."""
+        self._growTo(self._growth + distance)
+
+    def _growTo(self, growth):
+        """Put every mine (also those inside unions) at `growth` from its original shape.
+
+        An old obstacle id resolves to the live obstacle holding its first leaf.
+        """
+        self._growth = growth
         if not self._leaves:
             return
+        oldBlocker = self.blocker
         oldUnions = list(self.unionObstacles)
         for leaf in self._leaves:
             if leaf.grows:
-                leaf.expand(distance)
+                leaf.growTo(growth)
             leaf.mergedInto = None
         self._regroup()
         for u in oldUnions:
@@ -152,6 +181,7 @@ class Field:
             while leaf.mergedInto is not None:
                 leaf = leaf.mergedInto
             u.mergedInto = leaf
+        self._last_added = self.blocker.difference(oldBlocker)
 
     def _regroup(self):
         """Merge the leaves into live obstacles from scratch, then rebuild blocker and graph."""
@@ -186,7 +216,20 @@ class Field:
         shapely.prepare(self.blocker)
         self.fieldConnection.rebuild()
 
-    # -- ZoneMap-compatible queries ----------------------------------------------------------
+    # -- PathEngine queries (engines/base.py) -------------------------------------------------
+    @property
+    def last_added(self):
+        """The newest obstacle grown by the margin: what just became off limits."""
+        return self._last_added
+
+    def obstacle_shapes(self):
+        """{id: shapely geometry} of every live obstacle."""
+        return self.groups
+
+    def corners(self):
+        """Every graph corner the paths bend around, as (x, y)."""
+        return [(float(x), float(y)) for x, y in self.vertices]
+
     @property
     def groups(self):
         """id -> shapely geometry of every live obstacle."""

@@ -1,0 +1,54 @@
+flight/pathfinding/pathnode/test_pathnode.py: local variable 'q2' is assigned to but never used
+flight/tests/waypoint_collision_test.py: local variable 'waypoint1' is assigned to but never used
+flight/tests/waypoint_collision_test.py: local variable 'waypoint2' is assigned to but never used
+flight/tests/waypoint_collision_test.py: local variable 'waypoint3' is assigned to but never used
+flight/tests/waypoint_collision_test.py: local variable 'waypoint4' is assigned to but never used
+flight/tests/waypoint_collision_test.py: local variable 'waypoint5' is assigned to but never used
+flight/waypoint_visualization.py: 'waypoint.Line' imported but unused
+integration_tests/multi_drone_sim_test.py: 'state_machine.drone.RANGEFINDER3_MAVLINK_ID' imported but unused
+integration_tests/one_drone_sim_test.py: 'state_machine.states.impl.takeoff_impl as takeoff_impl_module' imported but unused
+state_machine/__init__.py: 'state_machine.drone.Drone' imported but unused
+state_machine/__init__.py: 'state_machine.state_machine.StateMachine' imported but unused
+state_machine/__init__.py: 'state_machine.states' imported but unused
+state_machine/__init__.py: 'state_machine.states.State' imported but unused
+state_machine/drone.py: 'json' imported but unused
+state_machine/drone.py: 'pymavlink.dialects.v20.all.MAVLink_command_long_message' imported but unused
+state_machine/drone.py: 'pymavlink.mavutil' imported but unused
+state_machine/flight_manager.py: 'state_machine.drone_state.DroneState' imported but unused
+state_machine/flight_manager.py: local variable 'interdrone_state_task' is assigned to but never used
+state_machine/states/__init__.py: 'state_machine.states.impl.AppShare' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.CalcScanPath' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.DroneShare' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.EmergencyLand' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.EndRun' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.ExpandNodes' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.Land' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.POIF' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.Recall' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.Scan' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.Start' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.impl.Takeoff' imported but unused
+state_machine/states/__init__.py: 'state_machine.states.state.State' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.app_share_impl.AppShare' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.calc_scan_path_impl.CalcScanPath' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.drone_share_impl.DroneShare' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.emergency_land_impl.EmergencyLand' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.end_run_impl.EndRun' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.expand_nodes_impl.ExpandNodes' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.land_impl.Land' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.poif_impl.POIF' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.recall_impl.Recall' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.scan_impl.Scan' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.start_impl.Start' imported but unused
+state_machine/states/impl/__init__.py: 'state_machine.states.impl.takeoff_impl.Takeoff' imported but unused
+state_machine/states/impl/app_share_impl.py: 'flight.extract_gps.extract_gps' imported but unused
+state_machine/states/impl/app_share_impl.py: 'state_machine.states.scan.Scan' imported but unused
+state_machine/states/impl/emergency_land_impl.py: 'state_machine.drone' imported but unused
+state_machine/states/impl/recall_impl.py: 'flight.extract_gps.extract_gps' imported but unused
+state_machine/states/impl/start_impl.py: 'typing.Any' imported but unused
+state_machine/states/impl/takeoff_impl.py: 'flight.extract_gps.extract_gps' imported but unused
+tools/analyze_flight.py: local variable 'base' is assigned to but never used
+tools/testing/benchmark.py: '_common' imported but unused
+tools/testing/golden.py: '_common' imported but unused
+tools/testing/repro_cases.py: '_common' imported but unused
+tools/testing/sweep.py: '_common' imported but unused

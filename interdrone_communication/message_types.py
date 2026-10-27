@@ -411,6 +411,11 @@ EXPECTED_SCHEMA: Final[dict[MessageType, dict[str, Any]]] = {
         "lat": float,
         "lon": float,
         "alt": float,
+        # The mapping mission's leg claim (Drone.claim_leg): where the leg this drone is
+        # flying (or about to fly) ends -- (lat, lon), or None -- and the claim's clock.
+        # POIF sends None and 0.
+        "leg_to": Any,
+        "leg_clock": int,
     },
     MessageType.EMERGENCY_LAND: {
         "id": MessageType.EMERGENCY_LAND,

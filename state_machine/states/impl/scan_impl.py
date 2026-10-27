@@ -5,13 +5,18 @@ import logging
 import math
 
 import flight.flight_log as flight_log
-from flight.pathfinding.utils.goto import move_to
+from flight.pathfinding.utils.goto import FlightInterrupted, LegStalled, move_to
+
+# state_machine.drone patches the collections aliases dronekit needs on
+# import, so it must come before dronekit.
 from state_machine.drone import (
     LEG_GROUNDSPEED_M_S,
     LEG_TOLERANCE_M,
     MISSION_ALTITUDE_M,
     FormationLost,
+    LegBlocked,
 )
+import dronekit
 from state_machine.state_tracker import (
     update_drone,
     update_flight_settings,
@@ -169,7 +174,7 @@ async def _capture_and_mark_seen(self: Scan, planner, waypoint) -> None:
         )
 
 
-async def run(self: Scan) -> State:
+async def run(self: Scan) -> State | None:
     """
     Implements the run method for the Scan state.
 
@@ -216,6 +221,11 @@ async def run(self: Scan) -> State:
         After flying one waypoint, to process/share what was seen there.
     CalcScanPath : State
         If a replan is already needed, or nothing is queued.
+    Land : State
+        If separation was lost or a leg stalled (drone still under our control).
+    None
+        If the autopilot took over (FlightInterrupted): the drone is put in LAND
+        (unless already LAND/RTL), then this waits for disarm and ends the machine.
 
     Raises
     ------
@@ -254,8 +264,16 @@ async def run(self: Scan) -> State:
         # (LEG_ALTITUDE_M) -- this is the mapping-mission scan loop.
         try:
             reached = await self.drone.gotoWaypoint(
-                self.interdrone.drone_states, altitude_m=MISSION_ALTITUDE_M
+                self.interdrone.drone_states,
+                altitude_m=MISSION_ALTITUDE_M,
+                announce=self.interdrone.report_own_position,
             )
+        except LegBlocked as ex:
+            # Another drone sat on this leg's path. Plan again: the planner knows where it is.
+            flight_log.event("scan_leg_blocked", reason=str(ex))
+            logging.warning("drone %d: leg dropped, replanning: %s", self.drone.id, ex)
+            await asyncio.sleep(0)
+            return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
         except FormationLost as ex:
             # Measured separation from a peer fell below the floor (or a hold never
             # cleared): the avoidance guarantee is gone. Land, as POIF does, rather
@@ -271,6 +289,26 @@ async def run(self: Scan) -> State:
         await _capture_and_mark_seen(self, self.drone.planner, reached)
 
         return DroneShare(self.drone, self.flight_settings, self.interdrone)
+    except LegStalled as ex:
+        # Covers gotoWaypoint and the climb-retry move_to in _capture_and_mark_seen.
+        # Still GUIDED but not tracking: land rather than end the machine airborne.
+        flight_log.event("scan_leg_stalled", reason=str(ex))
+        logging.error("drone %d: scan aborted, not reaching its waypoints: %s", self.drone.id, ex)
+        return Land(self.drone, self.flight_settings, self.interdrone)
+    except FlightInterrupted as ex:
+        flight_log.event("scan_failsafe", reason=str(ex))
+        logging.critical("drone %d: scan aborted, autopilot took over: %s", self.drone.id, ex)
+        # The autopilot owns the vehicle: don't command it further (Land's RTL would
+        # wait on GUIDED movement). Make sure it's coming down, wait for disarm.
+        vehicle = self.drone.vehicle
+        if vehicle.armed and vehicle.mode.name not in ("LAND", "RTL"):
+            vehicle.mode = dronekit.VehicleMode("LAND")
+        while vehicle.armed:
+            await asyncio.sleep(0.5)
+        flight_log.event("scan_failsafe_landed")
+        await self.interdrone.announce_landing()
+        logging.info("Failsafe landing complete, motors disarmed")
+        return None
     except asyncio.CancelledError as ex:
         logging.error("Scan state canceled")
         raise ex

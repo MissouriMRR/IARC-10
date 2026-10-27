@@ -227,13 +227,13 @@ in `pathnode/shortcuts.py`.
 **Takeaway: photos are placed one of two ways: spaced along a path, or tiled over scattered
 squares.**
 
-Both live in `pathnode/coverage.py` and are called from `Work.groups()`:
+Both live in `pathnode/placement.py` (`PhotoPlacement`; `Coverage.places_along` delegates to it) and are called by the work sources (`pathnode/work_sources.py`) that `Work.groups()` collects:
 
 | Group | Work items | Method |
 |---|---|---|
-| `PATH` | one item per unchecked link: key `"forward"` or `("span", end)` | `Coverage.places_along(link.poly)` |
-| `BIG_SHORTCUT`, `SHORTCUT` | one item, key `("shortcut", a, b)` | `places_along(trial.poly)` |
-| `ADJACENT`, `OUTER` | many items, key `None`, one photo each | `Coverage.tile(squares, order)` |
+| `PATH` | one item per unchecked link: key `"forward"` or `("span", end)` | `PathSource` -> `Coverage.places_along(link.poly)` |
+| `BIG_SHORTCUT`, `SHORTCUT` | one item, key `("shortcut", a, b)` | `ShortcutSource` -> `Coverage.places_along(trial.poly)` |
+| `ADJACENT`, `OUTER` | many items, key `None`, one photo each | `RingSource` -> `PhotoPlacement.tile(squares, key)` |
 
 Why two methods: a path is a line, so photos can be spaced along it in walking order and flown as
 one smooth sweep. Ring squares are scattered around it, so no line joins them; it is better to
@@ -308,7 +308,7 @@ flowchart TD
 *Diagram 3: a group is a list of sequences; a sequence is one path's photos in order (or one
 photo). Claims are made per sequence.*
 
-**Keys** (`pathnode/work.py`) name a sequence by geometry, never by an object id. So every drone's
+**Keys** (`pathnode/work_sources.py`) name a sequence by geometry, never by an object id. So every drone's
 separate copy of the planner gives the *same key for the same path*. That is how one drone can
 honour a job its side-mate announced.
 
@@ -452,7 +452,7 @@ copies' photo record and mines identical so their work lists match.*
 - Messages lag, so copies can briefly disagree; the announced job plus stickiness bring them
   back together at the next exchange.
 
-### 5f. Keep-apart (`PathNodePlanner._keep_apart`)
+### 5f. Keep-apart (`SideCoordinator._keep_apart`)
 
 The deal keeps drones on *different work*, not physically apart, so a second filter drops photos
 that are too close to another drone. Dropped photos stay work for later.
@@ -501,12 +501,14 @@ that are too close to another drone. Dropped photos stay work for later.
 | Concept | File : function |
 |---|---|
 | Group enum, tunables, `PlannerConfig` | `flight/pathfinding/pathnode/config.py` : `Group`, `PlannerConfig`, `MISS_CENTRE`, `MISS_BLOCK` |
-| Building the five groups, rings, keys, cache | `pathnode/work.py` : `Work.groups`, `Work.band`, `Work.needed_squares` |
-| Photos along a path, tiles, misses | `pathnode/coverage.py` : `places_along`, `tile`, `tile_offset`, `count_misses` |
+| Building the five groups, rings, cache | `pathnode/work.py` : `Work.groups`, `Work.band`, `Work.needed_squares` |
+| One producer of work per group, keys | `pathnode/work_sources.py` : `WorkSource`, `PathSource`, `ShortcutSource`, `RingSource` |
+| Photos along a path, tiles | `pathnode/placement.py` : `PhotoPlacement.places_along`, `tile`, `tile_offset`, `CorridorPlacement`, `BandPlacement` |
+| Photographed state, misses | `pathnode/coverage.py` : `Coverage.record`, `count_misses` |
 | Route: forward gap, pending detour | `pathnode/chain.py` : `Chain`; `config.py` : `LinkKind` |
 | Shortcut trials | `pathnode/shortcuts.py` : `Shortcuts`, `Trial` |
 | Claiming, stickiness, queues | `pathnode/claims.py` : `ClaimBook.update`, `_inherit`, `_queue` |
-| Idle takeover, keep-apart, make-way | `pathnode/planner.py` : `PathNodePlanner.plan`, `_keep_apart`, `_make_way` |
+| Idle takeover, keep-apart, make-way | `pathnode/coordination.py` : `SideCoordinator.plan`, `_take_over`, `_keep_apart`, `_make_way` (called by `PathNodePlanner.plan`) |
 | Per-drone copy, events in | `pathnode/session.py` : `SideSession.assignments`, `own_photo`, `mate_photo` |
 | Announcements, mate lost, inbox | `flight/pathfinding/side_agent.py` : `SideAgent.plan`, `_announce_job`, `_check_mate` |
 | SIDE_JOB receive | `state_machine/interdrone.py` : `MessageType.SIDE_JOB` -> `drone.mate_job` |

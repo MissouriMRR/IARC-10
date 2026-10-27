@@ -1,0 +1,372 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         71      71       0      0     329s    2273s
+nodefield    24      24       0      0      77s     268s
+cellfield     1       1       0      0      68s      68s
+sweep        90       0      90      0     330s    3728s
+pytest        1       1       0      0     174s     174s
+lint          1       1       0      0      14s      14s
+TOTAL       188                            332s
+
+FAILURES (90):
+--- sweep a-0: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-1: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-2: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-3: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-4: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-5: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-6: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-7: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-8: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-9: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-10: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-11: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-12: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-13: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep a-14: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-15: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-16: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-17: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-18: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-19: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-20: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-21: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-22: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-23: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-24: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-25: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-26: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-27: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-28: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep b-29: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-0: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-1: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-2: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-3: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-4: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-5: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-6: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-7: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-8: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-9: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-10: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-11: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-12: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-13: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep c-14: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-100: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-101: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-102: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-103: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-104: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-105: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-106: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-107: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-108: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-109: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-110: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-111: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-112: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-113: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep d-114: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-115: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-116: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-117: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-118: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-119: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-120: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-121: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-122: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-123: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-124: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-125: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-126: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-127: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-128: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep e-129: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-200: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-201: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-202: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-203: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-204: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-205: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-206: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-207: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-208: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-209: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-210: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-211: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-212: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-213: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+--- sweep f-214: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+    ValueError: too many values to unpack (expected 2)
+lint: 54 warnings
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\fin7\verify_logs\20261026-165051

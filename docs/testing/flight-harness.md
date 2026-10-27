@@ -14,8 +14,13 @@ Real:
 - the camera geometry (`vision/Cameras/baseCamera.py`: footprint, mount offset, ray casting).
 
 Faked:
-- `dronekit` vehicle: `MockVehicle` TELEPORTS on `simple_goto`/`simple_takeoff`; every wait loop
-  ends on its first check. No flight dynamics, no battery, no wind.
+- `dronekit` vehicle: `MockVehicle` takes its position from a motion model
+  (`integration_tests/vehicle_motion.py`): `CruiseMotion` (multi-drone default: a straight line at
+  `MOTION_SPEEDUP` = 2 x the commanded groundspeed, over real time, so other drones see it in
+  transit) or `TeleportMotion` (one-drone test; `teleport` on the multi command line: legs take
+  no time). No flight dynamics beyond that, no battery, no wind. The speedup keeps a run inside
+  the 300 s timeout; it also scales the age error of position reports (5 Hz at 4 m/s = 0.8 m),
+  so do not raise it much (at 5 about half the dense runs aborted on report age alone).
 - camera capture: `MockCamera` checks the ground-truth minefield against the real footprint.
 - network: `_MessageRouter` (an `asyncio.Queue` per drone) replaces sockets. `Interdrone` is built
   without its normal `__init__` (which would start a socket thread).
@@ -60,7 +65,7 @@ PYTHONPATH=$PWD .venv/bin/python -m integration_tests.multi_drone_sim_test 4 den
 - Default field: one column of 7 mines up the middle (every 40 ft). "dense": 60 random mines
   (`generate_true_minefield(60, 3)`) which gives the planner real detours to hand out. Run both;
   the default is quick, dense is the harder one.
-- Exit code 0 on PASS, 1 on FAIL. Per drone timeout: 300 s of wall clock. Not deterministic: drones share one asyncio loop, so timing (and sometimes the result) varies between runs.
+- Exit code 0 on PASS, 1 on FAIL. Per drone timeout: 300 s of wall clock. Extra words: `teleport`, `speedup=N`, `abort=ID@SEC`. Not deterministic: drones share one asyncio loop, so timing (and sometimes the result) varies between runs.
 - Time (measured): default (2+3+4 drones) about 1 minute; `dense` (2+3+4) about 6 minutes, more if a
   drone hits its 300 s timeout; one-drone about 13 s. Whole step: ~8 min when everything passes.
 
@@ -118,23 +123,37 @@ The report line tells you where to look:
 Then re-run just the failing configuration (`... 3 dense`) and read the traceback lines above
 the report. The planner sim (`repro_cases.py`, `sweep.py`) is quicker for planner-only bugs.
 
-## Known problem (2026-09-28): `4 dense` fails
+## Known problems (2026-10-26)
 
-On the working tree of 2026-09-28 (uncommitted flight-code edits in progress), everything passes
-EXCEPT `multi_drone_sim_test 4 dense`, which failed on all three runs, each time differently:
+Root causes found and fixed (each has a regression test):
 
-| Run | What happened |
-|---|---|
-| snapshot run | drone 1 `reported : 4 points -- does not span the field: ends at y=0.00 and y=43.90`; drones 2 and 4 still in `EndRun` after the 300 s timeout; `final mine sets agree : False` |
-| live tree, run 1 | all four reached Land but `final mine sets agree : False` (drone 2 knew 23 mines, the others 24; drone 4 took only 6 photos) |
-| live tree, run 2 | `reported : 0 points -- no route reported`; drones knew 5, 7, 15 and 2 of 60 mines; `agree : False` |
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `4`: `mines found : 13 / 7 true`, mine sets disagree, 200 s+ | The fake camera boxed every detection at the image centre, so each drone put the same mine at the middle of its own photo: up to 4 spots per mine | `TruthCamera` (one_drone_sim_test.py) boxes the mine where it lies and locates it exactly; `tests/test_truth_camera.py` |
+| A drone with 12,000+ captures, others waiting in `EndRun` | Standoff: `_make_way` re-picked its spare spot from the nearest ring point of the nearest job, so two jobs made it flip between two spots; Scan re-photographed them 200 times a second and the traffic backed up every inbox | `coordination.py`: a drone already on a spare spot stays put (`_is_spare`); `test_pathnode.py` |
+| `held 15 s short of waypoint` then `Land` | The planner dropped photos near a peer but not the *leg* to a photo that passes an idle peer; the flight code holds such a leg until the peer moves | `coordination.py`: `_flyable` drops photos whose leg closes in on a peer, `_blocked_legs` makes an idle drone step out of a side-mate's or other side's announced leg; `test_pathnode.py` |
+| `2 dense`: mine sets differ by one mine | One-sided `EndRun` left as soon as its own copy was done, before the mate's last photo arrived | `end_run_impl._settle_with_mate`, `SideAgent.mate_busy` counts a mate that has announced nothing as busy; `tests/test_end_run_settle.py` |
+| A late-starting drone plans onto its mate | Until the mate's first POSITION_REPORT the planner assumes it is at the side's start point | `SideAgent.plan` waits while `PeerPositions.mate_unseen()` |
 
-It looks like a race: drones reach Land (or a drone leaves EndRun) before the last mine relays
-and the route hand-over have arrived. The result changes from run to run because the drones
-share one asyncio loop with wall-clock waits, so the harness is not deterministic (the planner
-sim is). Default field (2, 3, 4 drones), `2 dense`, `3 dense` and one-drone passed.
-Treat `4 dense` as a real, currently open failure, not a harness quirk, until someone fixes
-it; re-check whether this note is still true before relying on it.
+Round 2 (moving fake vehicle; the teleport race is gone, replaced by real crossings it exposed):
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `separation ... fell to 1.1m` at ~8 s, both drones of a side | Both copies start with the same best job and each flies it (the claim is only heard after the first plan); also a "no job" sent before the first plan told the mate it was idle | `Heartbeats` announce nothing before the first plan; `SideAgent.plan`: the higher id waits for the lower mate's first announcement |
+| Breach mid-run, side-mates | The planner kept a higher drone off the lower drone's position and next photo only; its leg could cross the lower drone's route a photo later | `coordination._keep_apart`: lanes (position + next 3 photos) of lower drones; `_flyable` rejects legs closing in on a lane; `tests/test_lanes.py` |
+| Breach, legs started at the same moment, or onto a drone flying a long leg | A queued leg is flown without replanning; the hold only looked at peers' positions | Leg claims: position reports carry the leg end + Lamport clock (`Drone.claim_leg`, `conflictsForLeg(my_claim=)`); the later claim waits, only the spot a waiting drone stands on blocks; a claimed leg held HOLD_REPLAN_S (2 s) is dropped (`LegBlocked`, Scan replans); `tests/test_leg_claims.py` |
+| Other drones in `EndRun` for 300 s after one aborted | Nothing told them the drone was gone (silence rule: 120 s + budget) | `Land`/Scan failsafe send MISSION_END (3x); `DroneState.mission_over`; `MateWatch` (landed = lost+gone), `Departures` (`partner_gone`, `reporter_gone`); EndRun stops waiting; `tests/test_landing_notice.py` |
+
+Fault injection: `abort=ID@SECONDS` on the multi command line latches an abort in that drone (real
+path: FormationLost -> Land). The survivors finish alone (150-180 s); the PASS line then fails (mine
+sets / route), which is expected. "Partner side gone" calls `SideAgent.partner_lost()` ->
+`MissionPlanner.partner_lost()` (design Q8); EndRun then returns CalcScanPath while work is left,
+else reports its own half (`reported_half_route`).
+
+Still open: occasional breaches at 0.8-1.1 m when the shared event loop stalls (a CPU-bound plan
+holds every drone's report for 0.3 s: not possible with one CPU per drone); see the pass counts in
+the round-2 report. The "all four in EndRun at 300 s" runs were not reproduced after the landing
+notice; the only 300 s hangs seen were a drone waiting on an aborted reporter.
 
 ## one_drone_sim_test.py
 

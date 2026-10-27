@@ -44,6 +44,12 @@ WAIT_FOR_USER_INPUT: bool = os.environ.get("WAIT_FOR_USER_INPUT", "0") not in (
     "",
 )
 
+# After claiming a leg: how long to wait for the claims of drones that chose a leg at the same
+# moment, before checking this one (must exceed a report's trip over the link).
+LEG_CLAIM_SETTLE_S: float = 0.1
+# A claimed (mapping) leg held this long is dropped and replanned (LegBlocked), rather than
+# waited on until HOLD_ABORT_S: the drone in the way may be waiting for this one.
+HOLD_REPLAN_S: float = 2.0
 HOLD_POLL_INTERVAL_S: float = 0.1  # how often a held drone re-checks the leg
 HOLD_HEARTBEAT_S: float = 5.0  # how often a continuing hold is logged
 
@@ -110,6 +116,11 @@ class FormationLost(RuntimeError):
     FlightInterrupted and LegStalled, this vehicle is fine — the swarm isn't.
     Callers should land.
     """
+
+
+class LegBlocked(Exception):
+    """A mapping leg stayed blocked by another drone for HOLD_REPLAN_S: the caller drops it and
+    plans again (the planner knows where the others are now; it did not when it chose the leg)."""
 
 
 class LegConflict(NamedTuple):
@@ -324,6 +335,11 @@ class Drone:
         # The mapping mission's POSITION_REPORT stream (started by Takeoff, cancelled on
         # landing): peers need it for collision avoidance, the side-mate for its claims.
         self.position_stream = None
+        # Leg claims (mapping mission; claim_leg): where the leg this drone is flying, or
+        # waiting to fly, ends, and the clock that orders it against the other drones' claims.
+        self.leg_to: tuple[float, float] | None = None
+        self.leg_clock: int = 0         # the Lamport clock: the latest claim this drone has heard of
+        self.leg_stamp: int = 0         # the clock of this drone's own current claim
         # Drone 1, two-sided mission: the reported route is only this side's half
         # because the partner's route never arrived or didn't connect.
         self.reported_half_route: bool = False
@@ -672,6 +688,7 @@ class Drone:
         log_reason: str | None = None,
         points_per_lap: int | None = None,
         my_progress: int | None = None,
+        my_claim: tuple[int, int] | None = None,
     ) -> list[LegConflict]:
         """Reasons not to fly the leg about to be flown, one per offending peer.
 
@@ -690,6 +707,10 @@ class Drone:
         advertised path counts as occupied at COLLISION_RADIUS. A peer ahead of
         the window is provably parked by its own barrier, so it is treated as a
         point instead.
+
+        A peer that claims a leg (see claim_leg) is taken to occupy the stretch it will fly. With
+        `my_claim` (this drone's own claim), a peer whose claim is later waits for this leg, not
+        the other way round: only the spot it stands on counts, not the stretch it claimed.
 
         Every live peer is avoided regardless of ID. Peers silent longer than
         PEER_STALE_S are measured and logged but not acted on — holding on a
@@ -723,6 +744,17 @@ class Drone:
                 entry["clearance"] = None
                 considered.append(entry)
                 continue
+
+            if (
+                my_claim is not None
+                and state.leg_to is not None
+                and (state.leg_clock, state.drone_id) > my_claim
+            ):
+                # Its claim is later than ours: it waits for this leg. Waiting means staying
+                # where it is, so only the spot it stands on is in the way, not its claim.
+                entry["yields_to_us"] = True
+                if state.live_position is not None and not state.position_is_stale(PEER_STALE_S):
+                    occupied = (state.live_position, state.live_position)
 
             if in_formation:
                 # The barrier is holding this peer to the same leg we are on, so
@@ -871,6 +903,31 @@ class Drone:
 
         return closest
 
+    def claim_leg(self, target: tuple[float, float]) -> tuple[int, int]:
+        """Claim the leg to `target`: the position reports now carry it, so the other drones
+        keep their legs off the stretch from here to there, or wait for this one.
+
+        - Two drones can claim crossing legs at the same time, before either has heard the
+          other: the claims are ordered by (leg clock, drone id), and the later claim waits.
+        - The leg clock is a Lamport clock: each claim takes the next number after every
+          claim this drone has heard of (observe_leg_clock), so any two claims that have
+          heard of each other are ordered the same way by both.
+        Returns this claim's (clock, id).
+        """
+        self.leg_clock += 1
+        self.leg_stamp = self.leg_clock
+        self.leg_to = target
+        return (self.leg_stamp, self.id)
+
+    def release_leg(self) -> None:
+        """The leg is over (or abandoned): the position reports stop claiming it."""
+        self.leg_to = None
+
+    def observe_leg_clock(self, clock: int) -> None:
+        """A peer's report carried this leg clock: the next claim here is later than it."""
+        if clock > self.leg_clock:
+            self.leg_clock = clock
+
     def commandPoint(
         self,
         lat: float,
@@ -910,6 +967,7 @@ class Drone:
         heartbeat: Callable[[], Awaitable[None]] | None = None,
         points_per_lap: int | None = None,
         altitude_m: float = LEG_ALTITUDE_M,
+        announce: Callable[[], Awaitable[None]] | None = None,
     ):
         """Fly to the next waypoint, holding position first if the leg is not clear.
 
@@ -923,6 +981,11 @@ class Drone:
 
         While holding, `heartbeat` is awaited every few seconds so peers don't
         drop us as stale after PEER_STALE_S.
+
+        announce: claims the leg (claim_leg) and awaits `announce` (the position report that
+        carries the claim) before checking the leg, then waits LEG_CLAIM_SETTLE_S for the
+        claims of drones that chose a leg at the same moment. Without it nothing is claimed
+        (POIF).
 
         A hold outlasting HOLD_ABORT_S raises FormationLost: two in-formation
         drones can't block each other, so a hold that long means a peer has
@@ -950,6 +1013,36 @@ class Drone:
             queued=len(self.waypoints),
         )
 
+        my_claim: tuple[int, int] | None = None
+        if announce is not None:
+            my_claim = self.claim_leg(target)
+            await announce()
+            await asyncio.sleep(LEG_CLAIM_SETTLE_S)
+
+        try:
+            reached = await self._fly_leg(
+                curWaypoint, target, leg_from, peer_states, heartbeat, points_per_lap,
+                my_progress, my_claim, altitude_m,
+            )
+        finally:
+            self.release_leg()
+        if announce is not None:
+            await announce()        # the leg is over: peers need not keep off it
+        return reached
+
+    async def _fly_leg(
+        self,
+        curWaypoint,
+        target: tuple[float, float],
+        leg_from: tuple[float, float],
+        peer_states: list[Any],
+        heartbeat,
+        points_per_lap: int | None,
+        my_progress: int | None,
+        my_claim: tuple[int, int] | None,
+        altitude_m: float,
+    ):
+        """gotoWaypoint after the leg is chosen (and claimed): hold until clear, then fly it."""
         conflicts = self.conflictsForLeg(
             leg_from,
             target,
@@ -957,6 +1050,7 @@ class Drone:
             log_reason="pre_leg",
             points_per_lap=points_per_lap,
             my_progress=my_progress,
+            my_claim=my_claim,
         )
         if conflicts:
             hold_started = time.monotonic()
@@ -988,7 +1082,21 @@ class Drone:
                     log_reason="hold_heartbeat" if heartbeat_due else None,
                     points_per_lap=points_per_lap,
                     my_progress=my_progress,
+                    my_claim=my_claim,
                 )
+
+                if conflicts and my_claim is not None and now - hold_started >= HOLD_REPLAN_S:
+                    flight_log.event(
+                        "hold_replan",
+                        held_for=now - hold_started,
+                        target=flight_log.waypoint_brief(curWaypoint),
+                        conflicts=[c._asdict() for c in conflicts],
+                    )
+                    raise LegBlocked(
+                        f"held {now - hold_started:.1f}s short of waypoint"
+                        f" {curWaypoint.waypoint_id}: "
+                        + "; ".join(_describe_conflict(c) for c in conflicts)
+                    )
 
                 if conflicts and now - hold_started >= HOLD_ABORT_S:
                     flight_log.event(

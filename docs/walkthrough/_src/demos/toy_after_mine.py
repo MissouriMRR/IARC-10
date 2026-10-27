@@ -4,7 +4,7 @@ and is 'idle' (it has announced no job)."""
 import sys
 sys.path.insert(0, ".")
 from flight.pathfinding.pathnode.planner import PathNodePlanner
-from flight.pathfinding.pathnode.session import SideSession
+from flight.pathfinding.pathnode.session import PathNodeBackend
 from flight.pathfinding.pathnode.config import Edge, PlannerConfig, GROUPS
 
 ALONG, ACROSS = 8.52, 6.44
@@ -17,7 +17,7 @@ def footprint(x, y):
 
 P = PathNodePlanner(20.0, 60.0, 10.0, Edge.BOTTOM, drones=(1, 2),
                     config=PlannerConfig(shape_size_ft=(ALONG, ACROSS), overlap=0.1))
-S = SideSession(P)                        # drone 1's copy
+S = PathNodeBackend.from_planner(P)  # drone 1's copy
 pos = {1: (10.0, 0.0), 2: (19.5, 0.0)}
 mate_idle = {2: None}                     # drone 2 announced "no job"
 

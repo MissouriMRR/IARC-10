@@ -11,19 +11,16 @@ Ring squares whose centres are inside a known obstacle are skipped. Each group i
 (key, sequence): the photos along one path in flying order, keyed by the path, or one
 free-standing photo (key None). claims.py decides which drone takes which.
 
-Keys name a path by its geometry, not by an object id, so every drone's copy of the side's
-planner gives the same path the same key -- that is how one drone can honour the job
-another drone announced (claims.py):
-  "forward"                  the forward gap
-  ("span", end)              a pending span, by its far end node (its start moves as it
-                             is checked; its end doesn't)
-  ("shortcut", a, b)         a shortcut trial, by its two anchors
+Each group is filled by a WorkSource (work_sources.py), which also documents the keys. Work is
+the ordered list of sources plus the ring-band geometry and the caching; it adds no work of its
+own.
 
 Everything here is cached on Work.state_key -- the coverage, the obstacles, the chain and the
 shortcut trials -- since the drones ask after every photo and most photos change little.
 """
 
-from flight.pathfinding.pathnode.config import TIER_GROUP, Group, LinkKind, Tier
+from flight.pathfinding.pathnode.config import Group, Tier
+from flight.pathfinding.pathnode.work_sources import PathSource, RingSource, ShortcutSource
 
 
 def _copy(groups):
@@ -36,6 +33,14 @@ class Work:
             chain, routes, coverage, shortcuts, config)
         self._groups = None         # (state key, groups)
         self._bands = {}            # (inner, outer) -> (state key, squares)
+        # Register every kind of work here; groups() lists the sources' jobs by Group. Sources
+        # run in this order, and a later plan for the same photo point overwrites an earlier one
+        # (Coverage.plan_aim), so the order is behaviour.
+        self.sources = (
+            [PathSource(chain, coverage),
+             RingSource(Group.ADJACENT, self.adjacent, chain, coverage),
+             RingSource(Group.OUTER, self.outer, chain, coverage)]
+            + [ShortcutSource(tier, shortcuts, coverage) for tier in Tier])
 
     def state_key(self):
         """Everything the work depends on. Equal keys, equal work."""
@@ -47,7 +52,7 @@ class Work:
         """Every square the checked route touches."""
         cells = set()
         for k in self.chain.links:
-            if k.kind == LinkKind.CHECKED:
+            if k.is_checked:
                 cells.update(self.coverage.touched(k.poly))
         return cells
 
@@ -79,45 +84,22 @@ class Work:
     def outer(self):
         return self.band(max(self.config.adjacent_ring, 0), self.config.outer_ring or 0)
 
+    # -- what's wanted ---------------------------------------------------------------------
     def needed_squares(self):
-        """Every unphotographed square some group still wants."""
+        """Every unphotographed square some source still wants."""
         need = set()
-        for k in self.chain.unchecked():
-            need |= self.coverage.need(k.poly)
-        for tr in self.shortcuts.trials.values():
-            if tr is not None:
-                need |= self.coverage.need(tr.poly)
-        need |= self.adjacent() | self.outer()
+        for source in self.sources:
+            need |= source.needs()
         return self.coverage.unseen(need)
 
-    # -- the groups ------------------------------------------------------------------------
     def groups(self):
         """The photos still to take, one list per Group (see the module doc)."""
         key = self.state_key()
         if self._groups is not None and self._groups[0] == key:
             return _copy(self._groups[1])
-        cov = self.coverage
         out = {g: [] for g in Group}
-        # One sequence per unchecked link, photographed from its start.
-        chain = self.chain
-        out[Group.PATH] = [
-            ("forward" if k.kind == LinkKind.FORWARD else ("span", chain.nodes[i + 1].xy),
-             cov.places_along(k.poly))
-            for i, k in enumerate(chain.links) if k.kind in (LinkKind.PENDING, LinkKind.FORWARD)]
-        # Free-standing ring photos, nearest the entry edge first.
-        y0 = self.chain.nodes[0].y
-
-        def tiles(need):
-            return ([(None, [p]) for p in cov.tile(need, lambda p: (abs(p[1] - y0), p[0]))]
-                    if need else [])
-
-        out[Group.ADJACENT] = tiles(self.adjacent())
-        out[Group.OUTER] = tiles(self.outer())
-        for tier in Tier:
-            tr = self.shortcuts.trials[tier]
-            if tr is not None:
-                out[TIER_GROUP[tier]] = [(("shortcut", tr.a.xy, tr.b.xy),
-                                          cov.places_along(tr.poly))]
+        for source in self.sources:
+            out[source.group].extend(source.entries())
         groups = [out[g] for g in Group]
         self._groups = (key, _copy(groups))
         return groups

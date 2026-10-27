@@ -102,7 +102,13 @@ Order matters: **the other side's mines come first**, so no path node is laid ov
 
 This is the heart. In order: `advance` -> `groups` -> `claims.update` -> keep-apart -> takeover -> job announcement.
 
-{{snip: flight/pathfinding/pathnode/planner.py :: self.advance()      # anything already checked => return self.last_plan}}
+`PathNodePlanner.plan` does the first two itself and hands the rest to its `SideCoordinator` (`coordination.py`), which owns the ClaimBook and the keep-apart / make-way / takeover policy:
+
+{{snip: flight/pathfinding/pathnode/planner.py :: self.advance()      # anything already checked => return self.coordinator.plan(}}
+
+and `SideCoordinator.plan` is steps 3-6:
+
+{{snip: flight/pathfinding/pathnode/coordination.py :: plan = self.claims.update( => return self.last_plan}}
 
 ### Step 1: advance() (nothing photographed yet)
 
@@ -115,7 +121,7 @@ This is the heart. In order: `advance` -> `groups` -> `claims.update` -> keep-ap
 - `good == 0`: nothing at the start is checked yet, so nothing changes. That is the case now.
 - Some prefix checked: the link is **split** into a new CHECKED head (with new path nodes laid along it) and the unchecked tail, which stays the same `Link` object.
 - Everything checked: `convert_checked` turns the whole link into CHECKED links.
-- `Never close the gap against a stand-in target`: `advance` only closes the forward gap when the target is the partner's real point A (`target.is_partner`) or there is no partner (chapter 9).
+- `Never close the gap against a stand-in target`: `advance` only closes the forward gap when the target is the partner's real point A (`target.may_close()`) or there is no partner (chapter 9).
 - Finally `shortcuts.update(met)` (chapter 8). On the first pass there are no candidates.
 
 So on the first pass `advance()` does nothing and the chain is still `entry --forward-- target`.
@@ -126,18 +132,22 @@ So on the first pass `advance()` does nothing and the chain is still `entry --fo
 
 Read this as five lists, one per priority group:
 
-- **PATH** (group 0): for every *unchecked* link (the forward gap, and every pending span), `cov.places_along(k.poly)`: the ordered list of photo spots that would check it. The key names the path: `"forward"` or `("span", end_node_xy)`.
-- **ADJACENT / OUTER**: free-standing photo spots for squares 1 ring (then 2 rings) out from the *checked* route. Empty now: no checked route yet.
-- **BIG_SHORTCUT / SHORTCUT**: the shortcut being tried (chapter 8). Empty now.
+`Work` is an ordered list of **work sources** (`work_sources.py`, abstract `WorkSource` with `group`, `entries()`, `needs()`); each fills one group:
+
+- **PATH** (group 0), `PathSource`: for every *unchecked* link (the forward gap, and every pending span), `coverage.places_along(k.poly)`: the ordered list of photo spots that would check it. The key names the path: `"forward"` or `("span", end_node_xy)`.
+- **ADJACENT / OUTER**, `RingSource`: free-standing photo spots for squares 1 ring (then 2 rings) out from the *checked* route. Empty now: no checked route yet.
+- **BIG_SHORTCUT / SHORTCUT**, `ShortcutSource` (one per tier): the shortcut being tried (chapter 8). Empty now.
 - The result is cached on `state_key()` = (coverage version, obstacles version, chain signature, shortcut signature), so a pass that changed nothing is nearly free. `_copy` returns copies so callers can't mutate the cache.
 
-**How photo spots are placed** (`Coverage.places_along`):
+**How photo spots are placed** (`Coverage.places_along` delegates to its `PhotoPlacement`, `placement.py`; `PlannerConfig.coverage` picks `CorridorPlacement` or `BandPlacement`):
 
-{{snip: flight/pathfinding/pathnode/coverage.py :: def touched(self, poly): => return cells :: def need(self, poly): => return out :: def places_along(self, poly): => return sorted(placed, key=key)}}
+{{snip: flight/pathfinding/pathnode/coverage.py :: def touched(self, poly): => return cells}}
+
+{{snip: flight/pathfinding/pathnode/placement.py :: def places_along(self, poly, plan=True): => return self._place(poly, need, plan) :: class CorridorPlacement => return self.cov.touched(poly) :: def _place(self, poly, need, plan): => return sorted(placed, key=key)}}
 
 - The map is a grid of **2 ft squares** (`CELL`). `touched(poly)` is every square the polyline passes through (traced both directions, to be deterministic).
-- `need(poly)` is what must be photographed for the stretch to count as checked. In the default `CORRIDOR` mode this is just the touched squares.
-- `places_along`: take the still-unseen needed squares, let `path_cover_unseen` (`path_cover.py`) return photo centres whose footprints cover the unseen stretches, keep only centres that add something, then give any square still uncovered (or one a previous photo **missed**, chapter 4) a photo centred on it. The result is sorted by arc length along the path, so it is in **walking order from the path's start**.
+- `need(poly)` (the placement's) is what must be photographed for the stretch to count as checked. In the default `CORRIDOR` mode (`CorridorPlacement`) this is just the touched squares.
+- `places_along` (shared by all placements) keeps the still-unseen needed squares and asks the placement's `_place`. `CorridorPlacement._place` lets `path_cover_unseen` (`path_cover.py`) return photo centres whose footprints cover the unseen stretches, keep only centres that add something, then give any square still uncovered (or one a previous photo **missed**, chapter 4) a photo centred on it. The result is sorted by arc length along the path, so it is in **walking order from the path's start**.
 - A photo only counts a square as covered if the square is **entirely** inside the footprint (`footprint_cells`).
 
 In the toy run below (a 20 ft x 60 ft field, one side of two drones) the forward gap is one straight line and yields 11 photo spots about 5.8 ft apart.
@@ -185,13 +195,15 @@ In the toy run, **pass 1**: drone 1 is at (10, 0), drone 2 at (19.5, 0). The onl
 
 Claims keep the two side-mates on **different work**, not physically apart. `_keep_apart` drops photos that would put two drones too close:
 
-{{snip: flight/pathfinding/pathnode/planner.py :: def _keep_apart => return out}}
+{{snip: flight/pathfinding/pathnode/coordination.py :: def _keep_apart => return out}}
 
 - `gap = keep_away_ft = 10 ft`, `clear = keep_clear_ft = 7.5 ft` (both `PlannerConfig` fields, chosen to stay above the flight code's hold radius `COLLISION_RADIUS` = 2.01 m = 6.6 ft: a photo nearer than that to a peer would make `gotoWaypoint` hold, and abort after 15 s, chapter 4). Ties go to the **lower id**, so two drones can never block each other.
 - A **higher-id** drone skips photos within 10 ft of a lower drone's position and of its next photo (only within 7.5 ft if that lower drone is idle).
 - A **lower-id** drone skips only photos within 7.5 ft of a higher drone's position.
 - `others` (the *other side's* drones, from fresh `POSITION_REPORT`s) are handled the same way: a lower-id other-side drone counts like a lower side-mate, using its announced job (`other_held`) as its "next photo". This is the cross-side keep-apart: drones 1 and 2 keep clear of 3 and 4 by the same rule.
 - Dropped photos stay work for later; they are only missing from *this pass's queue*.
+- **Legs, not just photos** (`_flyable`): a photo is also dropped if the leg to it from the drone's previous photo (the first leg: its position) closes in to within 7.5 ft of another drone's *position*. The flight code holds such a leg until the peer moves, and an idle peer never does (the hold aborts after 15 s). A leg that only leaves a peer the drone is already that near is fine.
+- **Making way** (`_make_way`): an idle drone also moves off when it stands within 7.5 ft of the leg to a side-mate's first photo that was dropped for that reason (`_blocked_legs`), and a drone already on a spare spot (`_is_spare`) stays put: hopping to the nearest ring point of whichever job is nearest could flip-flop between two spots, and Scan re-photographed the current position hundreds of times a second.
 
 ### Step 5: idle takeover
 
@@ -209,7 +221,7 @@ Note: the two copies' queues overlap in steady state by design of the takeover r
 
 When a drone has nothing it may fly because of keep-apart, `_make_way` moves it aside instead of letting it hover in a standoff:
 
-{{snip: flight/pathfinding/pathnode/planner.py :: def _make_way => self.last_plan[me] = [(x, y, len(GROUPS) - 1)] +1}}
+{{snip: flight/pathfinding/pathnode/coordination.py :: def _make_way => self.last_plan[me] = [(spot[0], spot[1], len(GROUPS) - 1)]}}
 
 - It fires only when `me` has an empty queue after keep-apart. The "who gives way" rules are in the docstring; the first is now: the higher-id drone yields when a **lower-id drone's announced job** (its next photo) is within `keep_away_ft` of it, not only its next photo as before. Announced jobs of the other side's drones count too (`held` includes them).
 - The chosen spot is on ground where no photo is needed, clear of the job and other drones, at radius `max(keep_away, keep_clear) + 0.5` plus 1, 4 or 8 ft around the job. It is queued in the *last* group (`len(GROUPS) - 1`) so it is never mistaken for a job.

@@ -1,0 +1,12 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         69      68       1      0     588s    5043s
+TOTAL        69                            588s
+
+FAILURES (1):
+--- unit test_never_loads_the_old_planner: exit 1
+    Traceback (most recent call last):
+      File "<string>", line 3, in <module>
+      File "C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\final0\flight\pathfinding\pathnode\test_pathnode.py", line 535, in test_never_loads_the_old_planner
+        assert not loaded, loaded
+    AssertionError: ['flight.pathfinding.nodeField', 'flight.pathfinding.nodeField.BlockMine', 'flight.pathfinding.nodeField.field', 'flight.pathfinding.nodeField.node', 'flight.pathfinding.nodeField.polygonObstacle', 'flight.pathfinding.nodeField.unionObstacle']
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\final0\verify_logs\20261013-155602

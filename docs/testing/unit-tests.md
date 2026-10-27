@@ -113,6 +113,56 @@ What it checks:
 Run it whenever you change `flight/pathfinding/nodeField/`, `protoMine.py`, or
 `pathnode/geometry.py`.
 
+## Expanding mines: flight/pathfinding/pathnode/test_levels.py
+
+Levels, snapshots and the lockstep rule (`flight/pathfinding/levels.py`, `pathnode/level_control.py`,
+`pathnode/sim_levels.py`): snapshot immutability and validity, `buffer_width`, the `LevelGate` truth
+table, planner growth / rollback / recovery on both engines, the lost-partner target, and 1-, 2-
+and 4-drone simulated missions (with message loss, out of time, partner lost). About 3 minutes.
+The backend level API is also in `test_search_backend`.
+
+```
+PYTHONPATH=$PWD python -m flight.pathfinding.pathnode.test_levels
+python tools/testing/sweep.py --levels --engine field --max-levels 3 --mines 90 --seeds 0 6
+```
+
+Run it whenever you change those files, `Routes.set_level`, `mine_rule.apply_growth`, or `target.py`.
+
+## Coverage and misses: flight/pathfinding/pathnode/test_coverage.py
+
+Photo coverage and miss handling (`coverage.py`, with the placement in `placement.py`): a miss is
+charged to the squares a photo was planned for, a photo nowhere near its plan counts nothing,
+rotated footprints finish, climb retries count as one attempt. Run as a script or under pytest:
+
+```
+PYTHONPATH=$PWD python -m flight.pathfinding.pathnode.test_coverage
+```
+
+New `PhotoPlacement` subclass: run this and `test_pathnode`; see
+[docs/architecture.md](../architecture.md) for the recipe.
+
+## Path engines: flight/pathfinding/pathnode/test_path_engine.py
+
+Conformance suite for the `PathEngine` contract (`pathnode/engines/base.py`), run against every
+entry of `ENGINES` (`zonemap`, `field`). It checks the contract, not equality between engines:
+straight line on an empty field, exact path ends, `gids` shape, paths do not `cross`, endpoint
+inside an obstacle or walled-off target gives `None`, `add_square`, group merging via `resolve`,
+`corners()` not contained, paths never shorten when an obstacle is added, determinism, `last_added`.
+Plus a smoke test that a planner built with `engine="field"` plans a pass. About 20 s.
+
+```
+PYTHONPATH=$PWD python -m flight.pathfinding.pathnode.test_path_engine
+```
+
+### Adding a new path engine
+
+1. Subclass `PathEngine` (`pathnode/engines/base.py`) and implement every abstract method; its
+   module docstring says what each must do.
+2. Register it in `ENGINES` in `pathnode/engines/__init__.py` (`"myengine": MyEngine`).
+3. Run `test_path_engine`. A genuine gap goes in `KNOWN_GAPS` with a message, never a weaker check.
+4. Select it with `PlannerConfig(engine="myengine")` (the default stays `"zonemap"`) and run the
+   sweep and `golden_compare.py` to see what it changes.
+
 ## CellField: flight/pathfinding/tests/cellFieldTest.py
 
 Checks `CellField`, the bit-packed grid (one bit per cell in one Python int): get/set, vertical

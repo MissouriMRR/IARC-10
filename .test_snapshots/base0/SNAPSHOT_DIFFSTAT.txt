@@ -1,0 +1,18 @@
+ .test_snapshots/verify_durations.json            | 354 ++++++++++++-----------
+ docs/testing/README.md                           |  16 +-
+ docs/testing/tools.md                            |  86 ++++++
+ flight/pathfinding/mission_planner.py            |  13 +-
+ flight/pathfinding/pathnode/__init__.py          |   4 +-
+ flight/pathfinding/pathnode/claims.py            |  12 +-
+ flight/pathfinding/pathnode/coverage.py          |  85 ++++--
+ flight/pathfinding/pathnode/minefield.py         |   6 +-
+ flight/pathfinding/pathnode/planner.py           | 100 +++++--
+ flight/pathfinding/pathnode/session.py           |   4 +-
+ flight/pathfinding/pathnode/sim.py               |  24 +-
+ flight/pathfinding/pathnode/test_pathnode.py     |  70 +++++
+ flight/pathfinding/side_agent.py                 |  62 +++-
+ state_machine/states/impl/calc_scan_path_impl.py |   3 +-
+ state_machine/states/impl/scan_impl.py           |  32 +-
+ tests/test_emergency_land.py                     |   1 +
+ tools/testing/verify.py                          | 149 ++++++++--
+ 17 files changed, 741 insertions(+), 280 deletions(-)

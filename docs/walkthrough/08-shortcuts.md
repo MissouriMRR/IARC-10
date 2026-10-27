@@ -4,7 +4,7 @@
 
 **What this chapter covers.** A route built by the mine rule is often longer than it needs to be: when a mine is found, the route detours around it, and later discoveries can make an earlier detour unnecessary or leave a zig-zag. `pathnode/shortcuts.py` looks for **checked sections of the chain that a shorter path could replace**, tests them by photographing the shorter path, and splices it in.
 
-> **Status.** The path lengths come from `Routes.shortest`, whose geometry (`ZoneMap`) is due to be replaced (chapter 2); the interface stays the same.
+> **Status.** The path lengths come from `Routes.shortest`, whose geometry is a `PathEngine` (`ZoneMap` by default, chapter 2).
 
 ## 8.1 The idea, from the module docstring
 
@@ -226,19 +226,31 @@ The splice itself is `Chain.replace(i, j, poly, Placer.SHORTCUT)` (chain.py): it
 
 ## 8.5 How a trial gets its photos
 
-`Work.groups()` (chapter 3) adds each tier's trial as one more sequence:
+`Work.groups()` (chapter 3) asks one `ShortcutSource` per tier (`work_sources.py`) for its work; each adds that tier's trial as one more sequence:
 
 ```python
-# flight/pathfinding/pathnode/work.py:116-120
-        for tier in Tier:
-            tr = self.shortcuts.trials[tier]
-            if tr is not None:
-                out[TIER_GROUP[tier]] = [(("shortcut", tr.a.xy, tr.b.xy),
-                                          cov.places_along(tr.poly))]
+# flight/pathfinding/pathnode/work_sources.py:61-77
+class ShortcutSource(WorkSource):
+    """The shortcut being tried at one Tier (none: no work)."""
+
+    def __init__(self, tier, shortcuts, coverage):
+        self.tier, self.shortcuts, self.coverage = tier, shortcuts, coverage
+        self.group = TIER_GROUP[tier]
+
+    def entries(self):
+        """Key: ("shortcut", a, b) by the trial's two anchors."""
+        tr = self.shortcuts.trials[self.tier]
+        if tr is None:
+            return []
+        return [(("shortcut", tr.a.xy, tr.b.xy), self.coverage.places_along(tr.poly))]
+
+    def needs(self):
+        tr = self.shortcuts.trials[self.tier]
+        return set() if tr is None else set(self.coverage.need(tr.poly))
 ```
 
 - key `("shortcut", a_xy, b_xy)`: named by its **anchor geometry**, so every drone's copy names the same trial the same way (the ClaimBook uses keys to honour a mate's announced job).
-- The photos are `places_along(tr.poly)`, in walking order from anchor `a`.
+- The photos are `coverage.places_along(tr.poly)`, in walking order from anchor `a`.
 - **Priority.** The BIG trial is group 1 (just below PATH, **above** the ADJACENT rings, "so squares beside a section about to be replaced aren't photographed for nothing"); the ordinary trial is group 3 (below ADJACENT). A drone flies everything it holds in a higher group first.
 
 ## 8.6 Real runs
@@ -246,40 +258,34 @@ The splice itself is `Chain.replace(i, j, poly, Placer.SHORTCUT)` (chain.py): it
 **Instant shortcuts.** A 14-mine, 2-drone toy mission, printing the shortcut events drone 1's planner logged:
 
 ```text
-failure: None | stats: {'jumps': 2, 'nodes_in_mine': 8, 'bridges': 3, 'shortcuts': 2, 'instant_shortcuts': 2}
-shortcut: tier=ordinary anchors (20.0, 0.0) -> (18.0, 49.9)  section 61.6 ft replaced by 49.9 ft
-shortcut: tier=ordinary anchors (18.0, 60.1) -> (24.1, 84.0)  section 36.0 ft replaced by 24.8 ft
+failure: None | stats: {'jumps': 2, 'nodes_in_mine': 7, 'bridges': 3, 'replans': 1, 'shortcuts': 4, 'instant_shortcuts': 3, 'shortcuts_given_up': 1}
+shortcut: tier=ordinary anchors (20.0, 0.0) -> (20.0, 49.9)  section 59.9 ft replaced by 49.9 ft
+shortcut: tier=ordinary anchors (20.0, 60.1) -> (24.1, 84.0)  section 33.9 ft replaced by 24.3 ft
+shortcut: tier=ordinary anchors (20.0, 0.0) -> (20.0, 60.1)  section 82.5 ft replaced by 68.5 ft
+shortcut: tier=ordinary anchors (7.9, 50.0) -> (19.9, 90.0)  section 48.7 ft replaced by 43.3 ft
 ```
 
-Both were free: the shorter path was already photographed, so `_apply_free` spliced it as soon as `advance()` ran. The first replaced a 61.6 ft section from the entry with a 49.9 ft path.
+Three of the four were free (`instant_shortcuts: 3`): the shorter path was already photographed, so `_apply_free` spliced it as soon as `advance()` ran. The first replaced a 59.9 ft section from the entry with a 49.9 ft path. The fourth went through a trial; one other candidate was given up (`shortcuts_given_up: 1`).
 
 **A trial from start to finish.** A hook on `Shortcuts.update` prints drone 1's trials each time they change:
 
 ```text
 tick  1  trials=[]
-tick  9  trials=[]
-         event: shortcut ordinary (20.0, 0.0) (14.0, 33.9) 40.5 35.4
-tick 12  trials=[('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 6')]
-tick 16  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 73.6 -> 53.3 ft', 'photos 5'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 6')]
-tick 17  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 73.6 -> 53.3 ft', 'photos 4'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 6')]
-tick 18  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 73.6 -> 53.3 ft', 'photos 2'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 6')]
-tick 19  trials=[('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 6')]
-         event: shortcut-demoted (20.0, 0.0) (20.1, 50.0)
-tick 24  trials=[('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 4')]
-tick 25  trials=[('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 3')]
-tick 26  trials=[('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 1')]
-tick 27  trials=[('big', (20.0, 0.0), (22.1, 78.0), 'section 101.9 -> 81.2 ft', 'photos 10'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 1')]
-tick 27  trials=[('big', (20.0, 0.0), (22.1, 78.0), 'section 101.9 -> 81.2 ft', 'photos 9'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 1')]
-tick 28  trials=[('big', (20.0, 0.0), (22.1, 78.0), 'section 101.9 -> 81.2 ft', 'photos 7'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 1')]
-tick 29  trials=[('big', (20.0, 0.0), (22.1, 78.0), 'section 101.9 -> 81.2 ft', 'photos 6'), ('ordinary', (20.0, 0.0), (6.0, 33.9), 'section 43.4 -> 36.9 ft', 'photos 1')]
-tick 30  trials=[('ordinary', (20.0, 0.0), (22.1, 78.0), 'section 95.3 -> 81.2 ft', 'photos 6')]
-         event: shortcut ordinary (20.0, 0.0) (6.0, 33.9) 43.4 36.9
-tick 30  trials=[('ordinary', (20.0, 0.0), (22.1, 78.0), 'section 95.3 -> 81.2 ft', 'photos 4')]
-tick 31  trials=[('ordinary', (20.0, 0.0), (22.1, 78.0), 'section 95.3 -> 81.2 ft', 'photos 3')]
-tick 32  trials=[('ordinary', (20.0, 0.0), (22.1, 78.0), 'section 95.3 -> 81.2 ft', 'photos 1')]
-tick 33  trials=[]
-         event: shortcut ordinary (20.0, 0.0) (22.1, 78.0) 95.3 81.2
-stats: {'jumps': 2, 'nodes_in_mine': 5, 'bridges': 5, 'replans': 1, 'shortcuts': 3, 'instant_shortcuts': 1}
+tick  9  trials=[('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 16  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 53.3 ft', 'photos 5'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 17  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 53.3 ft', 'photos 4'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 18  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 53.3 ft', 'photos 2'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 19  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 57.5 ft', 'photos 6'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 20  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 57.5 ft', 'photos 4'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 21  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 57.5 ft', 'photos 2'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 22  trials=[('big', (20.0, 0.0), (20.1, 50.0), 'section 79.1 -> 57.5 ft', 'photos 1'), ('ordinary', (20.0, 0.0), (14.0, 33.9), 'section 40.8 -> 35.4 ft', 'photos 1')]
+tick 23  trials=[]
+         event: shortcut big (20.0, 0.0) (20.1, 50.0) 79.1 57.5
+tick 35  trials=[('ordinary', (32.1, 38.0), (22.1, 78.0), 'section 46.1 -> 41.4 ft', 'photos 4')]
+tick 39  trials=[('ordinary', (32.1, 38.0), (22.1, 78.0), 'section 46.1 -> 41.4 ft', 'photos 2')]
+tick 40  trials=[]
+         event: shortcut ordinary (32.1, 38.0) (22.1, 78.0) 46.1 41.4
+stats: {'jumps': 2, 'nodes_in_mine': 4, 'bridges': 5, 'replans': 2, 'shortcuts': 2, 'big_shortcuts': 1}
 ```
 
 Read it as a story:

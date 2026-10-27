@@ -1,0 +1,8 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+pytest        1       1       0      0      14s      14s
+lint          1       1       0      0       6s       6s
+TOTAL         2                             14s
+
+ALL PASSED
+lint: 54 warnings
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\be1\verify_logs\20261026-141052

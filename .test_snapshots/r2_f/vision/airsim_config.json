@@ -1,0 +1,22 @@
+{
+  "modelPath": "vision/models/2-16-2026/v11s_2-16.pt",
+  "confThreshold": 0.65,
+  "useVoting": true,
+  "voteThreshold": 0.3,
+  "scanFrames": 10,
+  "minFrameHits": 4,
+  "minAverageConfidence": 0.7,
+  "voteIoU": 0.45,
+  "maxDetections": 3,
+  "printDetections": true,
+  "pathToPics": "./captures",
+  "pathToDetections": "./captures/detections",
+  "pathToMetadata": "./metadata",
+  "airsimIp": "127.0.0.1",
+  "airsimVehicleName": "",
+  "airsimCameraName": "0",
+  "hFovDeg": 90.0,
+  "vFovDeg": 58.72,
+  "cameraOffsetM": [0.0, 0.0, 0.0],
+  "cameraMountRotationDeg": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+}

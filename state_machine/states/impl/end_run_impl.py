@@ -31,6 +31,15 @@ MINE_SYNC_S = 1.0
 JOIN_CONFIRM_S = 3.0
 
 
+async def _in_the_way(self: EndRun, planner) -> bool:
+    """Whether this idle drone must move: planning says to (a spare spot, because it stands on
+    another drone's leg or job). A drone that waits here for the others would otherwise block
+    one that still has work -- both sit in EndRun / CalcScanPath until the budget is gone."""
+    if planner.failure or not planner.done():
+        return False
+    return bool(await self.drone.side.plan())
+
+
 async def _join_with_partner(self: EndRun, planner) -> State | None:
     """
     Two-sided mission: turn the two sides' halves into one report. Drone 1 (the reporter: it
@@ -45,7 +54,7 @@ async def _join_with_partner(self: EndRun, planner) -> State | None:
       the route is verified (whole and checked), even with optional work left -- and leaves
       only on an ack whose mine hash matches its own current one.
     - Other drones: send nothing; wait for that same ack (the reporter sends it to the
-      top side and to its own side-mate).
+      top side and to its own side-mate), or until the reporter has landed.
     - Drone 1: once its own side is done (or time is up), joins a complete partner route
       planned around exactly the mines it knows (matching mine hash). If the halves don't
       connect (both sides met crosswise), the planner re-opens this side toward the
@@ -53,10 +62,15 @@ async def _join_with_partner(self: EndRun, planner) -> State | None:
       valid for JOIN_CONFIRM_S -- a mine arriving meanwhile drops it. If the partner's route
       never arrives or doesn't connect in time, reports its own half and sets
       Drone.reported_half_route.
+    - The other side gone: stops waiting. `side.partner_lost()` is the call site of the planner's
+      "keep going" behaviour (aim at the lost side's last point A, then on to its edge,
+      checking its half); while that leaves work this side returns CalcScanPath, and after it
+      reports its own best route (drone 1: flagged Drone.reported_half_route).
     - Both keep applying relayed mines while they wait. A late one can reopen this side
       (not done any more): returns CalcScanPath then, to finish scanning first.
 
-    Waits until joined, or until JOIN_GRACE_S after the flight time budget runs out.
+    Waits until joined, or until JOIN_GRACE_S after the flight time budget runs out, or until
+    the other side is gone (landed or silent: `side.partner_gone`; see below).
     Returns CalcScanPath if this side reopened, else None (mission_path is set).
     """
     drone, fs, side = self.drone, self.flight_settings, self.drone.side
@@ -71,6 +85,23 @@ async def _join_with_partner(self: EndRun, planner) -> State | None:
     while True:
         side.apply_inbox()
         await side.send_heartbeats(MINE_SYNC_S)
+        if await _in_the_way(self, planner):
+            flight_log.event("end_run_make_way", drone=fs.current_drone_ID)
+            return CalcScanPath(drone, fs, self.interdrone)
+        joined_or_acked = drone.route_joined or drone.partner_route_ack_hash is not None
+        if side.partner_gone and not joined_or_acked:
+            # Nobody is coming with the other half (it landed, e.g. after an abort, or fell
+            # silent) -- not "it joined and went home". The planner hook turns this side
+            # toward the lost side's last point A and on to its edge (design:
+            # expanding_mines.md section 10, Q8); once that is done (or time is up) this side
+            # reports the best route it has, flagged as a half.
+            side.partner_lost()
+            if (not planner.failure and not planner.done()
+                    and not drone.time_exceeded(fs.max_flight_time)):
+                flight_log.event("end_run_reopened", drone=fs.current_drone_ID,
+                                 reason="other side gone")
+                return CalcScanPath(drone, fs, self.interdrone)
+            break
         if drone.time_exceeded(fs.max_flight_time):
             timed_out_at = timed_out_at or time.monotonic()
         elif not planner.failure and not planner.done():
@@ -121,6 +152,10 @@ async def _join_with_partner(self: EndRun, planner) -> State | None:
         else:
             if drone.partner_route_ack_hash == planner.mine_hash() and not side.mate_busy:
                 break
+            if side.reporter_gone:
+                # Drone 1 landed (an abort): its ack is not coming. Nothing to join with.
+                flight_log.event("end_run_reporter_gone", drone=fs.current_drone_ID)
+                break
             now = time.monotonic()
             if sends_chain and (last_chain_sent is None
                                 or now - last_chain_sent >= CHAIN_RESEND_S):
@@ -159,6 +194,42 @@ async def _join_with_partner(self: EndRun, planner) -> State | None:
     return None
 
 
+async def _settle_with_mate(self: EndRun, planner) -> State | None:
+    """
+    One-sided mission (no partner side): leave only once the side-mate is no longer working.
+
+    - Its last photos (and any mine in them) are still on their way when this copy finishes,
+      so leaving at once can end the two copies with different mine sets.
+    - The mate announces "no job" after its last photo (SIDE_JOB follows SHARE_PHOTOS), so
+      once that is heard, every photo of it has been applied.
+    - A late photo can reopen this side: returns CalcScanPath then. Gives up JOIN_GRACE_S
+      after the flight time budget runs out.
+
+    Returns CalcScanPath if this side reopened, else None.
+    """
+    drone, fs, side = self.drone, self.flight_settings, self.drone.side
+    timed_out_at = None
+    while side.mate_busy:
+        side.apply_inbox()
+        await side.send_heartbeats(MINE_SYNC_S)
+        if await _in_the_way(self, planner):
+            flight_log.event("end_run_make_way", drone=fs.current_drone_ID)
+            return CalcScanPath(drone, fs, self.interdrone)
+        if drone.time_exceeded(fs.max_flight_time):
+            timed_out_at = timed_out_at or time.monotonic()
+            if time.monotonic() - timed_out_at >= JOIN_GRACE_S:
+                break
+        elif not planner.failure and not planner.done():
+            flight_log.event("end_run_reopened", drone=fs.current_drone_ID)
+            return CalcScanPath(drone, fs, self.interdrone)
+        await asyncio.sleep(JOIN_POLL_S)
+    side.apply_inbox()
+    if not planner.failure and not planner.done() and not drone.time_exceeded(fs.max_flight_time):
+        flight_log.event("end_run_reopened", drone=fs.current_drone_ID)
+        return CalcScanPath(drone, fs, self.interdrone)
+    return None
+
+
 async def run(self: EndRun) -> State:
     """
     Implements the run method for the EndRun state.
@@ -171,7 +242,8 @@ async def run(self: EndRun) -> State:
     transitions to AppShare to report it before heading home.
 
     Two-sided mission: drone 1 and the top side's speaker join the halves first
-    (_join_with_partner); drone 1 reports the full-field route.
+    (_join_with_partner); drone 1 reports the full-field route. One-sided: waits for the
+    side-mate to finish (_settle_with_mate).
 
     Returns
     -------
@@ -200,6 +272,9 @@ async def run(self: EndRun) -> State:
                 if reopened is not None:
                     return reopened
             else:
+                reopened = await _settle_with_mate(self, planner)
+                if reopened is not None:
+                    return reopened
                 # A wholesale REPLACE: CalcScanPath's mission_path updates are progress
                 # snapshots, and shortcuts can change the route after them.
                 self.drone.mission_path = planner.route_latlon()

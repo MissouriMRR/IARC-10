@@ -9,7 +9,7 @@ What drone 1's NEXT planning pass does depends on whether SHARE_PHOTOS has been 
 import sys
 sys.path.insert(0, ".")
 from flight.pathfinding.pathnode.planner import PathNodePlanner
-from flight.pathfinding.pathnode.session import SideSession
+from flight.pathfinding.pathnode.session import PathNodeBackend
 from flight.pathfinding.pathnode.config import Edge, PlannerConfig, GROUPS
 
 ALONG, ACROSS = 8.52, 6.44
@@ -37,7 +37,7 @@ def queue(plan):
 
 
 A, B = make(), make()                    # A = drone 1's copy, B = drone 2's copy
-sa, sb = SideSession(A), SideSession(B)
+sa, sb = PathNodeBackend.from_planner(A), PathNodeBackend.from_planner(B)
 # both copies have seen drone 1's photos up to (11.0, 9.9) (drone 1 shared them earlier)
 for y in (2.7, 9.9):
     for s in (sa, sb):

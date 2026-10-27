@@ -1,452 +1,500 @@
-# The mine-field search: how it works and how it plugs in
+# The mine-field search algorithm
 
-This document describes the **path-node planner**: the search that finds and verifies a
-safe route across the mine field, and how it is wired into the flight state machine. It is
-organised around three questions:
+**What this is.** What the drones do to find a route across the mine field, why, and which
+invariants keep it safe. For a new team member who knows Python and the competition (report a
+safe, verified route across an 80 x 300 ft field) but not this code.
 
-1. **What happens, in order?** The mission process ([§2](#2-the-mission-process)).
-2. **What data is kept, and where?** The data structures ([§3](#3-data-structures-and-where-they-live))
-   and the path data ([§5](#5-path-data-storage-formats-and-conversions)).
-3. **Who calls whom?** The interface layers, from the state machine down to the geometry,
-   and the messages between drones ([§4](#4-interfaces-layer-by-layer), [§6](#6-messages-between-drones)).
+**Not here.** Module structure and how-to recipes: [docs/architecture.md](docs/architecture.md).
+The code run state by state: [docs/walkthrough/](docs/walkthrough/README.md). Groups and claims in
+depth: [docs/priority_groups.md](docs/priority_groups.md). Expanding mines design:
+[docs/design/expanding_mines.md](docs/design/expanding_mines.md). Tests: [docs/testing/](docs/testing/README.md).
 
-The old maze planner (`flight/pathfinder.py`) is archived under `archive/legacy_planner/`;
-nothing here uses it.
-
-> This describes the code as of 2026-09-28. The design is still moving (generic drone roles,
-> a data-structure redesign, the expanding-mines phase are all pending); update this file
-> with each change. Known problems and open work are listed in [TODO.md](TODO.md).
+Paths are under `flight/pathfinding/` unless they start with `state_machine/`. Units are local
+feet (origin bottom-left, x across 0-80, y along 0-300). Squares are 2 ft (`CELL`).
 
 ---
 
-## 1. Where the code is
+## 1. The mission and the two sides
 
-| Layer | File | What it holds |
+- **Goal:** one path from one edge to the other, made only of photographed ground, clear of every
+  mine found. A mine's zone = the squares a 3 ft circle around it touches (`SAFETY_RADIUS_FT`;
+  13 squares). A square counts as photographed only if one photo covers all of it.
+- **Sides (4 drones):** drones 1-2 = bottom side (enter at y = 0), 3-4 = top side (y = 300). Each
+  side builds a route from its edge toward the other side's frontier, **point A**; the halves meet
+  in the middle and are joined. With 1-2 drones there is one side, aiming at the far edge.
+
+```mermaid
+flowchart LR
+    subgraph bottom["Bottom side"]
+        D1["drone 1<br/>own planner copy"] <-->|"SHARE_PHOTOS<br/>SIDE_JOB"| D2["drone 2<br/>own planner copy"]
+    end
+    subgraph top["Top side"]
+        D3["drone 3<br/>own planner copy"] <-->|"SHARE_PHOTOS<br/>SIDE_JOB"| D4["drone 4<br/>own planner copy"]
+    end
+    bottom <-->|"point A, mines, footprints, jobs, positions"| top
+```
+
+**No roles.** Every drone keeps its own copy of its side's planner
+(`MissionPlanner` -> `pathnode/session.py` -> `PathNodePlanner`) and works out the claims for the
+whole side itself. `side_agent.py` (`SideAgent`) does the messaging; the planner knows no network.
+
+**How copies stay in agreement** (they differ only while messages are in flight):
+
+| Mechanism | What | Where |
 |---|---|---|
-| Entry | `run.py` | Builds `FlightSettings`, starts `FlightManager`. |
-| Process | `state_machine/flight_manager.py` | Runs the state machine and the interdrone loop as two concurrent asyncio tasks. |
-| State machine | `state_machine/state_machine.py`, `state_machine/states/*.py`, `state_machine/states/impl/*_impl.py` | The states. Each `*_impl.py` holds one state's `run()`. |
-| Drone | `state_machine/drone.py` | `Drone`: the vehicle, the waypoint queue, the planner, and every staged message field (§3.6). |
-| Settings | `state_machine/flight_settings.py`, `mission_config.json` | Drone id, role, pairing, field corners, start coordinate. |
-| Messages | `state_machine/interdrone.py`, `interdrone_communication/` | Send helpers, the receive loop, message schemas, transport. |
-| Planner facade | `flight/pathfinding/mission_planner.py` | `MissionPlanner` / `PathNodeMissionPlanner`: everything in lat/lon; the only planner API the states use. |
-| Planner core | `flight/pathfinding/pathnode/planner.py` | `PathNodePlanner`: the chain, the mine rule, coverage, priority groups, shortcuts. Local feet. |
-| Claims | `flight/pathfinding/pathnode/claims.py` | `ClaimBook`: which drone of a pair photographs what. |
-| Geometry | `flight/pathfinding/pathnode/geometry.py` | `ZoneMap`: known mine zones and the shortest-path graph around them. |
-| Coverage grid | `flight/pathfinding/cellField/` | `CellField`: a bit grid of 2 ft squares; "photographed" is one of these. |
-| Photo placement | `flight/pathfinding/path_cover.py` | `path_cover_unseen`: photo centres along a polyline's unphotographed stretches. |
-| Report format | `flight/pathfinding/iarc_report.py` | `format_iarc_path`: route -> the IARC `S/U/D/L/R` text. |
-| Coordinates | `flight/pathfinding/utils/coord_convert.py` | `SimToLatLonTransformer`: lat/lon <-> local feet. |
-| Simulator | `flight/pathfinding/pathnode/sim.py`, `render.py`, `minefield.py` | Multi-drone simulation driving the same planner core; GIF renderer. |
-| Tests | `flight/pathfinding/pathnode/test_pathnode.py`, `integration_tests/*_sim_test.py` | Planner unit tests; full state-machine runs with mock vehicles. |
+| Same events | Each drone applies its own photos and sends each to its mate (`SHARE_PHOTOS`); the mate applies it as its own | `SideAgent.own_photo`, `PathNodeBackend.mate_photo` |
+| Announced jobs | Each drone announces its current job (`SIDE_JOB`, every 1 s); the mate's copy never hands that job to anyone else | `Heartbeats.announce_job`, `ClaimBook.update(held=)` |
+| Determinism | Same events in, same chain, groups and claims out; ties by drone id, then position | section 9 |
+| Speaker | Lowest-id live drone of a side speaks for it: point A (on change or every 1 s), full mine list (every 5 s) | `MateWatch.speaker`, `Heartbeats.send` |
+| Mine hash | Order-independent hash of known mines and level, compared before the final join | `PathNodePlanner.level_hash` |
+
+Messages to the other side go to all its drones (each copy hears them). Mines and footprints are
+relayed by whichever drone found or took them. The receiver retargets its forward gap at the
+streamed point A (`set_partner_point_a`); before the first one, the target is the partner's entry.
+A side is **met** when its chain reaches the target (`PathNodePlanner.met`).
+
+**Inbox order** (`inbox.py`, fixed): other side's mines, then the mate's photos, then the other
+side's footprints, then its point A. A node must never be laid on ground about to turn unsafe.
+
+```mermaid
+flowchart LR
+    S["Start"] --> T["Takeoff<br/>builds planner copy"] --> C["CalcScanPath<br/>side.plan()"]
+    C --> SC["Scan<br/>fly, photo"] --> DS["DroneShare<br/>find mines, relay"] --> C
+    C -->|"planner.done()"| X["ExpandNodes<br/>(no-op)"] --> E["EndRun<br/>join, report"]
+    E --> A["AppShare"] --> R["Recall"] --> L["Land"]
+    E -->|"reopened"| C
+```
+
+Every drone replans after every photo (the target keeps moving). Past `max_flight_time`
+(`60 * 7`, `state_machine/flight_settings.py`) the scan states go straight to `EndRun`.
 
 ---
 
-## 2. The mission process
+## 2. The chain
 
-### 2.1 Roles and pairs
+`Chain` (`pathnode/chain.py`): the route so far, as path nodes joined by links.
 
-Roles come from the drone count and id (`FlightSettings.__init__`):
-
-| Drones | Drone 1 | Drone 2 | Drone 3 | Drone 4 |
-|---|---|---|---|---|
-| 1 | SOLOGAMBLER, start edge | | | |
-| 2 | GAMBLER, start edge | ASSISTANT of 1 | | |
-| 3 | GAMBLER, start edge | ASSISTANT of 1 | SOLOGAMBLER, end edge | |
-| 4 | GAMBLER, start edge | ASSISTANT of 1 | GAMBLER, end edge | ASSISTANT of 3 |
-
-- A **pair** is a gambler and its assistant (or a solo gambler alone) working one side.
-- With 3–4 drones the two sides work towards each other; the two gamblers are
-  **cross-pair partners** (`FlightSettings.cross_pair_partner_id`: 1 <-> 3).
-- **Only a gambler owns a planner.** It plans for its whole pair, and hands the assistant
-  its share of the work over messages. The assistant flies what it is sent and reports
-  back its photos.
-- Drone 1 is the reporter: it joins the two sides' routes and pushes the result to the app.
-
-### 2.2 State flow (mapping mission)
-
-```
-Start --> Takeoff --> CalcScanPath --> Scan --> DroneShare
-                        ^    |           |         |
-                        |    |           |         +-- gambler: after every photo --> CalcScanPath
-                        |    |           |         +-- assistant: --> Scan (next queued waypoint)
-                        |    |           +-- queue empty or replan_needed --> CalcScanPath
-                        |    |
-                        |    +-- nothing left to check --> ExpandNodes --> EndRun --> AppShare --> Recall --> Land
-                        |                                                    |
-                        +---------- a relayed mine reopened this side -------+
-
-Flight time budget exceeded (Drone.time_exceeded): CalcScanPath or Scan --> EndRun directly.
+```mermaid
+flowchart LR
+    E(("entry")) ---|checked| N1(("n1")) ---|"pending (detour)"| N2(("n2")) ---|checked| A(("point A")) -.->|forward| TG(("target"))
 ```
 
-| State | File | What it does for the search |
-|---|---|---|
-| Start | `start_impl.py` | Connect, arm, ping the swarm. |
-| Takeoff | `takeoff_impl.py` | `configureField`: `drone.planner = make_planner(...)` (gamblers only). Validates the field corners. |
-| CalcScanPath | `calc_scan_path_impl.py` | **The planning step.** Applies everything relayed in, asks the planner for the next photos, queues this drone's, sends the assistant its share. Finishes the scan when the planner is done. |
-| Scan | `scan_impl.py` | Flies the next queued waypoint, takes the photo, records its real footprint as coverage. |
-| DroneShare | `drone_share_impl.py` | Mine detection on that photo. Gambler: applies the mine, relays it, relays coverage and point A. Assistant: reports the photo to its gambler. |
-| ExpandNodes | `expand_nodes_impl.py` | Final mine-margin growth. **Currently a no-op** (the expanding-mines phase). |
-| EndRun | `end_run_impl.py` | Two-sided mission: joins the two routes. Releases the assistant. Sets the final `mission_path`. |
-| AppShare | `app_share_impl.py` | Drone 1 pushes the route to the app in IARC format. |
-| Recall | `recall_impl.py` | Leaves the field by the nearest edge (`Drone.recall`, uses the planner's frame). Does nothing on an assistant (no planner). |
-
-The loop runs one photo at a time: **CalcScanPath -> Scan -> DroneShare -> CalcScanPath**.
-A gambler replans after *every* photo, because its forward target is the partner's point A,
-which keeps moving.
-
-### 2.3 One planning pass (a gambler's CalcScanPath)
-
-`_run_gambler` in `calc_scan_path_impl.py`:
-
-1. `planner.start_if_needed()` the first time (flags a fully blocked field).
-2. `drain_relays()`, in a fixed order:
-   1. relayed mines from the partner (`pending_cross_pair_mines` -> `planner.add_remote_mine`);
-   2. the assistant's photo reports (`pending_photo_reports` -> `planner.record_assistant_photo`),
-      relaying any new mines to the partner;
-   3. the partner's coverage and latest point A (`pending_partner_coverage`,
-      `pending_partner_point_a`);
-   4. `planner.advance()` (lay path nodes over what is now checked);
-   5. send this side's point A to the partner (on change, and at least every
-      `POINT_A_HEARTBEAT_S`).
-3. `planner.next_batch(overlap, shape, positions)`: returns this gambler's photos, the
-   assistant's photos, and whether the side is done. `positions` is where both drones are
-   (`_pair_positions`).
-4. If done: `_finish_scan` -> `mission_path = planner.complete(...)`, checksum to the partner,
-   -> ExpandNodes.
-5. Otherwise: send the assistant its list if it changed (`SEND_SEGMENT_B_WAYPOINTS`), queue
-   this drone's own waypoints, -> Scan.
-
-### 2.4 One photo (Scan -> DroneShare)
-
-1. **Scan** pops the next waypoint, flies to it, captures, projects the four image corners
-   to the ground, and calls `planner.record_footprint(corners)`. If the waypoint's own
-   square still isn't covered, it climbs and retries. (An assistant has no planner: it only
-   captures and keeps the corners; it does not climb and retry.)
-2. **DroneShare** (gambler) runs mine detection. A find goes to `planner.add_mine(lat, lon)`
-   (the mine rule, §3.4), and is relayed to the partner if new. Then `planner.advance()`,
-   then coverage and point A to the partner. -> CalcScanPath.
-3. **DroneShare** (assistant) sends `SHARE_PHOTOS` (footprint, any mine, a running photo
-   number) to its gambler. -> Scan.
-
-### 2.5 Finishing
-
-- **One side (1–2 drones).** When the planner is done, `mission_path` is its route, entry to
-  far edge.
-- **Two sides (3–4 drones).** Each gambler aims at the other's point A until the gaps close.
-  In EndRun the end-side gambler sends its route (`CROSS_PAIR_CHAIN`) until drone 1 acks.
-  Drone 1 joins the two routes only if both know exactly the same mines (`mine_hash`); if the
-  routes never arrive or don't connect, it reports its own half and sets
-  `reported_half_route`. Both keep applying relayed mines while they wait, and go back to
-  CalcScanPath if one reopens their side.
-- Each gambler then sends its assistant `PAIR_SCAN_DONE`; the assistant finishes.
-
----
-
-## 3. Data structures and where they live
-
-All planner geometry is in **local feet**: x across the field (0..80), y along it (0 at the
-start edge, `field_h` at the end edge). Squares are `CELL` = 2 ft.
-
-### 3.1 The chain (`PathNodePlanner.nodes`, `.links`) -- `pathnode/planner.py`
-
-One gambler's view of its side's route: a list of nodes and the links between them.
-
-```
-nodes:  [entry] --link0-- [n1] --link1-- [n2] ... [point A] --forward-- [target]
-```
-
-- **Invariant:** `links[i]` joins `nodes[i]` to `nodes[i+1]`; `len(links) == len(nodes) - 1`.
-- `PathNode(x, y, placed_by)`: `placed_by` is `"entry"`, `"self"` (laid over the forward
-  gap), `"span"` (over a pending span), `"jump"` (a new point A past a mine), `"shortcut"`
-  (spliced in by a shortcut) or `"target"`.
-- `Link(kind, poly, uid)`: `poly` is the polyline between its two nodes (a detour has
-  several points). `kind` is:
-  - `"checked"`: every square along it is photographed (segment C);
-  - `"pending"`: a planned detour around a mine that still has to be photographed (segment B);
-  - `"forward"`: point A -> target, the gap still to explore. At most one.
-- **Point A** is the node before the forward link. When there is no forward link, the side
-  has met its target.
-- **Target** is virtual: the partner's latest point A (3–4 drones) or a far-edge point
-  (1–2 drones). Never laid, never deleted by a mine.
-
-### 3.2 Coverage (`PathNodePlanner.seen`) -- `cellField/`
-
-- `seen` is a `CellField`: one bit per 2 ft square, set when a photo **fully** covers the
-  square (`record_footprint` -> `fill_polygon_covered`, footprint grown by
-  `FOOTPRINT_SLACK_FT` against coordinate round-trip noise).
-- `_touched(poly)`: the squares a polyline passes through (traced both directions, cached by
-  polyline). A link is checked when all of them are photographed (`corridor` coverage;
-  `band` also requires the mine-danger ring around them).
-- `advance()` walks each forward/pending link from its start and converts the photographed
-  prefix to checked links, laying nodes.
-
-### 3.3 Mines (`PathNodePlanner.zones`, `.discovered`) -- `pathnode/geometry.py`
-
-- `discovered`: every known mine, as (x, y) in local feet.
-- `ZoneMap` (`zones`):
-  - `groups`: gid -> the merged unsafe area of mines that touch (each mine's zone is the
-    hull of the squares within `SAFETY_RADIUS_FT`);
-  - `blocker`: all zones, grown slightly -- "may not go here";
-  - `vertices` + `_adj`: the visibility graph (zone corners, and which corners see each
-    other) used by `shortest_path(p, q)`.
-- `mine_hash()`: an order-independent hash of the known mines, used to check two drones agree.
-
-### 3.4 The mine rule (`PathNodePlanner.add_mine`)
-
-When a mine is added (`source` = `"self"`, `"assistant"` or `"remote"`):
-
-0. A mine is ignored if one is already known in the same square. If the entry is now inside
-   a zone, the entry shifts sideways along its edge to the nearest clear square.
-1. Delete nodes inside the mine's zone; cut checked links that cross it.
-2. Replan pending/forward links that cross it.
-3. Delete **orphans**: fragments of the chain no longer connected to the entry or the target.
-4. Re-bridge the gap with a shortest path.
-5. **Jump** if this pair found the mine (`self` or `assistant`) and the frontier was affected --
-   either the gap reaches the target, or the forward link was simply replanned: a new point A
-   at the mine's far corner, and the detour behind it becomes a pending span. A mine relayed
-   from the other pair only re-bridges.
-
-### 3.5 Priority groups and claims -- `planner.py` `groups()`, `claims.py`
-
-`PathNodePlanner.groups()` lists the photos still to take, in priority order (`GROUPS`):
-
-| # | Group | What |
-|---|---|---|
-| 0 | `path` | The forward gap and every pending span: what it takes to have one valid route. |
-| 1 | `big_shortcut` | The big shortcut being tried (§3.7). |
-| 2 | `adjacent` | Unphotographed squares within `adjacent_ring` (1) of the checked route, outside mine zones. |
-| 3 | `shortcut` | The ordinary shortcut being tried. |
-| 4 | `outer` | The next layer out: beyond `adjacent_ring`, within `outer_ring` (2). |
-
-Each group is a list of `(key, sequence)`: the photos along one path in flying order (keyed
-by the path: `"forward"`, a pending span's `uid`, a shortcut id), or one free-standing photo
-(key `None`).
-
-`ClaimBook.update(groups, positions)` decides who takes what:
-
-- A path is claimed **whole**. Groups are handed out in priority order.
-- **Growing radius:** repeatedly, the drone that can *start* an unclaimed sequence soonest
-  (its current route length + distance to the start) takes it. A drone's existing claims
-  raise its cost, so nobody is sent across the field while another drone is nearer.
-- **Only the current job is sticky:** the sequence each drone's next photo belongs to.
-  Everything else is re-handed out every update from where the drones are now.
-- A drone flies its claims group by group; within a group, paths nearest-start first,
-  the forward gap last, free-standing photos nearest first.
-- **Deterministic:** ties go by drone order, then coordinates.
-
-`PathNodePlanner.plan(positions)` runs `advance()`, then `ClaimBook.update(groups(),
-positions)`, and keeps the result in `last_plan`: `{"self": [...], "assistant": [...]}`.
-
-### 3.6 What the Drone holds -- `state_machine/drone.py`
-
-| Field | Who writes it | Who reads it | What |
-|---|---|---|---|
-| `planner` | Takeoff | CalcScanPath, Scan, DroneShare, EndRun, ExpandNodes, interdrone (checksum) | `PathNodeMissionPlanner`, or None (assistant). |
-| `waypoints` | CalcScanPath (own), interdrone (assistant's batch) | Scan | The flight queue. |
-| `last_reached_waypoint`, `last_photo_corners_latlon` | Scan | DroneShare | The photo just taken; its corners are also relayed to the partner as `CROSS_PAIR_COVERAGE`. |
-| `pending_cross_pair_mines` | interdrone (`CROSS_PAIR_MINE_RELAY`) | CalcScanPath | Staged relayed mines (`CrossPairMineReport`; only `lat`/`lon` are used). |
-| `pending_photo_reports` | interdrone (`SHARE_PHOTOS`) | CalcScanPath | Staged assistant photos. |
-| `pending_partner_point_a`, `pending_partner_coverage` | interdrone | CalcScanPath | Staged partner stream. |
-| `assistant_position`, `assistant_photos_applied` | CalcScanPath | CalcScanPath | For the claims; for the assistant's skip-flown filter. |
-| `photo_seq`, `flown_unapplied` | DroneShare (assistant), interdrone | interdrone | The assistant skips waypoints it already photographed. |
-| `last_sent_segment_b`, `last_point_a_sent` | CalcScanPath | CalcScanPath | Dedupe / heartbeat. |
-| `partner_route`, `partner_route_complete`, `partner_route_mine_hash`, `route_joined`, `partner_route_acked` | interdrone, EndRun | EndRun, interdrone | The join handshake. |
-| `pair_scan_done` | interdrone | CalcScanPath (assistant) | The assistant may finish. |
-| `mission_path`, `reported_half_route`, `no_valid_path_found` | CalcScanPath, EndRun | AppShare, interdrone | The reported route and its flags. |
-| `replan_needed` | interdrone | Scan, CalcScanPath | Break the flight loop to replan. |
-
-**Rule:** the interdrone receive task never touches the planner (except `mine_hash()`, a pure
-read). It only **stages** into these fields; CalcScanPath applies them synchronously.
-
-### 3.7 Shortcuts -- `planner.py` `_update_shortcut`
-
-A shortcut replaces a section of the checked chain with a shorter path around the known mines.
-
-- **Anchors:** the entry, jump nodes, nodes on mine-zone corners, and (once met) the target.
-  Never entry -> target (the whole path).
-- **Candidates:** for each anchor pair whose chain between them is fully checked, the
-  shortest path around the known mines (`_shortest_path`, cached until the next mine).
-  - big: shorter than `BIG_SHORTCUT_RATIO` x the section and saving at least `BIG_SHORTCUT_SAVING_FT`;
-  - ordinary: shorter than `SHORTCUT_RATIO` x the section, saving at least `SHORTCUT_MIN_SAVING_FT`.
-  - **Photo allowance:** the photos it needs (only unphotographed squares count) must be at
-    most `max(SHORTCUT_MAX_WAYPOINTS, saving / SHORTCUT_FT_PER_PHOTO)`.
-- One shortcut is tried per tier at a time (`shortcuts["big"]`, `shortcuts["ordinary"]`).
-  **The chain is untouched until the shortcut is fully photographed**; then it is spliced in.
-- **Free shortcuts:** any candidate passing the *ordinary* test whose ground is already all
-  photographed is spliced in at once, biggest saving first (`_apply_free_shortcuts`). It is
-  credited to a tier only if it was the one that tier was trying; otherwise it counts as an
-  ordinary, instant shortcut.
-- **Greedy:** after each new mine it is recomputed; a big one that stops qualifying drops to
-  ordinary; one that fails the ordinary test or the allowance is given up for good.
-
-### 3.8 Caches -- `planner.py`
-
-The planner is re-asked the same geometric questions after every photo, so it caches the
-answers that only change when their inputs do:
-
-| Cache | Key | Invalidated | Saves |
-|---|---|---|---|
-| `_touched_cache` | a polyline | never (capped at 50k entries) | tracing a path's squares on the grid |
-| `_route_cache` (`_shortest_path`) | (from, to) | on every new mine | shortest paths around the mines: shortcut candidates, forward-gap replans, re-bridges |
-| `_photos_cache` (`_photos_needed`) | polyline + its unphotographed squares | never (capped) | placing photos to count a shortcut's cost |
-| `_zone_cells` (`_in_zone`) | a square | on every new mine | "is this square inside a mine zone?" for the adjacent/outer rings |
-| `_candidate_cache` | mines, anchor nodes, section lengths, given-up count | when any of those change | the list of shortcut candidates |
-
-`set_partner_point_a` also returns at once when the partner's point A hasn't changed (the
-heartbeat resends it every second). None of this changes what the planner decides.
-
----
-
-## 4. Interfaces, layer by layer
-
-```
- state machine states (impl/*.py)
-        |  lat/lon, via Drone.planner
-        v
- PathNodeMissionPlanner            flight/pathfinding/mission_planner.py
-        |  converts lat/lon <-> local ft (SimToLatLonTransformer)
-        v
- PathNodePlanner                   flight/pathfinding/pathnode/planner.py
-   |-- ZoneMap   (mines, shortest paths)      pathnode/geometry.py
-   |-- CellField (seen squares)               cellField/
-   |-- ClaimBook (who flies what)             pathnode/claims.py
-   `-- path_cover_unseen (photo centres)      path_cover.py
-
- interdrone receive task --stages--> Drone fields --drained by--> CalcScanPath --> planner
-```
-
-### 4.1 States -> Drone -> MissionPlanner (lat/lon)
-
-The states only ever call `drone.planner`, a `PathNodeMissionPlanner`
-(`flight/pathfinding/mission_planner.py`, built by `make_planner(flight_settings, shape,
-overlap)` in Takeoff). Every coordinate crossing this line is `(lat, lon)`.
-
-| Method | Called from | Does |
-|---|---|---|
-| `start_if_needed()` | CalcScanPath | First call: True/False whether any route exists; later None. |
-| `record_footprint(corners)` | Scan | A photo's 4 ground corners as coverage. |
-| `cell_seen_at(lat, lon)` | Scan (climb retry) | Is that square photographed? |
-| `add_mine(lat, lon)` | DroneShare | A mine this drone found. Returns a relay id if new. |
-| `add_remote_mine(lat, lon)` | CalcScanPath | A mine relayed by the partner. |
-| `record_assistant_photo(corners, mines)` | CalcScanPath | An assistant photo report. Returns new mines to relay. |
-| `record_partner_coverage(corners)`, `set_partner_point_a(lat, lon)` | CalcScanPath | The partner's stream. |
-| `advance()` | CalcScanPath, DroneShare | Lay path nodes over what is now checked. |
-| `next_batch(overlap, shape, positions)` | CalcScanPath | `(own, assistant, done)`: photo lists for both drones. `overlap` and `shape` are ignored: the footprint is fixed when the planner is built. |
-| `point_a_latlon()` | CalcScanPath | This side's frontier, to stream to the partner. |
-| `done()`, `failure` | CalcScanPath, EndRun | Finished / cannot finish. |
-| `complete(mission_path)` | CalcScanPath | The route when finished. |
-| `route_latlon()`, `join_latlon(partner_route)` | EndRun | This side's route; the joined full-field route. |
-| `mine_hash()` | CalcScanPath, EndRun, interdrone | Mine agreement. |
-| `expand_margin(ft)` | ExpandNodes | No-op for now. |
-| `iarc_path(route, buffer_width)` | Drone.get_mission_iarc_path | The IARC text report. |
-| `latlon_to_local`, `local_to_latlon`, `field_w`, `field_h` | Drone.recall, harnesses | The local frame. |
-
-The facade also validates the field corners at construction (`validate_field_corners`:
-they must go around the field, not in a "Z").
-
-### 4.2 MissionPlanner -> PathNodePlanner (local feet)
-
-`PathNodeMissionPlanner` holds one `PathNodePlanner` (`.planner`) and a transformer, and
-converts each call. The core's API:
-
-| Method | Does |
+| Piece | Meaning |
 |---|---|
-| `record_footprint(corners)` | Coverage. |
-| `add_mine(x, y, source)` | The mine rule (§3.4). |
-| `set_partner_point_a(x, y)` | Retarget the forward gap. |
-| `advance()` | Lay path nodes; update shortcuts. |
-| `plan(positions)` | Claims for both drones (§3.5). |
-| `groups()` | The photos still to take, by priority. |
-| `done()`, `met`, `point_a()`, `route()`, `join(partner_route)` | State and results. |
-| `mine_hash()`, `cell_seen_at(x, y)` | Queries. |
+| Path node | A point on the route; `placed_by` = entry, forward, span, jump, shortcut or target (`Placer`) |
+| Checked link | Photographed ground |
+| Pending link | A planned detour around a mine, not yet photographed |
+| Forward link | Point A to the target: the gap still to explore. At most one |
+| Point A | The node before the forward link (the frontier). Once met, the target itself |
+| Target | Virtual end node. Never laid, never deleted by a mine |
 
-### 4.3 PathNodePlanner -> geometry, coverage, claims
+Invariant (`Chain.check`): `links[i]` joins `nodes[i]` to `nodes[i+1]`, polylines start and end there.
 
-- `ZoneMap.add_mine`, `.contains`, `.crosses`, `.shortest_path`: all mine geometry.
-- `CellField.fill_polygon_covered`, `.mark_path`, `.get`: coverage.
-- `path_cover_unseen(poly, seen, shape, overlap)`: photo centres along a link.
-- `ClaimBook.update(groups, positions)`: the claims.
+**Targets** (`pathnode/target.py`, picked by `make_target`):
 
-### 4.4 The simulator drives the same core
+| Target | When | Aims at |
+|---|---|---|
+| `FarEdgeTarget` | No partner side | Far edge: straight ahead if clear, else the shortest far-edge point |
+| `PartnerTarget` | Partner side exists | Partner's latest point A. If that is inside an obstacle this side knows, heads for the nearest corner (the partner re-places its point A outside) and `may_close()` is False meanwhile, so the gap never closes on a stand-in |
+| `LostPartnerTarget` | Partner gone | Its last point A (ground already checked), ignores later ones, then `after_met()` hands over to `FarEdgeTarget` |
 
-`pathnode/sim.py`'s `Mission` owns one `PathNodePlanner` per gambler and relays the same
-things the flight code does (point A, coverage, mines, assistant photos), with optional loss
-and delay. It skips the facade (no lat/lon) and the state machine. **Planner behaviour
-changes belong in the core so the simulator and the drones run the same thing.**
+**How photos advance links** (`PathNodePlanner.advance`, `Chain.advance_link`):
+1. After each photo, `advance()` walks the forward link from point A and every pending link from its start.
+2. The link is sampled every `SAMPLE_FT` = 0.5 ft. The longest prefix whose samples pass
+   `Coverage.all_seen` becomes checked links and nodes; the rest stays the same `Link`.
+3. A fully checked link converts. The gap is not closed while `target.may_close()` is False.
+4. Then shortcuts update (section 4.2) and `_follow_target` hands over to the next target kind.
+
+**What "checked" requires** (`pathnode/placement.py`, `PlannerConfig.coverage`):
+
+| Mode | A stretch needs photographed |
+|---|---|
+| `CORRIDOR` (default, `CorridorPlacement`) | Every square the polyline touches |
+| `BAND` (`BandPlacement`) | Those, plus the 13 squares around each from which a mine could make it unsafe (`DANGER_OFFSETS`) |
 
 ---
 
-## 5. Path data: storage, formats and conversions
+## 3. Mines
 
-| Form | Where | Frame | Built by | Used by |
+### 3.1 Zones and the path engine
+
+A mine snaps to its square's centre; its zone is whole unsafe squares (convex hull). Touching
+zones merge into one group (gid). Obstacles = mine zones and **blocked squares**. `Routes`
+(`pathnode/routes.py`, caches) asks a `PathEngine` (`pathnode/engines/base.py`) for everything:
+
+| Engine | Where | Status |
+|---|---|---|
+| `ZoneMap` | `pathnode/engines/zonemap.py` | Default (`PlannerConfig.engine`) |
+| `Field` | `nodeField/field.py` | Same contract; selectable, not default |
+
+Contract the planner relies on: **monotone** (an obstacle or a higher level never shortens a
+path), **deterministic**, queries never change obstacles
+([docs/design/search_backend_interface.md](docs/design/search_backend_interface.md)).
+
+### 3.2 The mine rule
+
+`MineRule` (`pathnode/mine_rule.py`), entry `apply(pl, gid, source)`; runs for every new mine and
+blocked square, after the footprint is recorded and before `advance()`.
+
+```mermaid
+flowchart TD
+    N["New obstacle"] --> S0["0. Entry inside it? Shift along its edge to the nearest clear spot"]
+    S0 --> S1["1. Delete path nodes inside it (never the target)"]
+    S1 --> S2["2. Links crossing it: checked = cut, forward = replan from its start, pending = replan between its ends"]
+    S2 --> S3["3. Split into fragments at dead nodes and cuts"]
+    S3 --> Q{"Entry and target in one fragment?"}
+    Q -->|yes| J["5. Jump (only a mine this side found)"]
+    Q -->|no| B["4. Delete orphans, re-bridge entry fragment to target fragment by one shortest path"]
+```
+
+| Step | Detail | Method |
+|---|---|---|
+| 0 | No clear spot on the edge: `failure = "entry fully blocked"` | `_clear_entry`, `_shift_entry` |
+| 2 | A replan with no route cuts the link instead | `_cut_checked`, `_replan_forward`, `_replan_pending` |
+| 3 | Fragments connected to neither root (entry, target) are orphans, deleted even if outside the obstacle | `_split_into_fragments` |
+| 4 | Bridge = a pending span, or the forward gap if the far side is just the target. Walled in: entry moves to the nearest edge spot with a way out; none: `failure` | `_rebridge`, `_reroute_from_entry` |
+| 5 | Chain still whole and forward link replanned: point A **jumps** to the last corner of this mine the route bends around; the detour behind it becomes a pending span | `_jump_past_mine`, `_frontier_links` |
+
+**Jump vs re-bridge** (`Source`, `pathnode/config.py`):
+
+| Source | Who | Effect |
+|---|---|---|
+| `PAIR` | This side's own drones, including mate photos (`PathNodeBackend.mate_photo`) | May jump: the frontier moves past the mine at once |
+| `PARTNER` | Relayed by the other side; also every blocked square and every growth | Only re-bridges: the other side owns that frontier |
+
+If no route is left, `failure` is set and the planner stops planning (at level 0 that is final).
+
+### 3.3 Blocked squares: misses
+
+`Coverage.count_misses` (`pathnode/coverage.py`). A needed square a photo was aimed at but did not
+cover (footprint turned with heading, came out smaller, camera failed) gets a **miss**. A
+climb-and-retry at one waypoint counts once.
+
+| Misses | Constant | Effect |
+|---|---|---|
+| 1 | `MISS_CENTRE` | Next photo of that square is centred on it |
+| 3 | `MISS_BLOCK` | `_block_square`: the square becomes an obstacle (`Routes.add_square`) and the mine rule runs on it as `Source.PARTNER` |
+
+**Aim memory** (`Coverage.plan_aim`, cap `AIM_CAP` = 5000): each photo point remembers the squares
+it was planned for, so a miss is charged correctly even when a planned square sits farther than
+`aim_radius` from the photo. Blocked squares never grow with levels.
+
+---
+
+## 4. Work
+
+### 4.1 Priority groups
+
+`PathNodePlanner.groups()` -> `Work` (`pathnode/work.py`) -> `WorkSource`s
+(`pathnode/work_sources.py`). A group is a list of `(key, sequence)`: the photos along one path in
+flying order, or one free-standing photo (`key = None`).
+
+| Prio | `Group` | Source | Contents | Key |
 |---|---|---|---|---|
-| The chain (nodes + links) | `PathNodePlanner.nodes/.links` | local ft | the planner | the planner |
-| Route polyline | `PathNodePlanner.route()` | local ft | entry -> ... -> target, all link points | `route_latlon`, `join` |
-| Route lat/lon | `MissionPlanner.route_latlon()` | lat/lon | facade conversion | EndRun, `CROSS_PAIR_CHAIN` |
-| Joined route | `MissionPlanner.join_latlon(partner)` | lat/lon | `join_routes` splice at the shared point; verified bridge if needed; rejected if it crosses a mine | EndRun (drone 1) |
-| Reported route | `Drone.mission_path` | lat/lon | CalcScanPath `_finish_scan`, replaced by EndRun | AppShare, `push_mission_path` |
-| IARC report | `Drone.get_mission_iarc_path()` -> `format_iarc_path` | 2 ft squares | route -> cells -> `S,col,buf` then `U/D/L/R,n` runs | the app (`SEND_PATHS_TO_APP`) |
-| Photo waypoints | `Drone.waypoints` (`Waypoint`) | lat/lon | CalcScanPath / interdrone | Scan |
+| 0 | `PATH` | `PathSource` | Forward gap and every pending span: what one valid path needs | `"forward"`, `("span", end_xy)` |
+| 1 | `BIG_SHORTCUT` | `ShortcutSource` | Big shortcut being tried (before `ADJACENT`, so squares beside a section about to be replaced are not photographed for nothing) | `("shortcut", a, b)` |
+| 2 | `ADJACENT` | `RingSource` | Unphotographed squares within `adjacent_ring` = 1 of the checked route | `None` |
+| 3 | `SHORTCUT` | `ShortcutSource` | Ordinary shortcut being tried | `("shortcut", a, b)` |
+| 4 | `OUTER` | `RingSource` | Next layer out, within `outer_ring` = 2 | `None` |
 
-**Coordinate frame.** `SimToLatLonTransformer(corners, 80.0)`: corner 1 is the origin, the
-corner-1 -> corner-2 edge is x (scaled to 80 ft), y runs towards corners 3/4. `field_h` is the
-largest corner y. Each drone builds the same transformer from the same corners, so local
-coordinates agree across drones; everything sent between drones is lat/lon.
+**Work keys** name a job by geometry (a span by its far end, a shortcut by its two anchors), never
+by object id, so every copy keys the same job the same way. Ring squares inside an obstacle are
+skipped. Work is cached on `Work.state_key`; source order in `Work.__init__` is behaviour.
 
----
+### 4.2 Shortcuts
 
-## 6. Messages between drones
-
-`state_machine/interdrone.py` (send helpers + receive loop); schemas in
-`interdrone_communication/message_types.py`. Every message is JSON on the wire (tuples come
-back as lists and are restored by the decoder).
-
-| Message (id) | From -> to | Carries | Receiver stages into | Applied by |
-|---|---|---|---|---|
-| `SEND_SEGMENT_B_WAYPOINTS` (595) | gambler -> its assistant | the assistant's claimed photos, `photos_applied` | `drone.waypoints` (minus photos already flown) | Scan |
-| `SHARE_PHOTOS` (575, ack 576) | assistant -> its gambler | footprint corners, mines, `seq` | `pending_photo_reports` | CalcScanPath |
-| `PAIR_SCAN_DONE` (608) | gambler -> its assistant | -- | `pair_scan_done` | CalcScanPath (assistant) |
-| `CROSS_PAIR_MINE_RELAY` (600, ack 601) | gambler -> partner gambler | a mine (lat/lon) and its id | `pending_cross_pair_mines` | CalcScanPath |
-| `CROSS_PAIR_POINT_A` (604) | gambler -> partner | this side's point A (streamed, lossy) | `pending_partner_point_a` (latest wins) | CalcScanPath |
-| `CROSS_PAIR_COVERAGE` (605) | gambler -> partner | one photo footprint (lossy) | `pending_partner_coverage` | CalcScanPath |
-| `CROSS_PAIR_CHAIN` (606, ack 607) | end-side gambler -> drone 1 | its route, complete flag, `mine_hash` | `partner_route*` | EndRun |
-| `FIELD_CHECKSUM` (580, ack 581) | gambler -> partner | `mine_hash` | (answered directly: pure read) | interdrone |
-
-Reliability: `SHARE_PHOTOS`, `CROSS_PAIR_MINE_RELAY` and `PAIR_SCAN_DONE` are requeued by the
-transport **only when the socket send itself fails** (`interdrone_communication/client.py`).
-The acks are logged but nothing resends on a missing ack, so a message the network accepts
-but loses is gone. (The simulator is stronger: it never drops these.) `CROSS_PAIR_CHAIN` is
-resent every second until drone 1 acks. Point A and coverage are streams where a loss only
-costs a re-photo or a briefly stale target. Ids 602–603 are retired.
+`Shortcuts` (`pathnode/shortcuts.py`) replaces a fully checked section with a shorter path.
+- **Anchors:** entry, jump nodes, nodes on an obstacle corner, and the target once met. Never entry + target.
+- **Tiers:** `BIG` = shorter than 0.8 x the section and saves >= 20 ft (group `BIG_SHORTCUT`);
+  `ORDINARY` = shorter than 0.9 x and saves >= 4 ft (`SHORTCUT_MIN_SAVING_FT`) (group `SHORTCUT`).
+- **Allowance:** the larger of `shortcut_max_waypoints` (8) and one photo per `shortcut_ft_per_photo` (2 ft) saved.
+- **Free shortcut:** needs no photos, so it is spliced in at once, biggest saving first (`_apply_free`).
+- **Trial:** otherwise one per tier at a time, biggest saving first. The chain is untouched until
+  the whole shortcut is photographed and clear of every obstacle.
+- **Greedy:** recomputed after every change. A big trial no longer big drops to ordinary; one
+  that no longer qualifies, or needs too many photos, is given up for good (`given_up`).
 
 ---
 
-## 7. Tunables
+## 5. Who flies what
 
-| Constant | File | Value | Meaning |
-|---|---|---|---|
-| `CELL` | `pathnode/geometry.py` | 2 ft | Square size. |
-| `SAFETY_RADIUS_FT` | `pathnode/geometry.py` | 3 ft | A mine's unsafe radius. |
-| `SHAPE_SIZE_FT`, `OVERLAP` | `calc_scan_path_impl.py` | from `vision/config.json`, 0.1 | Planning photo footprint. |
-| `adjacent_ring`, `outer_ring` | `PathNodePlanner(...)` | 1, 2 | Reach of the `adjacent` / `outer` groups. |
-| `SHORTCUT_RATIO`, `SHORTCUT_MIN_SAVING_FT` | `planner.py` | 0.9, 4 ft | Ordinary shortcut. |
-| `BIG_SHORTCUT_RATIO`, `BIG_SHORTCUT_SAVING_FT` | `planner.py` | 0.8, 20 ft | Big shortcut. |
-| `SHORTCUT_MAX_WAYPOINTS`, `SHORTCUT_FT_PER_PHOTO` | `planner.py` | 8, 2 ft | Shortcut photo allowance. |
-| `TILE_MARGIN_FT` | `planner.py` | 0.5 ft | Tiled photos keep their target this far inside. |
-| `MATCH_FT` | `pathnode/claims.py` | 2 ft | A regenerated photo inherits a claim within this. |
-| `POINT_A_HEARTBEAT_S`, `IDLE_POLL_S` | `calc_scan_path_impl.py` | 1 s, 0.1 s | Point-A stream; idle polling. |
-| `CHAIN_RESEND_S`, `JOIN_GRACE_S` | `end_run_impl.py` | 1 s, 10 s | Join handshake. |
-| `MINE_RADIUS_EXPANSION_FT` | `expand_nodes_impl.py` | 2 ft | Final margin (not applied yet). |
+### 5.1 Claims
+
+`ClaimBook.update` (`pathnode/claims.py`) turns groups into one queue per drone.
+
+| Rule | What |
+|---|---|
+| Whole sequences | A sequence is claimed whole; splitting a path only sends the second drone to ground the first will cover |
+| Soonest start | Picture a radius growing from 0. Repeatedly, the drone that can *start* an unclaimed sequence soonest takes it, measured from where it is through everything it already holds. Ties: drone order, then start point |
+| Priority | Groups dealt in order; a drone flies all it holds in a higher group first, and takes from a lower group when it has nothing left higher |
+| Forward last | Within a group, whole paths nearest-start first, except `"forward"` (open-ended), which goes last |
+| Only the current job is sticky | Between passes only the sequence each drone's next photo belongs to (`heads`) keeps its owner; the rest is dealt afresh from current positions |
+| Announced jobs held | The mate's announced job stands in for its `heads` on every copy; if two drones hold one job, the lower id keeps it |
+
+Result: whoever is at point A holds the whole path ahead; redirections behind it tend to go to
+the other drone.
+
+### 5.2 Keeping apart
+
+`SideCoordinator.plan` (`pathnode/coordination.py`) runs the claims, then these rules. Lower ids
+keep their ground (every bottom drone is lower than every top drone), so two drones cannot block
+each other.
+
+| Distance (`PlannerConfig`) | Rule |
+|---|---|
+| `keep_away_ft` = 10 | A higher-id drone drops photos within 10 ft of a lower-id drone's position and next photo (when that drone is working). Also across sides |
+| `keep_clear_ft` = 7.5 | A lower-id drone drops photos within 7.5 ft of a higher drone's position; also used for an idle lower drone. Must stay above the flight separation floor (`SEPARATION_ABORT_M` = 1.2 m) and the leg-hold radius (`COLLISION_RADIUS` = 2.01 m = 6.6 ft) |
+
+- **Legs and lanes** (`_flyable`): a photo is also dropped when the leg to it passes within
+  `keep_clear_ft` of another drone, or within `keep_away_ft` of a lower drone's **lane** (where it
+  is, then its next `LANE_PHOTOS` = 3 photos). Dropped photos stay work for later.
+- **Takeover when idle** (`_take_over`): if this copy gives `me` nothing to fly, `me` takes the
+  others' queued photos, except every sequence a mate announced. The mate's copy may lack that
+  work while messages are in flight, so nobody else would do it.
+- **Make way** (`_make_way`): a drone with nothing it may fly moves to a spare spot (last group,
+  on ground needing no photo, clear of jobs and drones) when it blocks someone: a lower drone's job
+  within `keep_away_ft`, a higher drone's within `keep_clear_ft`, or it stands within
+  `keep_clear_ft` of another drone's leg (which the flight code would hold forever).
+
+### 5.3 Lost and gone mates
+
+`MateWatch` (`mate_watch.py`). A silent drone is never assumed gone at once (a starved event loop
+or a radio dropout leaves it flying).
+
+| State | Trigger | Effect |
+|---|---|---|
+| lost | Silent `MATE_LOST_S` = 20 s | Its work is taken over; its last position and announced job keep blocking and that job's sequence stays reserved. Heard again: an ordinary mate at once. Does not gate level climbing |
+| gone | Silent `MATE_GONE_S` = 120 s | Ignored entirely |
+| landed | Announced `MISSION_END` | Lost and gone at once, for good |
+
+The speaker is the lowest-id drone still heard from. A drone that starts after its mate waits to
+hear it, and the higher id waits for its mate's first job announcement, so both never start the
+same job. The other side's drones keep blocking from their last position and job until silent
+`MATE_GONE_S`. When all of them have landed or gone silent, `SideAgent.partner_lost` calls
+`planner.partner_lost()` once (target becomes `LostPartnerTarget`).
 
 ---
 
-## 8. Running and testing
+## 6. Finishing
 
-- Planner unit tests: `python -m flight.pathfinding.pathnode.test_pathnode`.
-- CellField tests: `python flight/pathfinding/tests/cellFieldTest.py`.
-- Full state-machine runs (need `dronekit`, i.e. the project venv):
-  `python -m integration_tests.multi_drone_sim_test [2|3|4] [dense]` and
-  `python -m integration_tests.one_drone_sim_test`.
-- Simulator + GIF: `Mission(mines, drones=4, record_frames=True).run()` then
-  `render_mission_gif(mission, "out.gif")` (`pathnode/sim.py`, `pathnode/render.py`).
+| Check | Meaning |
+|---|---|
+| `met` | The forward gap is closed |
+| `route_verified()` | Met and every link checked: **safe to report**, even with optional work left |
+| `done()` | Met, nothing pending, no `ADJACENT` / `OUTER` work, no shortcut left to try |
+
+`CalcScanPath` goes to `ExpandNodes` then `EndRun` on `done()`. The top side's chain message is
+marked complete when `route_verified()`.
+
+### 6.1 Joining the two halves
+
+Handshake: `state_machine/states/impl/end_run_impl.py`. Geometry: `pathnode/join.py`, `PathNodePlanner.check_join`.
+
+```mermaid
+sequenceDiagram
+    participant TS as Top speaker
+    participant D1 as Drone 1 (reporter)
+    participant O as Other drones
+    TS->>D1: CROSS_PAIR_CHAIN (route, complete, mine hash) every 1 s
+    Note over D1: waits: own side done and mate idle, route complete, mine hashes equal
+    D1->>D1: check_join_latlon
+    D1-->>TS: ack (mine hash)
+    D1-->>O: ack
+    Note over D1: join must hold JOIN_CONFIRM_S = 3 s, then report
+    Note over TS,O: leave only on an ack whose hash matches their own
+```
+
+- **`join_routes`:** each side stops at the other's point A, a point on the other's route. Join =
+  own route up to the first shared point, then the partner's route backwards from there.
+- **Fallback bridge** (`join.join`): under heavy loss the halves may overlap without sharing a
+  point. The closest pair within `MAX_BRIDGE_FT` = 30 is bridged by a straight line **only if** it
+  crosses no obstacle and every square on it is photographed.
+- **Crosswise meeting and reopen** (`check_join`): if both sides met on a point A the other has
+  abandoned and the halves do not connect, the **bottom side yields**
+  (`Edge.yields_in_crosswise_join`): it turns its target into a node and opens a forward gap to
+  the partner's route end (`_reopen_toward`); `done()` goes False and `EndRun` returns to
+  `CalcScanPath`. The top side only waits, so the two never chase each other.
+- **Hashes must match:** no mine still in flight may lie on the joined route. A mine arriving
+  after a join drops it unless it still clears every known mine. Speakers resend the full mine
+  list every 1 s while waiting.
+- **Timeout / partner gone:** past the flight budget (+ `JOIN_GRACE_S` = 10 s) drone 1 reports
+  what it has. With the other side gone, the side first reopens to check the lost half, then
+  reports its own route and sets `Drone.reported_half_route`. A relayed mine after `done()`
+  reopens the side too.
+
+### 6.2 What drone 1 reports
+
+Drone 1 holds the app link (`REPORTER_ID`). `AppShare` writes the path in the IARC format
+(`iarc_report.py`, `format_iarc_path`): `S,<start_col>,<buffer_width>` then `U,9`, `L,1`, ...
+- The route is rasterized to 2 ft squares and run-length encoded as `U/D/L/R`. A virtual entry
+  square just outside the nearer edge is prepended so the first command enters the field.
+- A discontinuity is logged, not raised, in flight (raising out of `EndRun` would leave the drone hovering).
+- **Today `buffer_width` is always 0:** `AppShare` calls `get_mission_iarc_path()` with no
+  argument. It is written to the `S` line, not enforced. Section 7.4 says where it will come from.
+
+---
+
+## 7. Expanding mines
+
+**Status: built in the planner, backend and simulator; NOT wired into the flight code.**
+`ExpandNodes` is a no-op, `MissionPlanner.expand_margin` does nothing, and no flight state calls
+`try_advance_level`. Not built: the level message and heartbeats, `SideAgent` gating, `CalcScanPath`
+/ `EndRun` changes, the level field in the chain message, `buffer_width` in the report, the
+partner-lost trigger for levels. Flights today run at level 0. Simulator: `pathnode/sim_levels.py`
+(`Mission(levels=True)`). Design: [docs/design/expanding_mines.md](docs/design/expanding_mines.md).
+
+**Idea.** Mines may be bigger than assumed. Once a complete route exists, every zone grows by
+steps, the route is repaired and rechecked each step, and the last route that survived is reported
+with its measured clearance.
+
+```mermaid
+flowchart LR
+    W["work at level L<br/>(groups 0-3)"] --> R{"ready?"}
+    R -->|no| W
+    R -->|yes| SN["snapshot"] --> G{"LevelGate: mate and<br/>other side ready at L?"}
+    G -->|wait| G
+    G -->|go| GR["grow to L+1<br/>GrowthRule recheck"]
+    GR -->|feasible| W
+    GR -->|infeasible| CAP["rollback to L, cap"]
+```
+
+| Piece | What | Code |
+|---|---|---|
+| Level | Growth steps done. A zone at level k = level-0 hull plus a **diamond (city-block) of radius 2k ft**: 2 ft more per axis per level, nothing extra on diagonals | `PathEngine.set_level`, `STEP_FT`; `engines/base.py` |
+| Blocked squares | Never grow | `engines/base.py` |
+| Absolute | `set_level(k)` depends only on (mines, squares, k): a lower k is an exact rollback; later mines are built at the current level | `engines/zonemap.py` |
+| Ready | Groups 0-3 (`IMPORTANT`) empty, met, nothing pending, no shortcut trial live. `OUTER` not required | `LevelController.ready` (`pathnode/level_control.py`) |
+| Snapshot | Frozen complete route at one level: level, seq, route, cell path, mine hash, time, `spans` (runs edge to edge). A late mine at the same level can force another | `Snapshot` (`levels.py`), `LevelController.snapshot` |
+| Valid | No known mine on the snapshot's cell path (mines in the buffer are fine) | `SnapshotBook.valid_snapshots` |
+| Unsafe counter | Squares of a snapshot that later fell inside a zone, kept beside the frozen snapshot | `SnapshotBook.unsafe` |
+
+### 7.1 Growth rule
+
+`GrowthRule` (`mine_rule.py`, a `MineRule`), run by `LevelController.grow` after `set_level(L+1)`:
+- All zones grew at once: no gid, no jump (`Source.PARTNER`); steps 0-3 as in section 3.2.
+- **Per-gap bridging:** every fragment is kept and each consecutive pair is bridged by its own
+  shortest path (a pending span; the gap before the target stays forward). The single-mine rule
+  would collapse orphaned stretches.
+- A gap with no route makes the level **infeasible**: the chain is restored (`GrowthResult`), the
+  zones go back to L and the copy is **capped** at L for good (`rollback`).
+- Bridges are ordinary pending work; the copy is not ready again until they are photographed.
+
+### 7.2 Lockstep
+
+`LevelGate` (`levels.py`): no decider; every copy applies one rule to the announced `LevelState`s
+(side, drone, level, ready, capped, seq; an older seq is ignored). For a copy, in order:
+1. Not ready: `NOT_READY`. Capped: `AT_CAP`.
+2. A peer capped at this level or lower: `PEER_CAPPED` (no point climbing).
+3. A live side-mate not ready at L or past it: `WAIT_MATE`.
+4. With a partner side, no drone of it ready at L or past: `WAIT_OTHER`. Unknown is never ready.
+5. Else `GO` (the caller may also cap with `max_level`).
+
+Sides differ by at most one working level. A lost other side is dropped from the gate
+(`partner_lost`). `growth_fits(remaining)` skips a step when remaining time < `TIME_MARGIN` (1.5)
+x the last growth + recheck time; the clock belongs to the caller.
+
+### 7.3 Late mines and stuck
+
+- **Late mine at level > 0 leaves no route** (`after_obstacle`): `recover()` steps down level by
+  level, rebuilding the chain from the newest snapshot at or below it and rechecking with
+  `apply_growth`, until a route survives; the copy is capped there. Level 0: the failure stands.
+- **Stuck** (`LevelController.stuck`): grown level, not met, aiming at a point A it cannot close
+  on, nothing left to photograph (growth walled the sides apart). After `STUCK_PASSES` = 20 passes,
+  `recover()` steps down a level.
+
+### 7.4 Reporting
+
+- `report_route`: the **newest valid snapshot** (after the partner is lost, the newest valid one
+  with `spans`). None valid: the live route if verified, else the newest snapshot, else the live route.
+- `buffer_width` (`levels.clearance`): city-block distance in squares within which the reported
+  cell path has no known mine = (smallest distance from a mine's square to the path) - 1. 0 = a
+  mine next to the path, -1 = on it; no mine known: `cols + rows`. This is the `S` line's number.
+- `join_at(level, partner_route, partner_hash)`: valid snapshot at `level` joined with the
+  partner's. Equal mine-and-level hash: only the join is checked. Otherwise the joined route must
+  also clear all known mines' zones at `level` (`clears_at`).
+- **Lost partner:** `Target.lost()` and the gate stops waiting; this side's snapshots span the field.
+
+---
+
+## 8. The layers
+
+```mermaid
+flowchart TD
+    SM["State machine<br/>state_machine/states/impl/*"] --> SA["SideAgent<br/>side_agent.py: messages, heartbeats, MateWatch, inbox"]
+    SA --> MP["MissionPlanner<br/>mission_planner.py: lat/lon <-> local feet"]
+    MP --> SB["SearchBackend (abstract)<br/>search_backend.py"]
+    SB --> PB["PathNodeBackend<br/>pathnode/session.py"]
+    PB --> PL["PathNodePlanner<br/>pathnode/planner.py: one side's mission state"]
+    PL --> P1["Chain, Target<br/>chain.py, target.py"]
+    PL --> P2["Routes -> PathEngine<br/>routes.py, engines/"]
+    PL --> P3["Coverage -> PhotoPlacement<br/>coverage.py, placement.py"]
+    PL --> P4["MineRule, GrowthRule<br/>mine_rule.py"]
+    PL --> P5["Work -> WorkSources, Shortcuts<br/>work.py, work_sources.py, shortcuts.py"]
+    PL --> P6["SideCoordinator -> ClaimBook<br/>coordination.py, claims.py"]
+    PL --> P7["LevelController<br/>level_control.py, levels.py"]
+```
+
+Calls go down only. Events in (own photo, mate photo, partner mine, footprint, point A) go through
+`SearchBackend`; per photo: `record_footprint`, `add_mine`, `advance()`. Plan out: `plan(...)`
+returns one queue per drone. The simulator (`pathnode/sim.py`) drives the same backend. Detail and
+recipes: [docs/architecture.md](docs/architecture.md).
+
+---
+
+## 9. Invariants and tunables
+
+### 9.1 Invariants
+
+- **Mines before nodes:** per photo, footprint, then mines, then `advance()` (`session.py`); the inbox applies the other side's mines first.
+- **The route never crosses a known mine:** the mine rule repairs on every obstacle; `join` and `partner_route` return None for a crossing route.
+- **Checked = photographed:** links turn checked only through `Chain.advance_link` over squares `Coverage.all_seen` accepts.
+- **Adding an obstacle never shortens a path:** engine monotonicity; `Routes` drops only cached routes the new obstacle crosses.
+- **Copies are deterministic:** same events give the same chain, groups and claims (engines, `PhotoPlacement`, geometric keys, id tie-breaks).
+- **A snapshot is never modified** (frozen); changing counters live in `SnapshotBook`.
+- **Rollback is exact:** `set_level` is absolute; shrinking zones keeps every existing route valid.
+- **One level apart at most:** `LevelGate`.
+- **A mine in an already-mined square is the same mine** (`add_mine` dedupes by square).
+- **Jump only on a mine this side found** (`Source.PAIR`).
+- **Only the current job is sticky; announced jobs are held** (`ClaimBook`).
+
+### 9.2 Tunables
+
+`PlannerConfig` (`pathnode/config.py`, frozen; flight uses the defaults except the camera footprint):
+
+| Name | Value | Meaning |
+|---|---|---|
+| `shape_size_ft`, `overlap` | (6.0, 4.0) default, 0.1 | Photo footprint (along y, across x), overlap along a path. Flight passes the camera footprint from `calc_scan_path_impl.py` |
+| `coverage` | `CORRIDOR` | What makes a link checked |
+| `adjacent_ring`, `outer_ring` | 1, 2 | Reach of `ADJACENT`, `OUTER` |
+| `shortcut_ratio`, `big_shortcut_ratio` | 0.9, 0.8 | Shortcut tiers (None = off) |
+| `big_shortcut_saving_ft` | 20.0 | Big shortcut minimum saving |
+| `shortcut_max_waypoints`, `shortcut_ft_per_photo` | 8, 2.0 | Shortcut photo allowance |
+| `keep_away_ft`, `keep_clear_ft` | 10.0, 7.5 | Section 5.2 |
+| `engine` | `"zonemap"` | Path engine |
+
+Constants and timers:
+
+| Name | Value | File |
+|---|---|---|
+| `CELL`, `SAFETY_RADIUS_FT` | 2 ft, 3 ft | `pathnode/geometry.py` |
+| `SAMPLE_FT`, `TILE_MARGIN_FT` | 0.5, 0.5 ft | `pathnode/config.py` |
+| `MISS_CENTRE`, `MISS_BLOCK` | 1, 3 | `pathnode/config.py` |
+| `MAX_BRIDGE_FT`, `SHORTCUT_MIN_SAVING_FT` | 30 ft, 4 ft | `pathnode/config.py` |
+| `MATCH_FT`, `LANE_PHOTOS` | 2 ft, 3 | `claims.py`, `coordination.py` |
+| `STEP_FT`, `TIME_MARGIN`, `STUCK_PASSES` | 2 ft, 1.5, 20 | `engines/base.py`, `levels.py`, `level_control.py` |
+| `MATE_LOST_S`, `MATE_GONE_S` | 20 s, 120 s | `mate_watch.py` |
+| `JOB_HEARTBEAT_S`, `POINT_A_HEARTBEAT_S`, `MINE_SYNC_S` | 1 s, 1 s, 5 s (1 s in `EndRun`) | `heartbeats.py`, `end_run_impl.py` |
+| `CHAIN_RESEND_S`, `JOIN_CONFIRM_S`, `JOIN_GRACE_S` | 1 s, 3 s, 10 s | `end_run_impl.py` |
+| `max_flight_time` | `60 * 7` | `state_machine/flight_settings.py` |
+
+---
+
+## Where to read next
+
+1. [docs/architecture.md](docs/architecture.md): modules, parent classes, how-to recipes.
+2. [docs/walkthrough/](docs/walkthrough/README.md): one run, state by state (chapters 5 and 9: the mine rule and the meeting).
+3. [docs/priority_groups.md](docs/priority_groups.md): groups and claims with figures.
+4. [docs/design/expanding_mines.md](docs/design/expanding_mines.md): expanding-mines design (section 10 decides).
+5. [docs/design/search_backend_interface.md](docs/design/search_backend_interface.md): the backend and engine contract.
+6. [docs/testing/README.md](docs/testing/README.md): what to run after which change.
+7. Code, in order: `pathnode/chain.py`, `mine_rule.py`, `claims.py`, `coordination.py`, `side_agent.py`, `level_control.py`.

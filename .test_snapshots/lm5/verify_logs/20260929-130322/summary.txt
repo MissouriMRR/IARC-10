@@ -1,0 +1,8 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         69      69       0      0    3836s   17373s
+sweep        90      90       0      0    3839s   13305s
+TOTAL       159                           3839s
+
+ALL PASSED
+WARNING: machine stalled/slept 2884s at 13:03:52; jobs then are unreliable
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\lm5\verify_logs\20260929-130322

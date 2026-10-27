@@ -49,7 +49,8 @@ drone process never exercises a paired peer at all):
     interdrone_loop that would deliver what it is waiting on (fixed with an
     asyncio.sleep(0) in scan_impl.py's bounce-back branch).
 
-Run directly: `python integration_tests/multi_drone_sim_test.py [2|3|4] [dense]`
+Run directly: `python integration_tests/multi_drone_sim_test.py [2|3|4] [dense] [teleport] [speedup=N]
+[abort=ID@SECONDS]`
 (omit the count to run all three configurations in sequence).
 """
 
@@ -65,12 +66,7 @@ from integration_tests import _hardware_shims
 
 _hardware_shims.install()
 
-from PIL import Image as PILImage
-
-from vision.Cameras.baseCamera import BaseCamera
-from vision.common.detection import Detection
-from vision.common.drone_coordinates import DronePose, GimbalPose
-from vision.common.image import Image as VisionImage
+from vision.common.drone_coordinates import DronePose
 
 from interdrone_communication.json_message_utilities import JsonMessageUtilities
 from interdrone_communication.message_types import MessageType
@@ -83,11 +79,12 @@ from state_machine.state_machine import StateMachine
 from state_machine.states import Start
 import vision.Cameras.RPICamera.RPICamera as rpicamera_module
 
+from integration_tests.vehicle_motion import CruiseMotion, Motion, TeleportMotion
 from integration_tests.one_drone_sim_test import (
     MockVehicle,
+    TruthCamera,
     _field_corners,
     _local_to_latlon,
-    _point_in_latlon_polygon,
     _rangefinder_feed,
     check_reported_route,
     HEIGHTOFFIELD,
@@ -107,57 +104,13 @@ from integration_tests.one_drone_sim_test import (
 _sim_context_var: contextvars.ContextVar[dict] = contextvars.ContextVar("sim_context")
 
 
-class MockCamera(BaseCamera):
-    """See one_drone_sim_test.py's own MockCamera -- identical in every
-    way except reading its (pose_provider, true_mines_latlon) from the
-    current task's contextvar instead of a single shared global."""
-
-    IMAGE_SIZE = (640, 480)
+class MockCamera(TruthCamera):
+    """The multi-drone test's camera: pose and mines from the current task's contextvar
+    (see above), so each drone's camera sees its own vehicle."""
 
     def __init__(self, vision_config: dict):
-        mount = vision_config.get("cameraMountRotationDeg", {})
-        super().__init__(
-            h_fov_deg=vision_config.get("hFovDeg", 0.0),
-            v_fov_deg=vision_config.get("vFovDeg", 0.0),
-            offset=tuple(vision_config.get("cameraOffsetM", (0.0, 0.0, 0.0))),
-            mount_rotation=GimbalPose(
-                yaw=mount.get("yaw", 0.0), pitch=mount.get("pitch", 0.0), roll=mount.get("roll", 0.0)
-            ),
-        )
         ctx = _sim_context_var.get()
-        self._pose_provider = ctx["pose_provider"]
-        self._true_mines_latlon: list[tuple[float, float]] = ctx["true_mines_latlon"]
-        self._reported: set[int] = set()
-        self.capture_count = 0
-
-    def initialize_camera(self) -> None:
-        pass
-
-    def capture_image(self, only_metadata: bool) -> VisionImage:
-        self.capture_count += 1
-        return VisionImage(PILImage.new("RGB", self.IMAGE_SIZE), {})
-
-    def capture_and_detect_mines(self) -> list[Detection]:
-        pose: DronePose = self._pose_provider()
-        width, height = self.IMAGE_SIZE
-        corners = self.get_image_corner_coordinates(width, height, pose)
-        if any(c is None for c in corners):
-            return []
-        top_left, top_right, bottom_left, bottom_right = corners
-        polygon = [top_left, top_right, bottom_right, bottom_left]
-
-        detections = []
-        for i, (mine_lat, mine_lon) in enumerate(self._true_mines_latlon):
-            if i in self._reported:
-                continue
-            if _point_in_latlon_polygon(mine_lat, mine_lon, polygon):
-                self._reported.add(i)
-                cx, cy = width / 2.0, height / 2.0
-                detections.append(Detection(0.92, (cx, cy, 20, 20), (width, height)))
-        return detections
-
-    def capture_and_detect_apriltags(self) -> list[Detection]:
-        return []
+        super().__init__(vision_config, ctx["pose_provider"], ctx["true_mines_latlon"])
 
 
 def _make_pose_provider(vehicle: MockVehicle):
@@ -273,6 +226,20 @@ async def _leader_autopilot(interdrone: Interdrone) -> None:
 
 LAUNCH_SPACING_FT = 10.0
 
+# How much faster than the commanded groundspeed the fake vehicles fly (CruiseMotion): a 2 m/s
+# mission would not fit the 300 s timeout.
+MOTION_SPEEDUP = 2.0
+
+
+def cruise_motion(lat: float, lon: float) -> Motion:
+    """The default: fly there over time, so the other drones see this one in transit."""
+    return CruiseMotion(lat, lon, speedup=MOTION_SPEEDUP)
+
+
+def teleport_motion(lat: float, lon: float) -> Motion:
+    """Legs take no time (the old harness; "teleport" on the command line)."""
+    return TeleportMotion(lat, lon)
+
 
 def _start_coord_for(flight_settings: FlightSettings) -> dict:
     """Every drone starts at the same x (field center) -- retarget_
@@ -285,6 +252,13 @@ def _start_coord_for(flight_settings: FlightSettings) -> dict:
     return {"lat": lat, "lon": lon}
 
 
+async def _abort_later(drone: Drone, after_s: float) -> None:
+    """Fault injection: the drone's separation check latches an abort `after_s` into the run,
+    as a real breach would (its next leg raises FormationLost and the state machine lands)."""
+    await asyncio.sleep(after_s)
+    drone.formation_abort = "injected abort (harness)"
+
+
 async def _run_one_drone(
     drone_id: int,
     drones_in_mission: list[int],
@@ -292,6 +266,8 @@ async def _run_one_drone(
     true_mines_latlon: list[tuple[float, float]],
     router: _MessageRouter,
     timeout_s: float,
+    motion_factory=cruise_motion,
+    abort_at_s: float | None = None,
 ) -> dict:
     flight_settings = FlightSettings(
         drone_ID=drone_id,
@@ -311,7 +287,8 @@ async def _run_one_drone(
     launch_x = WIDTHOFFIELD / 2 + (LAUNCH_SPACING_FT if flight_settings.paired_drone is not None
                                    and drone_id > flight_settings.paired_drone else 0.0)
     launch_y = 0.0 if flight_settings.start_side == Side.START else float(HEIGHTOFFIELD)
-    vehicle = MockVehicle(*_local_to_latlon(launch_x, launch_y))
+    launch = _local_to_latlon(launch_x, launch_y)
+    vehicle = MockVehicle(*launch, motion=motion_factory(*launch))
     drone._vehicle = vehicle
     vehicle.add_message_listener("DISTANCE_SENSOR", drone._on_distance_sensor)
 
@@ -337,6 +314,8 @@ async def _run_one_drone(
     ]
     if drone_id == 1:
         background_tasks.append(asyncio.ensure_future(_leader_autopilot(interdrone)))
+    if abort_at_s is not None:
+        background_tasks.append(asyncio.ensure_future(_abort_later(drone, abort_at_s)))
 
     error = None
     started_at = time.monotonic()
@@ -379,6 +358,8 @@ async def run_simulation(
     n_drones: int,
     true_mines_local: list[tuple[float, float]],
     timeout_s: float = 300.0,
+    motion_factory=cruise_motion,
+    aborts: dict[int, float] | None = None,
 ) -> list[dict]:
     if n_drones not in (2, 3, 4):
         raise ValueError(f"n_drones must be 2, 3, or 4 (got {n_drones})")
@@ -390,7 +371,8 @@ async def run_simulation(
 
     tasks = [
         asyncio.ensure_future(
-            _run_one_drone(did, drones_in_mission, corners, true_mines_latlon, router, timeout_s)
+            _run_one_drone(did, drones_in_mission, corners, true_mines_latlon, router, timeout_s,
+                           motion_factory, (aborts or {}).get(did))
         )
         for did in drones_in_mission
     ]
@@ -419,10 +401,10 @@ def _report(n_drones: int, results: list[dict]) -> bool:
         planner = result["drone"].planner
         if planner is not None:
             print(
-                f"   mines found : {len(planner.planner.discovered)} / "
+                f"   mines found : {len(planner.backend.mines())} / "
                 f"{len(result['true_mines_latlon'])} true"
             )
-            print(f"   seen cells  : {len(list(planner.planner.seen.on_cells()))}")
+            print(f"   seen cells  : {len(list(planner.backend.planner.seen.on_cells()))}")
         if did == 1 and planner is not None:
             drone = result["drone"]
             problems = check_reported_route(planner, drone.mission_path)
@@ -474,16 +456,26 @@ def _dense_mines(count: int = 60, seed: int = 3) -> list[tuple[float, float]]:
 
 
 def main() -> None:
+    global MOTION_SPEEDUP
     logging.basicConfig(level=logging.WARNING)
     args = sys.argv[1:]
     counts = [int(a) for a in args if a.isdigit()]
     configs = counts or [2, 3, 4]
     mines = _dense_mines if "dense" in args else _mines_for
+    motion_factory = teleport_motion if "teleport" in args else cruise_motion
+    aborts: dict[int, float] = {}
+    for arg in args:
+        if arg.startswith("speedup="):
+            MOTION_SPEEDUP = float(arg.split("=", 1)[1])
+        elif arg.startswith("abort="):         # abort=3@20: drone 3 aborts 20 s in
+            drone_id, at_s = arg.split("=", 1)[1].split("@")
+            aborts[int(drone_id)] = float(at_s)
 
     all_ok = True
     for n_drones in configs:
         results = asyncio.run(run_simulation(
-                n_drones, mines(n_drones) if mines is _mines_for else mines()
+                n_drones, mines(n_drones) if mines is _mines_for else mines(),
+                motion_factory=motion_factory, aborts=aborts,
             ))
         all_ok = _report(n_drones, results) and all_ok
 

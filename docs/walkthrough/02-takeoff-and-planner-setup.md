@@ -4,7 +4,7 @@
 
 **What this chapter covers.** The `Takeoff` state's **mission branch**. Before the drone leaves the ground it builds everything it will plan with: a local map frame, its own copy of its side's **planner** (`PathNodePlanner`), a **side agent** that talks to the side-mate, and the camera. Then it takes off and starts telling the other drones where it is.
 
-> **Status.** The per-drone planner code (copies, claims, keep-apart) is in final verification; sections 2.4 and 2.5 describe it as read. **The obstacle geometry underneath the planner is still `ZoneMap` and is due to be replaced** (see 2.4, "the geometry underneath"); the new `Field` is not wired in.
+> **Status.** The per-drone planner code (copies, claims, keep-apart) is in final verification; sections 2.4 and 2.5 describe it as read. The obstacle geometry underneath the planner is a `PathEngine` (`ZoneMap` by default; `Field` is selectable, see 2.4, "the geometry underneath").
 
 ## 2.1 The Takeoff state waits for a command
 
@@ -107,7 +107,7 @@ Note: `Drone.takeoff(takeoff_alt, margin=1.5)` commands `takeoff_alt + margin` (
 **2.2b: the assumed photo size.** `configureField` imports `SHAPE_SIZE_FT` and `OVERLAP` from `calc_scan_path_impl.py`. Where do they come from?
 
 ```python
-# state_machine/states/impl/calc_scan_path_impl.py:64-67, 76-77
+# state_machine/states/impl/calc_scan_path_impl.py:63-66, 75-76
     altitude_ft = altitude_m * _METERS_TO_FT
     along_ft = 2 * altitude_ft * math.tan(math.radians(h_fov_deg) / 2)
     across_ft = 2 * altitude_ft * math.tan(math.radians(v_fov_deg) / 2)
@@ -146,7 +146,7 @@ def configureField(state: Takeoff) -> None:
 `make_planner` turns the flight settings into a `MissionPlanner`:
 
 ```python
-# flight/pathfinding/mission_planner.py:198-206
+# flight/pathfinding/mission_planner.py:199-207
 def make_planner(flight_settings, shape_size_ft, overlap):
     """This drone's copy of its side's planner."""
     from state_machine.flight_settings import Side   # local: avoids an import cycle
@@ -241,24 +241,20 @@ Note: in the checked-in `mission_config.json` the `start_coord` (lat 36.02, lon 
 `PathNodePlanner` (`flight/pathfinding/pathnode/planner.py`) is one side's route-and-work planner in local feet. Each drone owns a **private copy** for its side. Its constructor builds nine parts:
 
 ```python
-# flight/pathfinding/pathnode/planner.py:59-84
+# flight/pathfinding/pathnode/planner.py:72-95
         self.config = config or PlannerConfig(**options)
         self.field_w, self.field_h = float(field_w), float(field_h)
         self.start_edge = Edge(start_edge)
-        self.drones = tuple(drones)
-        self.claims = ClaimBook(self.drones)
-        self.last_plan = {d: [] for d in self.drones}
         self.discovered = []            # every known mine, (x, y)
         self.blocked = set()            # squares given up on (see coverage.py)
         self.partner_route = []         # the partner's latest route (check_join)
         self.failure = None
         self.log = PlannerLog()
-        self.routes = Routes(self.field_w, self.field_h)
-        self.target = Target(self.field_w, self.field_h, self.start_edge, partner_entry_x,
-                             self.routes)
+        self.routes = Routes(make_engine(self.config.engine, self.field_w, self.field_h))
+        self.target = make_target(self.field_w, self.field_h, self.start_edge, partner_entry_x,
+                                  self.routes)
         self.coverage = Coverage(self.field_w, self.field_h, self.config)
-        y0 = 0.0 if self.start_edge == Edge.BOTTOM else self.field_h
-        entry = PathNode(float(entry_x), y0, Placer.ENTRY)
+        entry = PathNode(float(entry_x), self.start_edge.y(self.field_h), Placer.ENTRY)
         self.chain = Chain([entry], [])
         route, _gids = self.target.route_from(entry.xy)
         if route is None:
@@ -268,19 +264,23 @@ Note: in the checked-in `mission_config.json` the `start_coord` (lat 36.02, lon 
                                [Link(LinkKind.FORWARD, route)])
         self.shortcuts = Shortcuts(self.chain, self.routes, self.coverage, self.config, self.log)
         self.work = Work(self.chain, self.routes, self.coverage, self.shortcuts, self.config)
+        self.coordinator = SideCoordinator(drones, self.config, self.work, self.coverage,
+                                           self.field_w, self.field_h)
 ```
 
 | Part | File | What it is, in plain words |
 |---|---|---|
 | `config` | `config.py` | The tunable settings (`PlannerConfig`), see below. |
-| `claims` | `claims.py` | The **ClaimBook**: decides which drone of the side flies which photos. |
-| `routes` | `routes.py` | Known obstacles and "shortest path around them". |
-| `target` | `target.py` | What the forward gap aims at: the partner side's point A, or the far edge. |
-| `coverage` | `coverage.py` | Which 2 ft squares have been photographed, misses, where to place photos. |
+| `routes` | `routes.py` | Known obstacles and "shortest path around them", over a swappable `PathEngine` (`engines/`, see "The geometry underneath"). |
+| `target` | `target.py` | What the forward gap aims at: `FarEdgeTarget` (no partner side) or `PartnerTarget` (the partner side's point A), picked by `make_target`. |
+| `coverage` | `coverage.py` | Which 2 ft squares have been photographed, and the misses. It holds a `placement` (`placement.py`: `CorridorPlacement` or `BandPlacement`, picked by `PlannerConfig.coverage`) that decides which squares a stretch needs and where its photos go. |
 | `chain` | `chain.py` | The route so far: path nodes joined by links. |
 | `shortcuts` | `shortcuts.py` | Replaces long checked stretches with shorter paths (chapter 8). |
-| `work` | `work.py` | The photos still to take, sorted into priority groups. |
+| `work` | `work.py` | The photos still to take, in priority groups; an ordered list of `WorkSource`s (`work_sources.py`). |
+| `coordinator` | `coordination.py` | `SideCoordinator`: owns the **ClaimBook** (`claims.py`, which drone of the side flies which photos), keep-apart, make-way and idle takeover. |
 | `log` | `log.py` | Counters and a bounded event log (a debugging aid). |
+
+For the map of all the parts and the classes to subclass, see [docs/architecture.md](../../architecture.md).
 
 ### The chain: how the route is stored
 
@@ -313,9 +313,8 @@ Key words (also in the [glossary](11-glossary.md)):
 At the very start (this is what the constructor builds):
 
 ```python
-# flight/pathfinding/pathnode/planner.py:74-82
-        y0 = 0.0 if self.start_edge == Edge.BOTTOM else self.field_h
-        entry = PathNode(float(entry_x), y0, Placer.ENTRY)
+# flight/pathfinding/pathnode/planner.py:84-91
+        entry = PathNode(float(entry_x), self.start_edge.y(self.field_h), Placer.ENTRY)
         self.chain = Chain([entry], [])
         route, _gids = self.target.route_from(entry.xy)
         if route is None:
@@ -332,30 +331,30 @@ So the chain is `[entry] --forward-- [target]`: entry and target only, joined by
 field 82.3 x 299.7 ft, cells 42 x 150
 nodes : [('entry', 42.6, 0.0), ('target', 42.6, 299.7)]
 links : [('forward', [(42.6, 0.0), (42.6, 299.7)])]
-target: partner = True partner_a = (42.614664072920554, 299.7155912142725) is_partner = True
+target: partner = True partner_a = (42.614664072920554, 299.7155912142725) may_close = True
 claims: (1, 2) | failure: None
 --- drone 3 (top side, has a partner side)
 field 82.3 x 299.7 ft, cells 42 x 150
 nodes : [('entry', 42.6, 299.7), ('target', 42.6, 0.0)]
 links : [('forward', [(42.6, 299.7), (42.6, 0.0)])]
-target: partner = True partner_a = (42.614664072920554, 0.0) is_partner = True
+target: partner = True partner_a = (42.614664072920554, 0.0) may_close = True
 claims: (3, 4) | failure: None
 --- solo/2-drone mission (no partner side)
 field 82.3 x 299.7 ft, cells 42 x 150
 nodes : [('entry', 42.6, 0.0), ('target', 42.6, 299.7)]
 links : [('forward', [(42.6, 0.0), (42.6, 299.7)])]
-target: partner = False partner_a = None is_partner = False
+target: partner = False partner_a = None may_close = True
 claims: (1, 2) | failure: None
 ```
 
 - For drone 1 the target is `(42.6, 299.7)` at the top edge, directly above the entry: "aim at the partner's entry until they tell me where they really are". Drone 3 mirrors it.
-- With no partner (`partner = False`) the target is a point on the far edge, chosen by `Target.route_from` (straight ahead if clear).
-- `is_partner = True` means the target is really the partner's point A, so the gap may be declared closed against it (chapter 9). Against a *stand-in* (when the partner's point A lies inside an obstacle this side knows) it stays `False`.
+- With no partner (`partner = False`) the target is a `FarEdgeTarget`: a point on the far edge, chosen by `route_from` (straight ahead if clear). With a partner it is a `PartnerTarget`.
+- `may_close() = True` means the target is really the partner's point A (or the far edge), so the gap may be declared closed against it (chapter 9). Against a *stand-in* (when the partner's point A lies inside an obstacle this side knows) it stays `False`.
 
 ### Settings (`PlannerConfig`)
 
 ```python
-# flight/pathfinding/pathnode/config.py:105-116
+# flight/pathfinding/pathnode/config.py:122-133
     shape_size_ft: tuple = (6.0, 4.0)
     overlap: float = 0.1
     coverage: CoverageMode = CoverageMode.CORRIDOR
@@ -377,26 +376,27 @@ claims: (1, 2) | failure: None
 - `shortcut_*`: when to try a shortcut (chapter 8).
 - `keep_away_ft = 10.0`, `keep_clear_ft = 7.5`: how close a drone may plan a photo to another drone (chapter 3, keep-apart). Both are `PlannerConfig` fields, chosen to stay above the flight code's collision hold radius (`COLLISION_RADIUS` 2.01 m = 6.6 ft, chapter 4); `keep_away_ft` > `keep_clear_ft` so a tie has a winner.
 
-Fixed constants (also `config.py`): `CELL = 2 ft` (in `geometry.py`), `MISS_CENTRE = 1` and `MISS_BLOCK = 3` (chapter 4), `MAX_BRIDGE_FT = 30`.
+Fixed constants (also `config.py`): `CELL = 2 ft` (in `geometry.py`, which now holds only shared constants and cell helpers), `MISS_CENTRE = 1` and `MISS_BLOCK = 3` (chapter 4), `MAX_BRIDGE_FT = 30`.
 
-### The geometry underneath (flagged: being replaced)
+### The geometry underneath (a swappable `PathEngine`)
 
 `Routes` (`routes.py`) is the interface the planner uses for obstacles:
 
 ```python
-# flight/pathfinding/pathnode/routes.py:19-24, 53-57, 59-72
+# flight/pathfinding/pathnode/routes.py:19-25, 53-57, 62-75
 class Routes:
-    def __init__(self, field_w, field_h):
-        self.zones = ZoneMap(field_w, field_h)
+    def __init__(self, engine):
+        """Takes: a PathEngine instance (see engines.make_engine)."""
+        self.engine = engine
         self.version = 0
         self._paths = {}        # ((ax, ay), (bx, by)) -> (points, gids, LineString) or None
         self._inside = {}       # square -> whether its centre is inside a zone
     ...
     def contains(self, x, y):
-        return self.zones.contains(x, y)
+        return self.engine.contains(x, y)
 
     def crosses(self, poly):
-        return self.zones.crosses(poly)
+        return self.engine.crosses(poly)
     ...
     def shortest(self, a, b):
         """Shortest path a -> b around every obstacle, as (points, gids), or None. Returns
@@ -405,13 +405,13 @@ class Routes:
         if key not in self._paths:
             if len(self._paths) > CACHE_CAP:
                 self._paths.clear()
-            route = self.zones.shortest_path(*key)
+            route = self.engine.shortest_path(*key)
             self._paths[key] = (None if route is None else
                                 (route[0], route[1], shapely.LineString(route[0])))
         route = self._paths[key]
         if route is None:
             return None
-        return list(route[0]), [None if g is None else self.zones.resolve(g) for g in route[1]]
+        return list(route[0]), [None if g is None else self.engine.resolve(g) for g in route[1]]
 ```
 
 - `add_mine(x, y)` / `add_square(c, r)`: register a new obstacle (a mine's **danger zone**, or a 2 ft square the planner gave up on).
@@ -420,7 +420,7 @@ class Routes:
 - `shortest(a, b)`: **the shortest path from a to b around every known obstacle**, as a list of points plus, for each corner it bends around, the id of the obstacle group it wraps.
 - It caches paths and only drops the ones a new obstacle crosses.
 
-> **In flux.** Underneath, `Routes` currently holds a `ZoneMap` (`pathnode/geometry.py`). A rebuilt geometry (`flight/pathfinding/nodeField/`: `Field`, `FieldConnections.nodeGraph`, `MineNode`, `PolygonObstacle`, `unionObstacle`, `BlockMine`; and `protoMine.py`) is finished but **not wired in yet**; it will replace `ZoneMap`. This walkthrough treats path-finding as "shortest path around known obstacles" through `Routes` and does not describe `ZoneMap`'s internals. A later revision will cover `Field` once it is wired.
+> **Engine behind `Routes`.** `Routes(engine)` holds a `PathEngine` (`pathnode/engines/base.py`: the abstract class whose docstring is the contract). `PathNodePlanner` builds it with `make_engine(config.engine, w, h)` (`pathnode/engines/__init__.py`): `"zonemap"` (`ZoneMap`, `pathnode/engines/zonemap.py`) is the default; `"field"` (`flight/pathfinding/nodeField/`: `Field`, `FieldConnections.nodeGraph`, `MineNode`, `PolygonObstacle`, `unionObstacle`, `BlockMine`; and `protoMine.py`) also implements it but is not the default. This walkthrough treats path-finding as "shortest path around known obstacles" through `Routes` and does not describe either engine's internals.
 >
 > What the planner relies on from the geometry, whatever implements it: the danger zone of a mine is the whole set of 2 ft squares within `SAFETY_RADIUS_FT = 3` of the mine's square (snapped to the square's centre); overlapping zones merge into one group with an id; shortest paths bend only around zone corners.
 
@@ -429,7 +429,7 @@ class Routes:
 Back in `configureField`, the last line builds `SideAgent(planner, drone, flight_settings, interdrone)` and stores it as `drone.side`. The planner never sends a message; the side agent does everything the drone says to and hears from others.
 
 ```python
-# flight/pathfinding/side_agent.py:31-35, 39-52
+# flight/pathfinding/side_agent.py:41-45, 50-64
 POINT_A_HEARTBEAT_S = 1.0      # point A is resent at least this often (a lossy stream)
 JOB_HEARTBEAT_S = 1.0          # this drone's job is re-announced at least this often
 MINE_SYNC_S = 5.0              # the speaker sends its full mine list this often
@@ -446,6 +446,7 @@ MATE_LOST_S = 20.0             # a side-mate silent this long is lost (its work 
         self.mate = flight_settings.paired_drone            # None: working the side alone
         self.partners = tuple(flight_settings.partner_side_drones)
         self.mate_lost = False
+        self.mate_gone = False
         self._mate_photo_at = None      # (lat, lon) of the mate's last photo report
         self._point_a_sent = None       # ((lat, lon), time)
         self._job_sent = None           # (job, time)
@@ -457,7 +458,7 @@ MATE_LOST_S = 20.0             # a side-mate silent this long is lost (its work 
 - `speaker`: the lowest-id drone of the side still heard from. It is the one that talks *for the side* to the other side (point A, the full mine list).
 
 ```python
-# flight/pathfinding/side_agent.py:71-73
+# flight/pathfinding/side_agent.py:92-94
     def speaker(self):
         """Whether this drone speaks for its side: the lowest id still heard from."""
         return self.mate is None or self.mate_lost or self.me < self.mate

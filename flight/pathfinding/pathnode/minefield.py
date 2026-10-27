@@ -1,8 +1,8 @@
 """Ground-truth minefields for simulation.
 
-Reproduces flight/pathfinding/tests/droneWorkflowTest.generate_true_minefield exactly (same
-RNG, same draws, same 6ft margin) so the two planners can be compared on identical fields,
-without this package importing the old test module.
+Deterministic true-minefield generator for the sim.
+  - Seeded RNG: the same (n, seed) always gives the same field.
+  - 6 ft margin from every field edge.
 """
 import random
 

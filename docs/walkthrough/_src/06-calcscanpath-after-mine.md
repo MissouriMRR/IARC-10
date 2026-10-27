@@ -28,7 +28,7 @@ What each function returns now:
 - **`groups()`**: the forward sequence is shorter (9 photos, starting at (11.0, 9.9)), and two new kinds of work appear now that there is a **checked route**:
   - **ADJACENT** (group 2): unphotographed squares within 1 square of the checked route, as free-standing single-photo entries (`key=None`).
   - **OUTER** (group 4): the next layer out, up to 2 squares from the route.
-  Both come from `Work.band`: "route cells" (every square the CHECKED links touch) grown by `n` squares (Chebyshev distance), minus what is already seen or inside an obstacle, then tiled into photos by `Coverage.tile`.
+  Both come from `Work.band`: "route cells" (every square the CHECKED links touch) grown by `n` squares (Chebyshev distance), minus what is already seen or inside an obstacle, then tiled into photos by `PhotoPlacement.tile`.
 - **`ClaimBook.update`**: drone 1 keeps the `forward` job (`_inherit`: its head key still exists). The loose ring photos are then dealt by the same "who can reach it soonest, counting what they already hold" rule. Drone 1 already holds a 50 ft path, so its route-so-far ends at the far end of the field: **every ring photo is dealt to drone 2**, which is idle and near. But keep-apart (`keep_away_ft` = 10 ft) then drops them from drone 2's queue, because each is within 10 ft of drone 1's position or next photo. So drone 2's queue stays **empty** in passes 2 and 3 of the toy run, and the first ring photo reaches it in pass 4, once drone 1 has moved on.
 - `claims (paths only)` shows only path claims; the ring photos are claimed too (per photo, by `("loose", point)`).
 

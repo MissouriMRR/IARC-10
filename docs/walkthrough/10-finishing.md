@@ -30,7 +30,7 @@ Three exits from `CalcScanPath` / `Scan` (chapters 3 and 4):
 `done()` is a strong condition:
 
 ```python
-# flight/pathfinding/pathnode/planner.py:128-133, 135-138
+# flight/pathfinding/pathnode/planner.py:151-156, 158-161
     def done(self):
         """Nothing left to do on this side: met, nothing pending, rings photographed, no
         shortcut left to try."""
@@ -53,7 +53,7 @@ Three exits from `CalcScanPath` / `Scan` (chapters 3 and 4):
 When `done()` first turns true, `CalcScanPath` calls `_finish_scan`:
 
 ```python
-# state_machine/states/impl/calc_scan_path_impl.py:105-115
+# state_machine/states/impl/calc_scan_path_impl.py:104-114
 async def _finish_scan(self: CalcScanPath, planner) -> None:
     """Nothing left to check: settle Drone.mission_path (pushed live to the app by drone 1)
     and check mine agreement with the other side (FIELD_CHECKSUM)."""
@@ -84,7 +84,7 @@ async def _finish_scan(self: CalcScanPath, planner) -> None:
 ```
 
 ```python
-# flight/pathfinding/mission_planner.py:169-172
+# flight/pathfinding/mission_planner.py:170-173
     def expand_margin(self, ft):
         """ExpandNodes. Returns a dict for the flight log, or None if it did nothing."""
         logging.info("path-node planner: ExpandNodes margin not applied (next phase)")
@@ -326,18 +326,18 @@ After the loop:
 The toy 4-drone mission's report (real output):
 
 ```text
-joined route has 15 points, from (12.0, 0.0) to (12.0, 80.0)
+joined route has 18 points, from (12.0, 0.0) to (12.0, 80.0)
 --- format_iarc_path (each line: direction, number of 2 ft squares) ---
 S,6,0
-U,4
-R,1
-U,3
-R,1
-U,3
-R,1
-U,3
+U,6
+L,1
+U,2
+L,1
+U,2
+L,1
+U,2
 L,1 
-... (22 lines in all)
+... (42 lines in all)
 ```
 
 ## 10.5 Recall and Land

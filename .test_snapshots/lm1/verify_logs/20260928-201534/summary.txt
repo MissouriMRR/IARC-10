@@ -1,0 +1,10 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+unit         69      69       0      0     387s    2692s
+nodefield    24      24       0      0     214s     398s
+cellfield     1       1       0      0      79s      79s
+sweep        90      90       0      0     420s    4499s
+pytest        1       1       0      0     103s     103s
+TOTAL       185                            420s
+
+ALL PASSED
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\lm1\verify_logs\20260928-201534

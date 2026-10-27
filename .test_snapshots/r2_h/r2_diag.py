@@ -1,0 +1,122 @@
+"""Diagnostics wrapper: python r2_diag.py N [dense] [speedup=X]  (run from the snapshot dir)."""
+import asyncio, sys, time, logging, os
+from integration_tests import multi_drone_sim_test as m
+from state_machine.drone import Drone
+
+T0 = time.monotonic()
+SPEED = [a for a in sys.argv[1:] if a.startswith("speedup=")]
+if SPEED:
+    m.MOTION_SPEEDUP = float(SPEED[0].split("=")[1])
+    sys.argv = [a for a in sys.argv if not a.startswith("speedup=")]
+
+LEGS = []
+_goto = Drone.gotoWaypoint
+def loc(d, p):
+    if d.planner is None: return p
+    x, y = d.planner.latlon_to_local(*p)
+    return (round(x, 1), round(y, 1))
+async def goto(self, *a, **k):
+    wp = self.waypoints[0]
+    LEGS.append([time.monotonic() - T0, self.id, loc(self, self.currentPosition()), loc(self, (wp.lat, wp.long)), None])
+    rec = LEGS[-1]
+    try:
+        return await _goto(self, *a, **k)
+    finally:
+        rec[4] = time.monotonic() - T0
+Drone.gotoWaypoint = goto
+from flight.pathfinding.side_agent import SideAgent
+_plan = SideAgent.plan
+async def plan(self):
+    r = await _plan(self)
+    t = time.monotonic() - T0
+    if os.environ.get("PLANLOG") and float(os.environ["PLANLOG"]) < t < float(os.environ["PLANLOG"]) + 2.0:
+        pl = self.planner
+        loc2 = lambda p: None if p is None else (round(p[0],1), round(p[1],1))
+        pos = {d: (None if p is None else tuple(round(v,1) for v in self.drone.planner.latlon_to_local(*p))) for d, p in self.positions().items()}
+        lp = {d: [tuple(round(v,1) for v in q[:2]) for q in qq[:5]] for d, qq in pl.backend.planner.coordinator.last_plan.items()}
+        print(f"          last_plan(copy of {self.me}) = {lp}", flush=True)
+        print(f"[{t:7.2f}] PLAN drone {self.me} pos={pos} jobs={dict(self.drone.peer_jobs)} -> {[tuple(round(v,1) for v in self.drone.planner.latlon_to_local(*q)) for q in r[:4]]}", flush=True)
+    return r
+SideAgent.plan = plan
+EV = []
+_cf = Drone.conflictsForLeg
+def cf(self, leg_start, leg_end, peer_states, *a, **k):
+    r = _cf(self, leg_start, leg_end, peer_states, *a, **k)
+    ps = []
+    for st in peer_states:
+        lp = st.live_position
+        ps.append((st.drone_id, None if lp is None else loc(self, lp), None if st.leg_to is None else loc(self, st.leg_to), st.leg_clock))
+    EV.append((time.monotonic() - T0, self.id, 'CF', loc(self, leg_start), loc(self, leg_end), k.get('my_claim'), [c.peer_id for c in r], ps))
+    return r
+Drone.conflictsForLeg = cf
+_cl = Drone.claim_leg
+def cl(self, target):
+    r = _cl(self, target)
+    EV.append((time.monotonic() - T0, self.id, 'CLAIM', loc(self, target), r))
+    return r
+Drone.claim_leg = cl
+orig = Drone.checkSeparation
+def check(self, peer_states):
+    r = orig(self, peer_states)
+    if self.formation_abort and not getattr(self, "_dbg", False):
+        self._dbg = True
+        me = self.currentPosition()
+        print(f"[{time.monotonic()-T0:7.2f}] BREACH drone {self.id}: {self.formation_abort}", flush=True)
+        print(f"   me={me} target={[ (w.lat,w.long) for w in self.waypoints[:1]]}", flush=True)
+        print(f"   me local={loc(self, me)}", flush=True)
+        for L in [l for l in LEGS if l[1] in (self.id, int(self.formation_abort.split("drone ")[1].split(" ")[0]))][-8:]:
+            print(f"   leg t={L[0]:.2f}..{L[4]} drone {L[1]}: {L[2]} -> {L[3]}", flush=True)
+        mine = int(self.formation_abort.split("drone ")[1].split(" ")[0])
+        for e in [e for e in EV if e[1] in (self.id, mine) and e[0] > time.monotonic() - T0 - 3.0][-40:]:
+            print("   EV", tuple(round(x, 2) if isinstance(x, float) else x for x in e), flush=True)
+        for s in peer_states:
+            lp = s.live_position
+            age = None if s._live_position_at is None else time.monotonic() - s._live_position_at
+            print(f"   peer {s.drone_id}: live={lp} age={age}", flush=True)
+    return r
+Drone.checkSeparation = check
+
+ALL = []
+_mk = m._make_interdrone
+def mk(fs, drone, router):
+    i = _mk(fs, drone, router)
+    ALL.append((fs.current_drone_ID, drone, i))
+    return i
+m._make_interdrone = mk
+
+async def status():
+    t0 = float(os.environ.get("STATUS_AT", "0") or 0)
+    if not t0:
+        return
+    await asyncio.sleep(t0)
+    while True:
+        for did, d, i in sorted(ALL, key=lambda x: x[0]):
+            st = type(i._current_state).__name__ if i._current_state else None
+            side = d.side
+            pl = d.planner
+            try:
+                info = dict(done=pl.done(), failure=pl.failure, mate_busy=side.mate_busy, lost=side.mate_lost, jobs={k: (v if v is None else v[:2]) for k, v in d.peer_jobs.items()},
+                            wp=len(d.waypoints), replan=d.replan_needed, route_joined=d.route_joined, ack=d.partner_route_ack_hash, pr_hash=d.partner_route_mine_hash, mine=pl.mine_hash(), pr_complete=d.partner_route_complete, pos=loc(d, d.currentPosition()), leg_to=d.leg_to)
+            except Exception as e:
+                info = repr(e)
+            print(f"[{time.monotonic()-T0:7.1f}] STATUS drone {did} {st} {info}", flush=True)
+        await asyncio.sleep(30)
+
+async def lag():
+    while True:
+        t = time.monotonic()
+        await asyncio.sleep(0.05)
+        d = time.monotonic() - t - 0.05
+        if d > 0.25:
+            print(f"[{t-T0:7.2f}] LOOP LAG {d:.2f}s", flush=True)
+
+orig_run = m.run_simulation
+async def run(*a, **k):
+    t = asyncio.ensure_future(lag())
+    t2 = asyncio.ensure_future(status())
+    try:
+        return await orig_run(*a, **k)
+    finally:
+        t.cancel(); t2.cancel()
+m.run_simulation = run
+m.main()

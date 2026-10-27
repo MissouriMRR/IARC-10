@@ -4,7 +4,7 @@
 
 **What this chapter covers.** After `Scan` photographs a spot, `DroneShare` does "the actual check": it looks for a mine in that spot, tells the planner, and tells everyone else. When the planner learns of a mine it runs **the mine rule** (`pathnode/mine_rule.py`), which repairs the route around the new obstacle. This is the most intricate logic in the mission.
 
-> **Status.** The per-drone code is in final verification. The obstacle geometry under `routes.py` is still `ZoneMap` and is due to be replaced (chapter 2); the mine rule only asks `Routes` the questions listed there (`contains`, `crosses`, `route`, `corners`, `add_mine`, `add_square`).
+> **Status.** The per-drone code is in final verification. The obstacle geometry under `routes.py` is a `PathEngine` (`ZoneMap` by default, chapter 2); the mine rule only asks `Routes` the questions listed there (`contains`, `crosses`, `route`, `corners`, `add_mine`, `add_square`).
 
 ## 5.1 DroneShare.run
 
@@ -61,7 +61,7 @@ Three outcomes for the photo just taken at `last_reached_waypoint`:
 ## 5.2 side.own_photo: apply, relay, share
 
 ```python
-# flight/pathfinding/side_agent.py:193-208
+# flight/pathfinding/side_agent.py:225-240
     async def own_photo(self, corners, mines):
         """This drone's photo is done (its footprint already recorded; corners is the last
         one, or None if it had none) with these mines in it: apply it, relay new mines and
@@ -125,7 +125,7 @@ def relay_id(lat, lon):
 ## 5.3 add_mine: a new obstacle
 
 ```python
-# flight/pathfinding/pathnode/planner.py:187-199
+# flight/pathfinding/pathnode/planner.py:210-222
     def add_mine(self, x, y, source):
         """Apply the mine rule (mine_rule.py). source: Source.PAIR (found by this side's
         drones) or Source.PARTNER (relayed). Returns whether the mine was new -- a mine in a
@@ -149,7 +149,7 @@ def relay_id(lat, lon):
 # flight/pathfinding/pathnode/routes.py:36-50
     def _added(self, gid):
         self.version += 1
-        new = self.zones.last_added
+        new = self.engine.last_added
         shapely.prepare(new)
         keys = [k for k, v in self._paths.items() if v is not None]
         if keys:
@@ -171,7 +171,7 @@ def relay_id(lat, lon):
 ## 5.4 The mine rule
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:1-14
+# flight/pathfinding/pathnode/mine_rule.py:1-21
 """The mine rule: repairing the chain when a new obstacle (a mine's zone, or a blocked square)
 appears.
 
@@ -186,7 +186,16 @@ appears.
   5. Jump: when the frontier was affected and this side's own drones found the mine
      (Source.PAIR), point A jumps to the mine's far corner and the detour behind it becomes a
      pending span. Mines relayed by the partner side, and blocked squares, only re-bridge.
+
+Works on a PathNodePlanner (planner.py): its chain, routes, target and log.
+
+Entry point: apply(pl, gid, source). It runs a MineRule, whose methods are the steps above in
+order (_clear_entry, _delete_nodes_inside, _repair_links, _split_into_fragments, then either
+_jump_past_mine or _rebridge). The per-link cases are _cut_checked, _replan_forward and
+_replan_pending.
 ```
+
+The entry point is `mine_rule.apply(pl, gid, source)`, which runs one `MineRule` object. Each step below is a method of that class, called in order by `MineRule.run`; the three link cases are one method each.
 
 In plain words: *delete what the obstacle sits on, re-plan what it crosses, throw away whatever got cut off, join the two live ends with a shortest path, and, if this side found the mine right at the frontier, move the frontier past it.*
 
@@ -199,131 +208,185 @@ Definitions:
 ### Rule 0 and 1: move the entry, delete nodes inside, cut checked links
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:24-36
-def apply(pl, gid, source):
-    """Apply the rule for obstacle group gid, just added to pl.routes."""
-    chain, routes, log = pl.chain, pl.routes, pl.log
-    broken = set()
-    if routes.contains(*chain.nodes[0].xy):
-        if not _shift_entry(pl):
+# flight/pathfinding/pathnode/mine_rule.py:56-66, 69-84
+    def run(self):
+        """The steps in order (see the module docstring)."""
+        if not self._clear_entry():
             return
-        broken.add(0)
+        self._delete_nodes_inside()
+        self._repair_links()
+        f1, f2, frags = self._split_into_fragments()
+        if f1 is f2:
+            self._jump_past_mine()
+        else:
+            self._rebridge(f1, f2, frags)
+    ...
+    def _clear_entry(self):
+        """Shift the entry out of the obstacle if it is inside. False when it cannot be moved."""
+        if self.routes.contains(*self.chain.nodes[0].xy):
+            if not _shift_entry(self.pl):
+                return False
+            self.broken.add(0)
+        return True
 
-    last = len(chain.nodes) - 1
-    dead = {id(n) for i, n in enumerate(chain.nodes)
-            if i != last and routes.contains(n.x, n.y)}
-    log.count("nodes_in_mine", len(dead))
+    # -- step 1 ----------------------------------------------------------------------------
+    def _delete_nodes_inside(self):
+        """Mark every path node inside the obstacle dead (never the target)."""
+        chain = self.chain
+        last = len(chain.nodes) - 1
+        self.dead = {id(n) for i, n in enumerate(chain.nodes)
+                     if i != last and self.routes.contains(n.x, n.y)}
+        self.log.count("nodes_in_mine", len(self.dead))
 ```
 
-- If the **entry** is inside the new obstacle, `_shift_entry` moves it along the entry edge to the nearest clear 2 ft square (`entry_shifts`). If none is clear, `pl.failure = "entry fully blocked"` and planning stops.
-- `dead` = every path node whose position is inside an obstacle now, **except the last** (the target is virtual and is never deleted).
+- `_clear_entry`: if the **entry** is inside the new obstacle, `_shift_entry` moves it along the entry edge to the nearest clear 2 ft square (`entry_shifts`). If none is clear, `pl.failure = "entry fully blocked"` and planning stops.
+- `_delete_nodes_inside`: `dead` = every path node whose position is inside an obstacle now, **except the last** (the target is virtual and is never deleted).
 - `broken` = the indices of links that are cut (see rule 2).
 
 ### Rule 2: re-plan what the obstacle crosses
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:38-56
-    fwd_route = None
-    for i, link in enumerate(chain.links):
-        a, b = chain.nodes[i], chain.nodes[i + 1]
-        if i in broken or id(a) in dead or id(b) in dead:
-            continue
-        if not routes.crosses(link.poly):
-            continue
-        if link.kind == LinkKind.CHECKED:
-            broken.add(i)
-            continue
-        route = pl.target.route_from(a.xy) if link.kind == LinkKind.FORWARD else routes.route(a.xy, b.xy)
+# flight/pathfinding/pathnode/mine_rule.py:87-101, 103-116, 118-125
+    def _repair_links(self):
+        """Visit every surviving link that crosses the obstacle and repair it by kind."""
+        chain = self.chain
+        for i, link in enumerate(chain.links):
+            a, b = chain.nodes[i], chain.nodes[i + 1]
+            if i in self.broken or id(a) in self.dead or id(b) in self.dead:
+                continue
+            if not self.routes.crosses(link.poly):
+                continue
+            if link.is_checked:
+                self._cut_checked(i)
+            elif link.is_forward:
+                self._replan_forward(i, link, a)
+            else:
+                self._replan_pending(i, link, a, b)
+    ...
+    def _cut_checked(self, i):
+        """A photographed link crossing the obstacle is cut."""
+        self.broken.add(i)
+
+    def _replan_forward(self, i, link, a):
+        """Replan the forward link from its start to the target; the target moves to the route's end."""
+        route = self.pl.target.route_from(a.xy)
         if route[0] is None:
-            broken.add(i)
-            continue
+            self.broken.add(i)
+            return
         link.poly = route[0]
-        if link.kind == LinkKind.FORWARD:
-            chain.nodes[i + 1] = PathNode(*route[0][-1], Placer.TARGET)
-            fwd_route = route
-        log.count("replans")
+        self.chain.nodes[i + 1] = PathNode(*route[0][-1], Placer.TARGET)
+        self.fwd_route = route
+        self.log.count("replans")
+    ...
+    def _replan_pending(self, i, link, a, b):
+        """Replan a pending span between its two ends."""
+        route = self.routes.route(a.xy, b.xy)
+        if route[0] is None:
+            self.broken.add(i)
+            return
+        link.poly = route[0]
+        self.log.count("replans")
 ```
 
-For every link that **crosses** the obstacle and does not touch a dead node (links at a dead node are skipped; the fragment logic below handles them):
-- a **CHECKED** link is **cut** (`broken`): the ground was verified before the mine appeared and can no longer be trusted; it is not re-planned in place.
-- a **PENDING** link is re-planned as the shortest path between its two nodes (`routes.route`).
-- the **FORWARD** link is re-planned by `target.route_from(a.xy)` (shortest path to the target from point A) and the target node is refreshed. This route is remembered in `fwd_route` for the jump rule.
+`_repair_links` visits every link that **crosses** the obstacle and does not touch a dead node (links at a dead node are skipped; the fragment logic below handles them):
+- `_cut_checked`: a **CHECKED** link is **cut** (`broken`): the ground was verified before the mine appeared and can no longer be trusted; it is not re-planned in place.
+- `_replan_pending`: a **PENDING** link is re-planned as the shortest path between its two nodes (`routes.route`).
+- `_replan_forward`: the **FORWARD** link is re-planned by `target.route_from(a.xy)` (shortest path to the target from point A) and the target node is refreshed. This route is remembered in `fwd_route` for the jump rule.
 
 ### Rule 3: find the fragments and the orphans
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:58-73
-    frags, cur = [], []
-    for i, n in enumerate(chain.nodes):
-        if id(n) in dead:
-            if cur:
+# flight/pathfinding/pathnode/mine_rule.py:128-152
+    def _split_into_fragments(self):
+        """Split the node indices at dead nodes and cut links.
+
+        Returns: (f1, f2, frags): the fragment holding the entry, the one holding the target
+        (the same list when the chain is still connected), and all fragments. The rest are
+        orphans.
+        """
+        chain = self.chain
+        frags, cur = [], []
+        for i, n in enumerate(chain.nodes):
+            if id(n) in self.dead:
+                if cur:
+                    frags.append(cur)
+                    cur = []
+                continue
+            if cur and (i - 1) in self.broken:
                 frags.append(cur)
                 cur = []
-            continue
-        if cur and (i - 1) in broken:
+            cur.append(i)
+        if cur:
             frags.append(cur)
-            cur = []
-        cur.append(i)
-    if cur:
-        frags.append(cur)
-    last = len(chain.nodes) - 1
-    f1 = next((f for f in frags if f[0] == 0), None)
-    f2 = next((f for f in frags if f[-1] == last), None)
+        last = len(chain.nodes) - 1
+        f1 = next((f for f in frags if f[0] == 0), None)
+        f2 = next((f for f in frags if f[-1] == last), None)
+        return f1, f2, frags
 ```
 
-Walk the nodes in order; a dead node, or a broken link, ends the current fragment. `f1` is the fragment that contains the entry (index 0), `f2` the one that contains the target. Every other fragment is an **orphan**: it is dropped, **whether or not it lies inside the obstacle** (it is disconnected from both roots, so no route can use it).
+`_split_into_fragments` walks the nodes in order; a dead node, or a broken link, ends the current fragment. `f1` is the fragment that contains the entry (index 0), `f2` the one that contains the target. Every other fragment is an **orphan**: it is dropped, **whether or not it lies inside the obstacle** (it is disconnected from both roots, so no route can use it).
 
 ### Rule 4: bridge the two roots (or stay put if they are still joined)
 
+`MineRule.run` branches on the fragments:
+
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:75-81
-    if f1 is f2:
-        if fwd_route is not None and source == Source.PAIR:
-            f = chain.forward_index()
-            nodes, links = _frontier_links(pl, fwd_route, source, gid)
-            chain.splice(f, nodes, links)
-            chain.set_target(chain.links[-1].poly[-1])
-        return
+# flight/pathfinding/pathnode/mine_rule.py:56-66
+    def run(self):
+        """The steps in order (see the module docstring)."""
+        if not self._clear_entry():
+            return
+        self._delete_nodes_inside()
+        self._repair_links()
+        f1, f2, frags = self._split_into_fragments()
+        if f1 is f2:
+            self._jump_past_mine()
+        else:
+            self._rebridge(f1, f2, frags)
 ```
 
-If `f1 is f2`, nothing was cut off; the chain is still one piece. The only thing left to decide is the jump (rule 5).
+If `f1 is f2`, nothing was cut off; the chain is still one piece. The only thing left to decide is the jump (rule 5, `_jump_past_mine`).
 
-If they differ, the chain was cut in two:
+If they differ, the chain was cut in two and `_rebridge` joins it:
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:83-114
-    log.count("orphans", sum(len(f) for f in frags if f is not f1 and f is not f2))
-    u = chain.nodes[f1[-1]]
-    # If nothing but the target survives on the far side, the gap reaches the target: that
-    # is the frontier -- the forward link was lost, or (after meeting) the checked join into
-    # the target was cut, which re-opens the gap.
-    frontier = f2 == [last]
-    if frontier:
-        route_from = pl.target.route_from
-        where = "the target"
-    else:
-        v = chain.nodes[f2[0]]
-        route_from = lambda p: routes.route(p, v.xy)       # noqa: E731
-        where = f"({v.x:.1f},{v.y:.1f})"
-    route = route_from(u.xy)
-    if route[0] is None:
-        # Walled in: start again from wherever along the entry edge has a way through.
-        route = _reroute_from_entry(pl, route_from)
+# flight/pathfinding/pathnode/mine_rule.py:166-201
+    def _rebridge(self, f1, f2, frags):
+        """Delete orphans and join the entry's fragment to the target's by a shortest path."""
+        pl, chain, routes, log = self.pl, self.chain, self.routes, self.log
+        last = len(chain.nodes) - 1
+        log.count("orphans", sum(len(f) for f in frags if f is not f1 and f is not f2))
+        u = chain.nodes[f1[-1]]
+        # If nothing but the target survives on the far side, the gap reaches the target: that
+        # is the frontier -- the forward link was lost, or (after meeting) the checked join into
+        # the target was cut, which re-opens the gap.
+        frontier = f2 == [last]
+        if frontier:
+            route_from = pl.target.route_from
+            where = "the target"
+        else:
+            v = chain.nodes[f2[0]]
+            route_from = lambda p: routes.route(p, v.xy)       # noqa: E731
+            where = f"({v.x:.1f},{v.y:.1f})"
+        route = route_from(u.xy)
         if route[0] is None:
-            pl.failure = f"no route from ({u.x:.1f},{u.y:.1f}) to {where}"
-            return
-        log.count("orphans", len(f1) - 1)
-        f1 = [0]
-    if frontier:
-        mid_nodes, mid_links = _frontier_links(pl, route, source, gid)
-        tail_nodes, tail_links = [PathNode(*route[0][-1], Placer.TARGET)], []
-    else:
-        mid_nodes, mid_links = [], [Link(LinkKind.PENDING, route[0])]
-        tail_nodes = [chain.nodes[i] for i in f2]
-        tail_links = [chain.links[i] for i in f2[:-1]]
-        log.count("bridges")
-    chain.nodes = [chain.nodes[i] for i in f1] + mid_nodes + tail_nodes
-    chain.links = [chain.links[i] for i in f1[:-1]] + mid_links + tail_links
+            # Walled in: start again from wherever along the entry edge has a way through.
+            route = _reroute_from_entry(pl, route_from)
+            if route[0] is None:
+                pl.failure = f"no route from ({u.x:.1f},{u.y:.1f}) to {where}"
+                return
+            log.count("orphans", len(f1) - 1)
+            f1 = [0]
+        if frontier:
+            mid_nodes, mid_links = _frontier_links(pl, route, self.source, self.gid)
+            tail_nodes, tail_links = [PathNode(*route[0][-1], Placer.TARGET)], []
+        else:
+            mid_nodes, mid_links = [], [Link(LinkKind.PENDING, route[0])]
+            tail_nodes = [chain.nodes[i] for i in f2]
+            tail_links = [chain.links[i] for i in f2[:-1]]
+            log.count("bridges")
+        chain.nodes = [chain.nodes[i] for i in f1] + mid_nodes + tail_nodes
+        chain.links = [chain.links[i] for i in f1[:-1]] + mid_links + tail_links
 ```
 
 - `u` is the last node of the entry's fragment. If everything on the far side is gone except the target (`frontier`), the new link is **the forward gap** from `u` to the target. Otherwise it is a **PENDING** link from `u` to the first node `v` of the target's fragment (a `bridge`).
@@ -333,7 +396,17 @@ If they differ, the chain was cut in two:
 ### Rule 5: the jump (point A moves past the mine)
 
 ```python
-# flight/pathfinding/pathnode/mine_rule.py:117-129
+# flight/pathfinding/pathnode/mine_rule.py:155-163, 204-216
+    def _jump_past_mine(self):
+        """Still one piece: only if the forward link was replanned around a mine this side
+        found does point A jump past it."""
+        chain = self.chain
+        if self.fwd_route is not None and self.source == Source.PAIR:
+            f = chain.forward_index()
+            nodes, links = _frontier_links(self.pl, self.fwd_route, self.source, self.gid)
+            chain.splice(f, nodes, links)
+            chain.set_target(chain.links[-1].poly[-1])
+    ...
 def _frontier_links(pl, route, source, gid):
     """The new frontier from route (points, gids). On a mine this side found, jump past it:
     point A moves to the last corner of that mine's group the route bends around."""
@@ -371,10 +444,10 @@ after    : entry(10.0,0.0) -checked- forward(10.0,5.5) -checked- forward(10.0,13
       obstacle corners the routes bend around: [(10.0, 17.9), (5.9, 22.0), (5.9, 24.0), (10.0, 28.1), (12.0, 28.1), (16.1, 24.0)] ...
 
 === B. a mine relayed by the OTHER side (Source.PARTNER) lands on ground already CHECKED
-before   : entry(10.0,0.0) -checked- forward(10.0,5.5) -checked- forward(10.0,13.5) -checked- forward(10.0,21.5) -checked- forward(10.0,29.5) -checked- forward(10.0,37.5) -checked- forward(10.0,45.5) -forward- target(10.0,60.0)
+before   : entry(10.0,0.0) -checked- forward(10.0,5.5) -checked- forward(10.0,13.5) -checked- forward(10.0,21.5) -checked- forward(10.0,25.5) -checked- forward(10.0,33.5) -checked- forward(10.0,41.5) -forward- target(10.0,60.0)
       stats: {}  failure=None
-      route is checked up to y = 45.5 ; mine at (10.0, 8.0) on the checked stretch
-after    : entry(10.0,0.0) -pending- forward(10.0,21.5) -checked- forward(10.0,29.5) -checked- forward(10.0,37.5) -checked- forward(10.0,45.5) -forward- target(10.0,60.0)
+      route is checked up to y = 41.5 ; mine at (10.0, 8.0) on the checked stretch
+after    : entry(10.0,0.0) -pending- forward(10.0,21.5) -checked- forward(10.0,25.5) -checked- forward(10.0,33.5) -checked- forward(10.0,41.5) -forward- target(10.0,60.0)
       stats: {'nodes_in_mine': 2, 'bridges': 1}  failure=None
 
 === C. a mine on the ENTRY square

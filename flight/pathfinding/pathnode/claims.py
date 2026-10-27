@@ -1,4 +1,4 @@
-"""Who photographs what: priority groups of waypoints, claimed by the drones of one pair.
+"""Who photographs what: priority groups of waypoints, claimed by the drones of one side.
 
 Groups
 - A list of groups, highest priority first (see PathNodePlanner.groups). Each group is a list
@@ -26,12 +26,12 @@ Claiming (ClaimBook.update) -- a growing path radius
   sequence soonest takes it.
 - So a drone's current claims raise its threshold for new ones, and nothing is sent across
   the field while another drone is nearer. Whoever is at point A holds the whole path ahead
-  of it; a redirection behind it tends to go to the other drone. No role is special: the
-  member pioneers whenever it is the better placed.
+  of it; a redirection behind it tends to go to the other drone. No drone is special: either
+  pioneers whenever it is the better placed.
 - Deterministic: ties go by drone order, then by sequence start. Any drone with the same
   inputs computes the same claims -- which drone will pick up what is known exactly.
 
-A drone whose position is None is absent (lost): it holds nothing and is handed nothing,
+A drone whose position is None is absent (gone): it holds nothing and is handed nothing,
 so its work goes back to the others.
 
 Claims between updates: only what each drone is working on now is kept -- the sequence its
@@ -74,7 +74,7 @@ def _sid(key, seq):
 
 class ClaimBook:
     def __init__(self, drones):
-        """drones: the pair's drone keys, in tie-break order (e.g. ("self", "member"))."""
+        """drones: the side's drone ids, in tie-break order (ascending)."""
         self.drones = tuple(drones)
         self.claims = {}            # (group index, sequence id) -> drone key
         self.heads = {}             # drone key -> (group index, path key, (x, y)) of its next photo
@@ -140,7 +140,7 @@ class ClaimBook:
         - groups: list of groups, highest priority first; each a list of
           (key, [(x, y), ...]) (see module doc).
         - positions: drone key -> (x, y), where each drone is now; None for a drone that is
-          absent (lost). Every drone in the pair must have an entry.
+          absent (gone). Every drone of the side must have an entry.
         - held: drone -> (group, key, (x, y)), the job another drone has announced it is
           working on. It stands in for this book's own record of that drone's job, so every
           copy honours it; if two drones hold the same job, the first in drone order keeps it.

@@ -1,0 +1,118 @@
+suite      jobs  passed  failed  known     wall  cpu-sum
+flight       21      14       7      0     560s    2375s
+TOTAL        21                            560s
+
+FAILURES (7):
+--- flight multi-4#3: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       error       : none
+       mines found : 7 / 7 true
+       seen cells  : 1088
+       captures    : 65
+    -- drone 4 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 7 / 7 true
+       seen cells  : 1088
+       captures    : 50
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-2-dense#1: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       mines found : 10 / 60 true
+       seen cells  : 990
+       reported    : 0 points -- no route reported
+       captures    : 110
+    -- drone 2 (bottom side) -----------------------------------------
+       final state : Land
+       elapsed     : 59.7s
+       error       : none
+       mines found : 10 / 60 true
+       seen cells  : 1080
+       captures    : 132
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-3-dense#2: no 'RESULT: PASS'; route not 'full field, continuous, clear'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 9 / 60 true
+       seen cells  : 738
+       captures    : 43
+    -- drone 3 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 12 / 60 true
+       seen cells  : 962
+       captures    : 106
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-3-dense#3: no 'RESULT: PASS'; route not 'full field, continuous, clear'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 10 / 60 true
+       seen cells  : 772
+       captures    : 45
+    -- drone 3 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 13 / 60 true
+       seen cells  : 989
+       captures    : 104
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-4-dense#1: no 'RESULT: PASS'; route not 'full field, continuous, clear'; exit 1
+       error       : none
+       mines found : 12 / 60 true
+       seen cells  : 1127
+       captures    : 56
+    -- drone 4 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 12 / 60 true
+       seen cells  : 1127
+       captures    : 54
+    final mine sets agree : True
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-4-dense#2: no 'RESULT: PASS'; route not 'full field, continuous, clear'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 14 / 60 true
+       seen cells  : 1170
+       captures    : 62
+    -- drone 4 (top side) --------------------------------------------
+       final state : EndRun
+       elapsed     : 300.0s
+       error       : none
+       mines found : 14 / 60 true
+       seen cells  : 1170
+       captures    : 64
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+--- flight multi-4-dense#3: no 'RESULT: PASS'; mine sets do not agree; exit 1
+       error       : none
+       mines found : 12 / 60 true
+       seen cells  : 1138
+       captures    : 58
+    -- drone 4 (top side) --------------------------------------------
+       final state : Land
+       elapsed     : 143.2s
+       error       : none
+       mines found : 12 / 60 true
+       seen cells  : 1138
+       captures    : 52
+    final mine sets agree : False
+    ======================================================================
+    RESULT: FAIL -- all drones reached Land: False
+    ======================================================================
+logs: C:\Users\harpe\Multirotor\IARC-10\.test_snapshots\fin6\verify_logs\20261026-164053

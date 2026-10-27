@@ -1,4 +1,4 @@
-import PIL
+import PIL.Image
 
 
 class Image:

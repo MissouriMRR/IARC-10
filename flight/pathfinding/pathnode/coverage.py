@@ -1,33 +1,36 @@
-"""What has been photographed, what a stretch of route needs photographed, and where to put
-photos to cover it.
+"""What has been photographed. What a stretch needs and where photos go is the placement's job
+(placement.py); this class holds the state it reads and answers through it.
 
 Squares are CELL (2 ft) on a side, (col, row) from the field's bottom-left.
 - `seen`: one bit per square, set when a photo fully covers it (record).
-- need(poly): the squares that must be photographed for a stretch to count as checked --
-  the ones it touches (corridor), plus every square a mine could endanger it from (band).
+- `placement`: the PhotoPlacement for config.coverage. need / places_along / all_seen /
+  photos_needed here are the stretch queries, answered by it against `seen`.
 - Misses: a needed square a photo was aimed at but didn't cover (the footprint turned with
   the drone's heading, came out smaller than planned, or the camera failed). After
   MISS_CENTRE misses the square gets a photo centred on it; after MISS_BLOCK the planner
   blocks it (an obstacle, like a tiny mine zone), so the same photo is never handed out
   forever.
-- Placement: photos along a path (places_along), or tiles over scattered squares (tile).
-  A tile keeps its target square inside the footprint's inscribed circle, so it covers the
-  square at any heading.
+  - Aimed at = the squares the placement PLANNED that photo point for (remembered per point
+    by the placement via plan_aim), plus any square whose centre is within aim_radius of the photo.
+    The plan is the source of truth: a planned square can sit farther from the point than
+    aim_radius (a path-cover photo), and a photo that missed it must still be counted.
+  - One attempt per waypoint: Scan may climb and re-photograph a waypoint several times;
+    all of those together count as ONE attempt (only the waypoint's final footprint counts
+    -- see Session.own_footprint / own_photo). Retries are not misses.
+- A tile (placement.py) keeps its target square inside the footprint's inscribed circle, so it
+  covers the square at any heading; aim_radius is how far that lets a photo sit from its square.
 """
 
 import math
 
 from flight.pathfinding.cellField.cellField import CellField
-from flight.pathfinding.path_cover import path_cover_unseen
-from flight.pathfinding.pathnode.config import (CACHE_CAP, DANGER_OFFSETS, FOOTPRINT_SLACK_FT,
-                                                MISS_BLOCK, MISS_CENTRE, TILE_MARGIN_FT,
-                                                CoverageMode)
+from flight.pathfinding.pathnode.config import (CACHE_CAP, FOOTPRINT_SLACK_FT, MISS_BLOCK,
+                                                MISS_CENTRE)
 from flight.pathfinding.pathnode.geometry import CELL
-from flight.pathfinding.pathnode.polyline import arc_position, as_key
+from flight.pathfinding.pathnode.placement import cell_centre, placement_for
+from flight.pathfinding.pathnode.polyline import as_key
 
-
-def cell_centre(c, r):
-    return ((c + 0.5) * CELL, (r + 0.5) * CELL)
+AIM_CAP = 5000              # remembered photo points before the plan memory is dropped
 
 
 class Coverage:
@@ -41,6 +44,9 @@ class Coverage:
         self.misses = {}            # square -> photos aimed at it that didn't cover it
         self._touched = {}          # polyline -> frozenset of the squares it touches
         self._photos = {}           # (polyline, its unphotographed squares) -> photos needed
+        self._aims = {}             # bucket -> {photo point: squares it was planned for}
+        self._n_aims = 0
+        self.placement = placement_for(config.coverage, self)
 
     # -- queries ---------------------------------------------------------------------------
     def in_field(self, c, r):
@@ -64,15 +70,7 @@ class Coverage:
 
     def need(self, poly):
         """Squares that must be photographed before this stretch counts as checked."""
-        cells = self.touched(poly)
-        if self.config.coverage == CoverageMode.CORRIDOR:
-            return cells
-        out = set()
-        for c, r in cells:
-            for dc, dr in DANGER_OFFSETS:
-                if self.in_field(c + dc, r + dr):
-                    out.add((c + dc, r + dr))
-        return out
+        return self.placement.need(poly)
 
     def unseen(self, cells):
         return {c for c in cells if not self.seen.get(*c)}
@@ -114,89 +112,69 @@ class Coverage:
         self.version += 1
         return cx, cy
 
-    def count_misses(self, x, y, needed):
-        """A photo centred at (x, y) was taken (or failed). Count a miss for every square in
-        `needed` it was aimed at (centre within aim_radius) that is still unphotographed.
-        Returns the squares that have now reached MISS_BLOCK."""
-        self.version += 1
+    def _bucket(self, x, y):
+        return (math.floor(x / CELL), math.floor(y / CELL))
+
+    def plan_aim(self, p, targets):
+        """Remember that the photo point p was planned for `targets` (latest plan wins).
+        Called by the placement."""
+        if self._n_aims > AIM_CAP:
+            self._aims.clear()
+            self._n_aims = 0
+        bucket = self._aims.setdefault(self._bucket(*p), {})
+        self._n_aims += p not in bucket
+        bucket[p] = frozenset(targets)
+
+    def _aims_for(self, p):
+        """The squares the photo point p was planned for (empty if it wasn't planned)."""
+        return self._aims.get(self._bucket(*p), {}).get(p, frozenset())
+
+    def aimed_at(self, x, y):
+        """Squares a photo centred at (x, y) was aimed at: those the placement planned the
+        nearby photo point (within aim_radius) for, plus every square whose centre is within
+        aim_radius."""
         reach = self.aim_radius()
-        c0, r0 = self.seen.real_to_cell(x, y)
+        b0, b1 = self._bucket(x, y)
         n = math.ceil(reach / CELL) + 1
-        hopeless = []
+        out = set()
+        for i in range(b0 - n, b0 + n + 1):
+            for j in range(b1 - n, b1 + n + 1):
+                for p, targets in self._aims.get((i, j), {}).items():
+                    if math.dist(p, (x, y)) <= reach + 1e-9:
+                        out |= targets
+        c0, r0 = self.seen.real_to_cell(x, y)
         for c in range(c0 - n, c0 + n + 1):
             for r in range(r0 - n, r0 + n + 1):
-                if ((c, r) not in needed or self.seen.get(c, r)
-                        or math.dist(cell_centre(c, r), (x, y)) > reach + 1e-9):
-                    continue
-                self.misses[(c, r)] = self.misses.get((c, r), 0) + 1
-                if self.misses[(c, r)] >= MISS_BLOCK:
-                    hopeless.append((c, r))
+                if math.dist(cell_centre(c, r), (x, y)) <= reach + 1e-9:
+                    out.add((c, r))
+        return out
+
+    def count_misses(self, x, y, needed):
+        """A photo centred at (x, y) was taken (or failed). Count a miss for every square in
+        `needed` it was aimed at (aimed_at) that is still unphotographed. Call once per
+        waypoint, with its final photo. Returns the squares that have now reached MISS_BLOCK."""
+        self.version += 1
+        hopeless = []
+        for c, r in sorted(self.aimed_at(x, y)):
+            if (c, r) not in needed or self.seen.get(c, r):
+                continue
+            self.misses[(c, r)] = self.misses.get((c, r), 0) + 1
+            if self.misses[(c, r)] >= MISS_BLOCK:
+                hopeless.append((c, r))
         return hopeless
 
     def missed(self, cell):
         return self.misses.get(cell, 0) >= MISS_CENTRE
 
     # -- photos out ------------------------------------------------------------------------
-    def tile_offset(self):
-        """How far a tile may sit from its target square's centre and still enclose the square
-        at any heading: the square's far corner stays TILE_MARGIN_FT inside the footprint's
-        inscribed circle."""
-        return max(min(self.config.shape_size_ft) / 2 - CELL * math.sqrt(2) / 2 - TILE_MARGIN_FT,
-                   0.0)
-
     def aim_radius(self):
         """A photo centred within this of a square's centre was aimed at that square: a tile's
         largest offset, plus half a square of position error."""
-        return self.tile_offset() + CELL / 2
+        return self.placement.tile_offset() + CELL / 2
 
-    def places_along(self, poly):
-        """Photo centres covering every unphotographed needed square of `poly`, in walking order
-        from its start. Any square no placement fully encloses (or that has been missed) gets a
-        photo centred on it, so a batch always completes the stretch."""
-        need = self.unseen(self.need(poly))
-        if not need:
-            return []
-        key = lambda p: arc_position(poly, p)            # noqa: E731
-        if self.config.coverage == CoverageMode.BAND:
-            return self.tile(need, key)
-        placed, covered = [], set()
-        missed = {c for c in need if self.missed(c)}
-        for p in path_cover_unseen(poly, self.seen, self.config.shape_size_ft,
-                                   overlap=self.config.overlap):
-            got = (self.footprint_cells(*p) & need) - missed
-            if got - covered:
-                placed.append(p)
-                covered |= got
-        for c, r in sorted(need - covered, key=lambda cr: key(cell_centre(*cr))):
-            if (c, r) in covered:
-                continue
-            p = cell_centre(c, r)
-            placed.append(p)
-            covered |= self.footprint_cells(*p)
-        return sorted(placed, key=key)
-
-    def tile(self, need, key):
-        """Greedy tiling of scattered squares: the next needed square in `key` order, covered by
-        the candidate footprint enclosing the most still-needed squares. Candidates keep the
-        target inside the footprint's inscribed circle (tile_offset); a missed square gets
-        only the centred one."""
-        h = self.tile_offset()
-        d = h / math.sqrt(2)
-        offsets = [(0.0, 0.0), (h, 0.0), (-h, 0.0), (0.0, h), (0.0, -h),
-                   (d, d), (d, -d), (-d, d), (-d, -d)]
-        need = set(need)
-        placed = []
-        while need:
-            c, r = min(need, key=lambda cr: key(cell_centre(*cr)))
-            cx, cy = cell_centre(c, r)
-            if self.missed((c, r)):
-                cands = [(cx, cy)]
-            else:
-                cands = [(cx + dx, cy + dy) for dx, dy in offsets]
-            best = max(cands, key=lambda p: (len(self.footprint_cells(*p) & need), key(p)))
-            placed.append(best)
-            need -= self.footprint_cells(*best) | {(c, r)}
-        return placed
+    def places_along(self, poly, plan=True):
+        """Photo centres in walking order covering the stretch (PhotoPlacement.places_along)."""
+        return self.placement.places_along(poly, plan)
 
     def photos_needed(self, poly):
         """How many photos checking poly would take. Cached on the polyline and its
@@ -209,6 +187,6 @@ class Coverage:
         if count is None:
             if len(self._photos) > CACHE_CAP:
                 self._photos.clear()
-            count = len(self.places_along(poly))
+            count = len(self.places_along(poly, plan=False))
             self._photos[key] = count
         return count

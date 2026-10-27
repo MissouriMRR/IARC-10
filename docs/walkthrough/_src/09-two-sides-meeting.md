@@ -14,13 +14,15 @@
 
 ## 9.2 The target: `Target.route_from`
 
-{{snip: flight/pathfinding/pathnode/target.py :: class Target: => return best}}
+`Target` (`target.py`) is abstract (`has_partner`, `route_from`, `may_close`, `retarget`); `make_target` picks `FarEdgeTarget` (no partner side) or `PartnerTarget` (a partner side):
+
+{{snip: flight/pathfinding/pathnode/target.py :: class Target(ABC): => def retarget(self, point): :: class PartnerTarget => return self._far_edge_route(frm)}}
 
 - `route_from(frm)` returns the shortest route (points, obstacle group ids) from a point to the target, or `(None, None)`.
-- **With a partner**: first try a route to `partner_a` itself. If `partner_a` is not inside an obstacle this side knows about and a route exists, `is_partner = True`: the target is real.
-- **Stand-in**: if the partner's point A lies **inside an obstacle this side knows** (for instance a mine this side found and the partner has not heard yet), the route heads for the **nearest obstacle corner** to it instead (up to 8 corners tried), and `is_partner` stays `False`. The partner applies the same rule and re-places *its* point A just outside the obstacle; when the relay arrives, the stand-in is replaced by the real thing.
-- **Without a partner**: straight ahead to the far edge if clear, else the far-edge point (one per 2 ft cell) with the shortest route.
-- `is_partner` matters in `advance()`:
+- **With a partner**: first try a route to `partner_a` itself. If `partner_a` is not inside an obstacle this side knows about and a route exists, `may_close()` is `True`: the target is real.
+- **Stand-in**: if the partner's point A lies **inside an obstacle this side knows** (for instance a mine this side found and the partner has not heard yet), the route heads for the **nearest obstacle corner** to it instead (up to 8 corners tried), and `may_close()` stays `False`. The partner applies the same rule and re-places *its* point A just outside the obstacle; when the relay arrives, the stand-in is replaced by the real thing.
+- **Without a partner** (`FarEdgeTarget`): straight ahead to the far edge if clear, else the far-edge point (one per 2 ft cell) with the shortest route.
+- `may_close()` matters in `advance()`:
 
 {{snip: flight/pathfinding/pathnode/planner.py :: def advance(self): => chain.advance_link(chain.links[f], Placer.FORWARD, seen)}}
 
@@ -76,7 +78,7 @@ Each side's route runs from its own entry to where it stopped. Because each side
 
 - `join_routes`: find the first point along **own** that matches (within `ROUTE_MATCH_FT` = 0.01 ft) a vertex of **partner** or lies on a partner segment; the result is `own[:i+1]` followed by the partner's points before that spot, **reversed** (so the joined route reads bottom entry to top entry).
 - `join` adds a fallback when relay loss left the two halves overlapping but sharing no point: bridge the closest pair of points **within 30 ft** (`MAX_BRIDGE_FT`), only with a straight line that crosses no obstacle *and* whose squares are all photographed, "so the bridge is as verified as any checked link".
-- `MissionPlanner.join_latlon` also rejects a joined route that `zones.crosses`: it must not touch any obstacle *this* copy knows.
+- `MissionPlanner.join_latlon` also rejects a joined route that `engine.crosses`: it must not touch any obstacle *this* copy knows.
 
 The last line of the toy output shows the joined route from bottom entry (12, 0) to top entry (12, 80).
 

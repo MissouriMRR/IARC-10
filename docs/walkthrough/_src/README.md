@@ -33,10 +33,12 @@ We follow **a 4-drone mission**. Drones 1 and 2 (the *bottom side*) start on the
 | 11 | [Glossary](11-glossary.md) | Every term |
 | 12 | [Notes and oddities](12-notes-and-oddities.md) | Bugs, dead code and stale comments noticed on the way |
 
+For the shape of the planner and the classes to subclass, read [docs/architecture.md](../../architecture.md) first.
+
 ## Status of the code being described
 
-- **Obstacle geometry (being replaced).** The planner routes with `ZoneMap` (`pathnode/geometry.py`, wrapped by `pathnode/routes.py`). A rebuilt geometry (`flight/pathfinding/nodeField/`: `Field`, `FieldConnections.nodeGraph`, `MineNode`, `PolygonObstacle`, `unionObstacle`, `BlockMine`; and `flight/pathfinding/protoMine.py`) is finished but **not wired in yet**. The walkthrough describes path-finding through `Routes` as "shortest path around known obstacles" and does not go into `ZoneMap`. It will be extended when `Field` is wired in.
-- **Per-drone planner copies, keep-apart (including cross-side keep-apart) and claims** are in final verification (`planner.py`, `claims.py`, `session.py`, `sim.py`, `side_agent.py`); the text follows the code as read. The geometry is still `ZoneMap`; the new `Field` is not wired in.
+- **Obstacle geometry (a `PathEngine`).** `pathnode/routes.py` wraps a `PathEngine` (`pathnode/engines/base.py`), chosen by `PlannerConfig.engine`: `ZoneMap` (`pathnode/engines/zonemap.py`, the default) or `Field` (`flight/pathfinding/nodeField/`, `flight/pathfinding/protoMine.py`; implements the interface, not the default). The walkthrough describes path-finding through `Routes` as "shortest path around known obstacles" and does not go into either engine.
+- **Per-drone planner copies, keep-apart (including cross-side keep-apart) and claims** are in final verification (`planner.py`, `claims.py`, `session.py`, `sim.py`, `side_agent.py`); the text follows the code as read. The geometry is a `PathEngine`: `ZoneMap` by default; `Field` is selectable but not the default.
 - **Expanding mines (`ExpandNodes`) is not implemented**: the state is a no-op today (chapter 10).
 
 ## How these files are produced (for maintainers)
@@ -73,16 +75,17 @@ python docs/walkthrough/_src/build.py
 | `flight/pathfinding/pathnode/planner.py` : `PathNodePlanner.__init__` | 2 |
 | `flight/pathfinding/pathnode/config.py` : `PlannerConfig`, enums, constants | 2 |
 | `flight/pathfinding/pathnode/chain.py` : `Chain`, `PathNode`, `Link` | 2 |
-| `flight/pathfinding/pathnode/routes.py` : `Routes` (interface only), `geometry.py` (not detailed; being replaced) | 2 |
+| `flight/pathfinding/pathnode/routes.py` : `Routes` (interface only); `engines/` (`PathEngine`, `ZoneMap`) and `geometry.py` (constants and cell helpers; not detailed) | 2 |
 | `flight/pathfinding/side_agent.py` : `SideAgent.__init__`, `speaker` | 2 |
 | `state_machine/states/impl/calc_scan_path_impl.py` : `run`, `_build_waypoints`, `_flag_no_valid_path` | 3 |
 | `flight/pathfinding/side_agent.py` : `plan`, `apply_inbox`, `send_heartbeats`, `_announce_job`, `positions`, `other_side_positions`, `_check_mate` | 3, 7 |
 | `flight/pathfinding/mission_planner.py` : `assignments`, `current_job` | 3 |
 | `flight/pathfinding/pathnode/session.py` : `assignments` | 3 |
-| `flight/pathfinding/pathnode/planner.py` : `plan`, `advance`, `groups`, `_keep_apart`, `_make_way` | 3 |
+| `flight/pathfinding/pathnode/planner.py` : `plan`, `advance`, `groups` | 3 |
+| `flight/pathfinding/pathnode/coordination.py` : `SideCoordinator.plan`, `_keep_apart`, `_make_way` | 3 |
 | `flight/pathfinding/pathnode/chain.py` : `advance_link` | 3 |
-| `flight/pathfinding/pathnode/work.py` : `Work.groups`, `band`, `needed_squares` | 3, 6 |
-| `flight/pathfinding/pathnode/coverage.py` : `places_along`, `need`, `touched`, `tile` | 3, 6 |
+| `flight/pathfinding/pathnode/work.py` : `Work.groups`, `band`, `needed_squares`; `work_sources.py` : `WorkSource`, `PathSource`, `ShortcutSource`, `RingSource` | 3, 6, 8 |
+| `flight/pathfinding/pathnode/coverage.py` : `touched`, `places_along` (delegates); `placement.py` : `PhotoPlacement.places_along`, `tile`, `CorridorPlacement` | 3, 6 |
 | `flight/pathfinding/path_cover.py` : `path_cover_unseen` (used, not detailed) | 3 |
 | `flight/pathfinding/pathnode/claims.py` : `ClaimBook.update`, `_inherit`, `_queue` | 3, 6 |
 | `state_machine/interdrone.py` : `send_side_job`, `send_cross_pair_point_a`, `send_cross_pair_mine_sync` | 3, 9 |
@@ -100,13 +103,13 @@ python docs/walkthrough/_src/build.py
 | `flight/pathfinding/pathnode/session.py` : `own_photo`, `mate_photo`, `_add_pair_mines`, `partner_mine`, `partner_coverage`, `partner_point_a`, `partner_route` | 5, 7, 9 |
 | `flight/pathfinding/pathnode/planner.py` : `add_mine` | 5 |
 | `flight/pathfinding/pathnode/routes.py` : `_added`, `add_mine`, `add_square` | 5 |
-| `flight/pathfinding/pathnode/mine_rule.py` : `apply`, `_frontier_links`, `_shift_entry`, `_reroute_from_entry` | 5 |
+| `flight/pathfinding/pathnode/mine_rule.py` : `apply`, `MineRule` (`run` and its step methods), `_frontier_links`, `_shift_entry`, `_reroute_from_entry` | 5 |
 | `state_machine/interdrone.py` : `send_cross_pair_mine_relay`, `send_cross_pair_coverage`, `share_photos` | 5, 7 |
 | `state_machine/interdrone.py` : receive cases `SHARE_PHOTOS`, `SIDE_JOB`, `CROSS_PAIR_*`, `POSITION_REPORT`, `FIELD_CHECKSUM` | 7 |
 | `state_machine/drone.py` : `Drone.__init__` staging fields, `CrossPairMineReport`, `SharedPhotoReport` | 7 |
 | `flight/pathfinding/pathnode/shortcuts.py` : `Shortcuts` (all) | 8 |
 | `flight/pathfinding/pathnode/chain.py` : `Chain.replace` | 8 |
-| `flight/pathfinding/pathnode/target.py` : `Target.route_from` | 9 |
+| `flight/pathfinding/pathnode/target.py` : `Target`, `FarEdgeTarget`, `PartnerTarget`, `make_target` | 2, 9 |
 | `flight/pathfinding/pathnode/planner.py` : `set_partner_point_a`, `met`, `point_a`, `check_join`, `_reopen_toward`, `join` | 9 |
 | `flight/pathfinding/pathnode/join.py` : `join_routes`, `join` | 9 |
 | `flight/pathfinding/mission_planner.py` : `join_latlon`, `check_join_latlon` | 9, 10 |
@@ -122,6 +125,6 @@ python docs/walkthrough/_src/build.py
 | `state_machine/states/impl/land_impl.py`, `Drone.return_to_launch` | 10 |
 | `state_machine/states/impl/emergency_land_impl.py` | 1 (interrupt path only) |
 | `state_machine/states/impl/poif_impl.py` (the POIF demo) | not covered |
-| `flight/pathfinding/nodeField/*`, `protoMine.py` (new geometry, not wired in) | not covered yet (to be added when wired) |
+| `flight/pathfinding/nodeField/*`, `protoMine.py` (the `Field` engine; selectable via `PlannerConfig.engine`, not the default) | not covered (engine internals) |
 
 Chapters 11 and 12 (glossary, notes) cover no code directly; when a change lands, update the notes list too.

@@ -1,96 +1,38 @@
-"""
-A path-native alternative to CellField.cover_with_shape for the specific
-case getPlacesToCheck actually has: the target to cover is always a thin
-polyline (the flight path), not an arbitrary 2D blob. cover_with_shape
-rasterizes that path to cells and greedy-covers the cells -- O(remaining^2 *
-shape_area), and it doesn't know the target came from a path at all.
+"""Photo centres along a polyline's unphotographed stretches (no cell-grid covering).
 
-This instead walks the path's own geometry directly, without ever
-touching a cell grid: it places a shape center every
-`spacing = shape_size * (1 - overlap)` along the polyline's arc length.
-With overlap=0 that spacing is exact, not a heuristic: for an
-axis-aligned S x S square centered on a straight path segment, the segment
-length actually inside the square is AT LEAST S (exactly S when the
-segment is axis-aligned, up to S*sqrt(2) at 45 degrees) -- so consecutive
-centers S apart always leave the covered spans touching or overlapping,
-never gapped. A positive `overlap` only tightens that spacing, so the
-coverage guarantee still holds -- it adds redundancy margin, same idea as
-the vertical/horizontal image overlap in path_subdivision.py's (currently
-unused) generate_goto_points.
+Entry point: path_cover_unseen(path_points, seen_field, shape_size, overlap, path_width).
+Used by pathnode/placement.py (CorridorPlacement).
 
-A RECTANGULAR (along != across) footprint needs a stricter spacing bound
-than the square case above: the "AT LEAST S" guarantee for a square holds
-for ANY straight-segment angle because both of the square's dimensions are
-S. For an `along` x `across` rectangle, the segment length actually inside
-it varies with the segment's local angle relative to the rectangle's fixed
-world-space axes, from `along` (segment parallel to the along axis) down to
-`across` (segment parallel to the across axis) -- it is NEVER less than
-min(along, across), and that minimum is achieved, not just approached,
-whenever the path is momentarily moving mostly sideways relative to the
-footprint's orientation (exactly what happens at a sharp bend, e.g. weaving
-around an obstacle). Since this module places footprints axis-aligned in
-world space rather than rotating each one to the local path heading,
-spacing consecutive placements by `along` alone (treating it like the
-square case) leaves real gaps at exactly those bends -- verified on a sharp
-right-angle bend (15% of densely sampled path points left uncovered).
-`place_along_runs` therefore always spaces consecutive placements by
-`min(along, across) * (1 - overlap)`, not `along * (1 - overlap)` -- the
-`across` dimension still governs multi-row spacing when path_width calls
-for more than one row. This trades some placement efficiency on straight
-stretches (more, closer-together shots than a heading-aware camera would
-need) for a guarantee that holds regardless of how the path bends, without
-requiring this module to track or return a per-placement heading at all.
+Steps:
+1. unseen_path_runs: walk the polyline's cells, cut it into runs wherever a cell is already
+   seen or the walk leaves and re-enters the field.
+2. place_along_runs: along each run, a centre every `spacing` of arc length (plus extra
+   parallel rows for a corridor wider than the footprint).
+3. path_cover_unseen: add a centre at each real interior vertex that is still unseen.
 
-`path_width` handles a corridor wider than a single shape: once it exceeds
-`shape_size`, a single centerline row of squares no longer reaches the
-corridor's edges, so multiple parallel rows are generated instead, offset
-sideways from the path by the LOCAL perpendicular direction at each vertex
-(averaged from its two adjacent segments where the path bends -- an exact
-offset for a straight path, an approximation at a bend, same kind of
-straight-chord approximation mark_path already makes for arcs elsewhere in
-this codebase).
+Why the spacing is enough:
+- Square S x S footprint, axis-aligned, centred on a straight segment: the segment inside it is
+  at least S long. Centres S apart therefore always touch or overlap.
+- Rectangle (along, across): the length inside varies with the segment angle, from `along`
+  down to `across`, and never below min(along, across) (reached at sharp bends). So the spacing
+  is always min(along, across) * (1 - overlap). `across` alone sets the gap between rows.
+- A positive `overlap` only tightens the spacing. Prefer overlap >= 0.1:
+  - overlap 0 with several rows leaves floating-point seams (razor-thin gaps).
+  - overlap 0 can leave a seam cell not fully inside either neighbour, so it is not marked
+    seen and costs an extra cleanup replan.
 
-A NOTE ON overlap=0 WITH path_width > shape_size: the "always touching,
-never gapped" guarantee above is exact in exact arithmetic, but multiple
-rows introduce more boundary-touching seams (between placements along a
-row, AND between adjacent rows) than the single-row case has, and touching
-with exactly zero margin is fragile to ordinary floating-point rounding at
-those seams -- verified empirically (dense sampling across the full
-corridor width) to occasionally leave razor-thin gaps right at a seam with
-overlap=0.0, fully gone by overlap=0.15. The single-row case (path_width <=
-shape_size, i.e. the default) does NOT have this issue -- it was verified
-gap-free at overlap=0.0.
-
-A SECOND, SEPARATE REASON TO PREFER overlap > 0: whenever placements feed
-into CellField.fill_polygon_covered (accept_image_corner_coord's "seen"
-tracking -- see droneWorkflowTest.py for the full discover-and-replan
-loop), overlap=0's zero-margin touching means a path cell sitting exactly
-on the seam between two adjacent placements can end up NOT fully enclosed
-by either one (fill_polygon_covered only marks a cell seen when the WHOLE
-cell -- not just the thin path line through it -- is inside the
-photographed footprint). That doesn't break correctness (the loop still
-converges -- an unresolved seam cell just shows up as its own tiny run on
-the next replan, and gets swept up then), but it does cost extra "cleanup"
-replanning passes that a positive overlap avoids by construction (adjacent
-squares overlapping means a seam cell is redundantly covered, virtually
-always fully enclosed by at least one of them). Verified empirically: an 8
-true-mine simulated field needed 5 replans at overlap=0.0 (3 real
-discoveries + 2 pure seam-cleanup passes that found nothing new) vs exactly
-4 (3 discoveries + 1 final empty check) at overlap=0.1.
-
-Recommend a small overlap (>=0.1) whenever path_width exceeds shape_size,
-OR whenever placements will be fed back into accept_image_corner_coord's
-seen-tracking -- the same way real aerial-image surveys never plan for
-exactly 0% overlap either.
+Rows (`path_width` > footprint): parallel copies of the polyline, each offset sideways by the
+local normal at each vertex (averaged at bends: exact on a straight run, approximate at a bend).
 """
 
 import math
 
 
 def _clip_segment_to_bbox(p0, p1, min_corner, max_corner):
-    """Liang-Barsky clip of segment p0-p1 to the rectangle
-    [min_corner, max_corner]. Returns the clipped (q0, q1) endpoints, or
-    None if the segment never touches the rectangle at all."""
+    """Liang-Barsky clip of segment p0-p1 to the rectangle [min_corner, max_corner].
+
+    Returns: the clipped (q0, q1), or None if the segment never touches the rectangle.
+    """
     x0, y0 = p0
     x1, y1 = p1
     dx, dy = x1 - x0, y1 - y0
@@ -120,17 +62,13 @@ def _clip_segment_to_bbox(p0, p1, min_corner, max_corner):
 
 
 def _first_and_last_in_bounds_points(points, min_corner, max_corner):
-    """The exact (sub-cell) point where `points` first enters and last
-    exits [min_corner, max_corner], or (None, None) if it never touches the
-    field at all. Used only to correct unseen_path_runs' overall start/end:
-    CellField.path_cells (a cell-grid walk) can only report which CELL the
-    path first/last occupies, and that cell's center is in general NOT
-    where the path actually crosses the field boundary -- exactly the kind
-    of small (at most one cell's worth of) positional error that erodes the
-    zero-margin coverage guarantee for the two ends of the whole path.
-    Interior seen/unseen transitions don't get (or need) this treatment:
-    "seen" is itself a cell-level concept, so cell-grained precision there
-    is already exactly as precise as the target can be."""
+    """The exact points where `points` first enters and last leaves the rectangle.
+
+    Returns: (first, last), or (None, None) if it never touches the field.
+    Why: the cell walk only says which cell the path starts and ends in, and that cell's
+    centre is off the true crossing by up to a cell, which would erode the coverage at the two
+    ends of the path. Interior seen/unseen changes are cell-level anyway, so need no fix.
+    """
     first = last = None
     for i in range(len(points) - 1):
         clipped = _clip_segment_to_bbox(points[i], points[i + 1], min_corner, max_corner)
@@ -143,13 +81,10 @@ def _first_and_last_in_bounds_points(points, min_corner, max_corner):
 
 
 def _polyline_normals_per_vertex(points):
-    """One 2D unit normal per vertex, averaged (miter-style) from its
-    adjacent segments' normals where the path bends -- lets the whole
-    polyline be offset sideways by a fixed distance while staying a single
-    connected line. Exact for a straight run; an approximation right at a
-    bend (the two adjacent segments' true offsets don't quite meet there),
-    the same kind of straight-line approximation mark_path already makes
-    when rasterizing an arc-hugging path segment as a straight chord."""
+    """One unit normal per vertex: the mean of its adjacent segments' normals (miter-style).
+
+    Lets the whole polyline be offset sideways and stay one connected line.
+    """
     n = len(points)
     seg_normals = []
     for i in range(n - 1):
@@ -171,6 +106,7 @@ def _polyline_normals_per_vertex(points):
 
 
 def _offset_polyline(points, offset):
+    """`points` moved sideways by `offset` along each vertex's normal."""
     if offset == 0.0:
         return list(points)
     normals = _polyline_normals_per_vertex(points)
@@ -178,11 +114,10 @@ def _offset_polyline(points, offset):
 
 
 def _row_offsets(path_width, shape_size, spacing):
-    """How many parallel rows are needed to cover a corridor `path_width`
-    wide with `shape_size`-wide squares, and how far to offset each one
-    from the centerline. A single centered row already covers the full
-    width whenever path_width <= shape_size (matches the old zero-width-path
-    behavior exactly when path_width is left at its 0.0 default)."""
+    """Sideways offset of each parallel row needed to cover a corridor `path_width` wide.
+
+    One centred row (offset 0.0) is enough when path_width <= shape_size.
+    """
     if path_width <= shape_size:
         return [0.0]
     num_rows = math.ceil((path_width - shape_size) / spacing) + 1
@@ -191,52 +126,25 @@ def _row_offsets(path_width, shape_size, spacing):
 
 
 def _normalize_shape_size(shape_size):
-    """`shape_size` is either a plain number (a square footprint, the
-    original/default case) or an (along, across) pair for a rectangular
-    footprint -- `along` is the dimension parallel to the direction of
-    travel (it sets the spacing between consecutive placements, the same
-    role shape_size always played), `across` is the dimension perpendicular
-    to travel (it sets the spacing between parallel rows when path_width
-    calls for more than one). A square is just the special case
-    along == across, so every caller that only ever passed a scalar keeps
-    working unchanged."""
+    """(along, across) from `shape_size`.
+
+    - number: a square, along == across.
+    - (along, across) pair: a rectangle; `along` is parallel to travel, `across` is
+      perpendicular (it sets the gap between rows).
+    """
     if isinstance(shape_size, tuple):
         along, across = shape_size
         return along, across
     return shape_size, shape_size
 
 
-def _place_along_polyline(points, spacing, guarantee_vertices=True):
-    """Places centers every `spacing` along the polyline's arc length,
-    starting at spacing/2 (so the first square's leading edge reaches the
-    start), with a final point pinned to the tail if the last spaced one
-    doesn't already reach it -- PLUS, when guarantee_vertices=True, a
-    center pinned to every INTERIOR vertex, regardless of where the
-    arc-length spacing lands.
+def _place_along_polyline(points, spacing):
+    """Centres every `spacing` of arc length along one run.
 
-    The arc-length spacing alone only guarantees min(along,across) of
-    coverage along any ONE straight segment (see module docstring); it
-    says nothing about a vertex sitting between two consecutive spaced
-    centers that fall on DIFFERENT segments. A short, sharply bent run
-    (e.g. weaving between several close mines) can leave the corner cell
-    at such a vertex farther from every spaced center than an axis-aligned
-    (not heading-rotated) footprint reaches -- verified empirically: dense
-    zigzags through tight mine clusters left 1-9 cells unseen at exactly
-    these corners, in ~15-25% of large-field runs. Pinning a center to
-    every interior vertex closes that gap unconditionally, independent of
-    segment length or turn sharpness.
-
-    guarantee_vertices MUST be False when `points` isn't a real, sparse
-    path-node polyline but a densely cell-rasterized one (one point per
-    ~2ft grid cell, e.g. unseen_path_runs' output) -- every one of those
-    per-cell samples would otherwise be treated as its own "vertex",
-    pinning a redundant placement roughly every cell instead of every
-    `spacing`, nearly doubling placement counts for no coverage benefit
-    (verified: 95 -> 189 placements on one real 10-node path). Callers
-    with genuine sparse vertices (e.g. path_cover's own path_points)
-    should still guarantee them here; callers fragmenting by seen/unseen
-    cells (path_cover_unseen) instead guarantee coverage at the ORIGINAL
-    path's real vertices themselves, filtered to unseen ones, separately.
+    - First centre at spacing/2 (the first footprint's leading edge reaches the start).
+    - A final centre at the last point if the last spaced one is more than spacing/2 from it.
+    - No vertex pinning: `points` are cell samples (about one per 2 ft), not real corners.
+      Real corners are handled by path_cover_unseen.
     """
     if len(points) == 1:
         return [points[0]]
@@ -248,10 +156,6 @@ def _place_along_polyline(points, spacing, guarantee_vertices=True):
     if total == 0:
         return [points[0]]
 
-    # Arc-length-spaced centers, exactly as before this docstring's vertex
-    # guarantee was added -- unchanged and never pruned below, so whatever
-    # coverage this alone already provided can only be ADDED to, never
-    # weakened by the vertex step.
     centers = []
     target = spacing / 2.0
     seg_idx = 0
@@ -274,40 +178,16 @@ def _place_along_polyline(points, spacing, guarantee_vertices=True):
         > spacing / 2.0
     ):
         centers.append(points[-1])
-
-    # Additive vertex guarantee: append every interior vertex not already
-    # within dedup_dist of a kept center -- a pure addition, so it can
-    # only improve coverage, never remove an arc-spaced center that some
-    # OTHER geometry (e.g. a sharply-offset multi-row corridor) depended
-    # on. See docstring above for why arc-length spacing alone isn't
-    # enough at a vertex between two short, sharply bent segments -- and
-    # for why this must stay OFF when `points` isn't a sparse real path.
-    if guarantee_vertices:
-        dedup_dist = spacing / 4.0
-        for p in points[1:-1]:
-            if not any(math.hypot(p[0] - c[0], p[1] - c[1]) < dedup_dist for c in centers):
-                centers.append(p)
-
     return centers
 
 
-def place_along_runs(runs, shape_size, overlap: float = 0.0, path_width: float = 0.0, guarantee_vertices: bool = True):
-    """
-    Shared placement core for both path_cover and path_cover_unseen: `runs`
-    is already a list of independent, possibly-disconnected polylines (each
-    its own list of (x, y) points) -- no seen/unseen logic happens here,
-    each run is just covered on its own, so this works identically whether
-    the runs came from a single continuous path or one fragmented into
-    disconnected stretches by excluding already-seen cells (see
-    unseen_path_runs).
+def place_along_runs(runs, shape_size, overlap: float = 0.0, path_width: float = 0.0):
+    """Photo centres for each run on its own (runs are independent polylines of (x, y)).
 
-    `shape_size` -- see _normalize_shape_size: a plain number for a square
-    footprint, or an (along, across) pair for a rectangular one.
-    overlap/path_width -- see path_cover's docstring, unchanged here.
-    guarantee_vertices -- see _place_along_polyline: True (default) is only
-    correct when `runs` holds real, sparse path vertices (path_cover's
-    case); path_cover_unseen's cell-fragmented runs must pass False and
-    apply the vertex guarantee separately, against the ORIGINAL path.
+    - shape_size: number (square) or (along, across); see _normalize_shape_size.
+    - overlap: fraction in [0, 1) of the footprint by which neighbours overlap.
+    - path_width: corridor width to cover; wider than the footprint gives parallel rows.
+    Returns: list of (x, y) centres.
     """
     if not (0.0 <= overlap < 1.0):
         raise ValueError(f"overlap must satisfy 0<=overlap<1, got {overlap}")
@@ -315,87 +195,27 @@ def place_along_runs(runs, shape_size, overlap: float = 0.0, path_width: float =
         raise ValueError(f"path_width must be non-negative, got {path_width}")
 
     along, across = _normalize_shape_size(shape_size)
-    # See module docstring's rectangle addendum: spacing consecutive
-    # placements by `along` alone only guarantees gap-free coverage when
-    # along == across (the square case) -- for along != across it must be
-    # the SHORTER dimension, or bends toward the `across` axis leave gaps.
+    # The shorter dimension, not `along`: see the module docstring.
     along_spacing = min(along, across) * (1.0 - overlap)
     across_spacing = across * (1.0 - overlap)
     row_offsets = _row_offsets(path_width, across, across_spacing)
     centers = []
     for run in runs:
         for row_offset in row_offsets:
-            centers.extend(_place_along_polyline(
-                _offset_polyline(run, row_offset), along_spacing, guarantee_vertices=guarantee_vertices
-            ))
+            centers.extend(_place_along_polyline(_offset_polyline(run, row_offset), along_spacing))
     return centers
 
 
-def path_cover(
-    path_points,
-    shape_size,
-    overlap: float = 0.0,
-    path_width: float = 0.0,
-):
-    """
-    path_points: ordered list of (x, y) real-world waypoints (e.g. from
-        [(n.x, n.y) for n in shortest_path]) -- straight segments between
-        consecutive points, matching what mark_path/rasterize_node_path already
-        rasterizes.
-    shape_size: side length (real-world units) of the square shape to place,
-        or an (along, across) pair for a rectangular footprint -- see
-        _normalize_shape_size.
-    overlap: fraction in [0, 1) of `shape_size` that consecutive placements
-        should overlap by, both along the path and (when path_width calls
-        for more than one row) across it. 0.0 (default) reproduces the
-        original edge-to-edge, zero-margin spacing.
-    path_width: real-world width of the corridor to cover, default 0.0 (a
-        zero-width line -- a single centered row of squares, the original
-        behavior). Once this exceeds `shape_size`, a single row no longer
-        reaches the corridor's edges, so multiple parallel rows are placed
-        instead (see _row_offsets).
-
-    Returns a list of (x, y) shape-center placements covering the whole
-    path -- same shape as cover_with_shape's return value. Used to cover
-    the whole path in one pass -- no per-drone slicing (that was an
-    artifact of an old multi-drone-field-division strategy since replaced
-    by Side/pairing + the fixed midline boundary -- see
-    Pathfinder.__init__'s droneID/former numOfDrones).
-    """
-    return place_along_runs([path_points], shape_size, overlap=overlap, path_width=path_width)
-
-
 def unseen_path_runs(path_points, seen_field):
-    """
-    Splits `path_points` (an ordered real-world polyline) into however many
-    runs of real-world points cover only the portions whose cell -- in
-    `seen_field`'s own grid -- is NOT already marked seen. Reuses
-    CellField.path_cells for the cell-grid part of this (the ordered walk
-    of which cells the path visits, including the gaps it already leaves
-    wherever the path exits and re-enters the field), so this is the one
-    place path_cover touches a cell grid at all -- everything downstream
-    (place_along_runs) is back to pure real-world geometry once the runs
-    are built.
+    """Split `path_points` into runs of real-world points whose cells are not yet seen.
 
-    A run breaks both at a seen cell (excluded entirely) AND at a gap in
-    the cell walk itself (the path having left and re-entered the field --
-    interpolating a run across an unknown out-of-bounds gap would be
-    wrong), matching why "the cell path may be discontinuous" in the first
-    place: it's not just from y-slicing anymore, it's from real coverage
-    history too.
-
-    Uses path_cells(include_tie_neighbors=True): the default
-    (include_tie_neighbors=False, a strict single-axis cardinal walk) can
-    silently skip a cell at an exact grid-corner tie that mark_path (the
-    "ground truth" path footprint used everywhere else, e.g.
-    Pathfinder.rasterize_node_path) counts as on the path -- a skipped cell here
-    means getPlacesToCheck never targets it at all, a real, permanent gap
-    in coverage rather than just an inefficiency. With WIDTHOFSQUARE=2ft
-    cells and many waypoints landing on exact multiples of that grid (mine
-    detections snap to square coordinates), exact ties are common enough in
-    this codebase to matter, not just a theoretical floating-point
-    curiosity -- verified via Pathfinder.rasterize_node_path finding a "seen"
-    gap that getPlacesToCheck (pre-fix) considered already fully covered.
+    - A run breaks at a seen cell, and at a gap in the cell walk (the path left the field and
+      re-entered; interpolating across it would be wrong).
+    - Uses path_cells(include_tie_neighbors=True): the strict cardinal walk can skip a cell at an
+      exact grid-corner tie that mark_path counts as on the path, which would be a permanent
+      coverage gap. Ties are common because mine positions snap to the 2 ft grid.
+    - The path's first and last points use the exact field crossing, not the cell centre.
+    Returns: list of runs, each a list of (x, y).
     """
     cells = seen_field.path_cells(path_points, include_tie_neighbors=True)
     if not cells:
@@ -441,26 +261,18 @@ def path_cover_unseen(
     overlap: float = 0.0,
     path_width: float = 0.0,
 ):
-    """
-    Same as path_cover, but only covers the portions of the path that
-    `seen_field` doesn't already mark as seen (see unseen_path_runs) --
-    "only checking areas we haven't already checked". unseen_path_runs
-    already splits the path into disconnected runs wherever a stretch is
-    already seen; place_along_runs treats every run independently, so no
-    shape ever spans across a seen stretch.
+    """Photo centres covering the unseen stretches of the polyline `path_points`.
 
-    unseen_runs' points are one per ~2ft cell (see unseen_path_runs), NOT
-    real path vertices -- place_along_runs is told guarantee_vertices=False
-    so it doesn't mistake every cell sample for its own corner (that
-    inflated placement counts ~2x with no coverage benefit when tried).
-    The corner guarantee instead runs here, directly against path_points'
-    own real interior vertices, kept only where still unseen -- same
-    guarantee, applied to the geometry it actually means something for.
+    - path_points: ordered real-world (x, y) vertices, straight segments between them.
+    - seen_field: CellField of already-photographed cells.
+    - shape_size, overlap, path_width: see place_along_runs.
+    - Corner guarantee: after the arc-spaced centres, every interior vertex still unseen and not
+      within min(along, across) * (1 - overlap) / 4 of a centre gets a centre. (Short sharp
+      bends can otherwise leave the corner cell out of reach of every spaced centre.)
+    Returns: list of (x, y) centres (not sorted along the path).
     """
     unseen_runs = unseen_path_runs(path_points, seen_field)
-    centers = place_along_runs(
-        unseen_runs, shape_size, overlap=overlap, path_width=path_width, guarantee_vertices=False
-    )
+    centers = place_along_runs(unseen_runs, shape_size, overlap=overlap, path_width=path_width)
 
     along, across = _normalize_shape_size(shape_size)
     dedup_dist = min(along, across) * (1.0 - overlap) / 4.0

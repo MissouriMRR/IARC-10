@@ -3,10 +3,11 @@
 Start here. There are no drones needed for any of this: everything runs on a laptop with a
 simulated field. Pages:
 
-- [unit-tests.md](unit-tests.md): the planner suite, geometry (nodeField) suite, CellField suite, pytest suite.
+- [unit-tests.md](unit-tests.md): the planner suite, coverage suite, path-engine conformance suite, geometry (nodeField) suite, CellField suite, pytest suite.
+- [../architecture.md](../architecture.md): how the planner is built and which test to run per extension point.
 - [simulator.md](simulator.md): `Mission` / `evaluate()`, what each metric means, making GIFs.
 - [flight-harness.md](flight-harness.md): the full state machine on fake hardware (needs WSL).
-- [tools.md](tools.md): `tools/testing/` scripts (sweep, golden, benchmark, repro cases, snapshots).
+- [tools.md](tools.md): `tools/testing/` scripts (verify, sweep, golden, benchmark, repro cases, snapshots).
 
 ## Quick start: I changed X, run Y
 
@@ -15,6 +16,7 @@ Commands are in Git Bash from the repo root. `$PWD` is the repo. "WSL" commands:
 
 | I changed | Run | Expect | Time |
 |---|---|---|---|
+| everything (before merging, after a big change) | `python tools/testing/verify.py` | `ALL PASSED` (3 known pytest failures shown as `known`) | ~7 min idle, ~17 min under load |
 | planner code (`flight/pathfinding/pathnode/`) | `PYTHONPATH=$PWD python -m flight.pathfinding.pathnode.test_pathnode` | `N/N passed` | 15-20 min |
 | planner code, quick look | `python tools/testing/sweep.py --mines 90 --seeds 0 4` | `4/4 ok, 0 BAD` | ~1 min |
 | planner code, before merging | `python tools/testing/sweep.py --standard --jobs 6` | `90/90 ok, 0 BAD` | ~6 min |
@@ -38,7 +40,18 @@ Commands are in Git Bash from the repo root. `$PWD` is the repo. "WSL" commands:
 | `flight/pathfinding/tests/cellFieldTest.py` | CellField tests |
 | `integration_tests/` | flight-code harness (`multi_drone_sim_test.py`, `one_drone_sim_test.py`) |
 | `tests/` | pytest suite for flight code |
-| `tools/testing/` | sweep, golden, benchmark, repro cases, snapshot scripts |
+| `tools/testing/` | verify (all suites at once), sweep, golden, benchmark, repro cases, snapshot scripts |
+
+## The whole ladder in one command: verify.py
+
+`python tools/testing/verify.py` freezes the tree (a snapshot under `.test_snapshots/`, path
+printed) and runs every step of the ladder below on all cores: unit + geometry + CellField
+tests (one process per test), the 90-seed sweep (one process per seed), pytest and pyflakes
+(WSL), then the flight harness (WSL, every configuration its own process). Takes about
+7-17 minutes instead of ~40, prints a line per finished job and one summary table, exits 1 on
+any real failure. The flight harness is timing sensitive, so it runs AFTER the CPU-heavy
+suites, not alongside them (see [tools.md](tools.md#verifypy-the-whole-ladder-on-all-cores)
+for options and the measurements). Use the manual ladder below when you only need one step.
 
 ## The verification ladder (run in this order after a change)
 

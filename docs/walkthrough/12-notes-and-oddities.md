@@ -36,7 +36,7 @@ Things that look wrong, dead, surprising or stale, collected while writing the c
 
 ## Stale comments and docstrings
 
-21. `pathnode/planner.py` module docstring (and the `_make_way` docstring's "non-lead drone"): "The side's lead (its lower-id drone) owns this planner and plans for every drone of the side". Each drone owns a copy; there are no leads. (`FlightSettings.mission_sides` says so.)
+21. (Fixed: the `planner.py` module docstring and `_make_way` no longer talk about a lead drone.)
 22. `pathnode/claims.py`: "the pair", `("self", "member")`, "the member pioneers". `pathnode/sim.py` module docstring: leads and members, `ASSIGN_WORK`. `pathnode/__init__.py`: "the two leads' point As" and mentions of the old planner.
 23. `Land` docstring says it "transitions to the Start state"; it returns `None` and the process ends. `Takeoff` docstring says it transitions to `Land`; the mission branch returns `CalcScanPath`. `Scan` docstring describes `Scan -> DroneShare -> Scan` and says `DroneShare` returns to `CalcScanPath` only when it finds a mine; `DroneShare` always returns `CalcScanPath`. `AppShare` docstring refers to its "own older docstring".
 24. `calc_scan_path_impl._camera_footprint_ft` mentions `flight/pathfinding/path_subdivision.py` (deleted). The `along`/`across` assignment (`hFov` -> along) is admitted unconfirmed against the real camera mount.

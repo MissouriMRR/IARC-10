@@ -100,7 +100,7 @@ def seen_squares(p):
 
 
 def draw_zones(ax, p):
-    for geom in p.routes.zones.groups.values():
+    for geom in p.engine.obstacle_shapes().values():
         for g in getattr(geom, "geoms", [geom]):
             ax.add_patch(Polygon(list(g.exterior.coords), closed=True, facecolor=ZONE,
                                  edgecolor=INK, lw=1.6, hatch="//", zorder=3))

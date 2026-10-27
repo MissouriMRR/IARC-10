@@ -19,7 +19,8 @@ from shapely.ops import unary_union
 
 from flight.pathfinding.common import CELL_FT, DIRECTION_VECTOR, nodeDirection
 from flight.pathfinding.nodeField import BlockMine, BlockMineNode, Field, MineNode, unionObstacle
-from flight.pathfinding.pathnode.geometry import ZoneMap, unsafe_cells
+from flight.pathfinding.pathnode.engines.zonemap import ZoneMap
+from flight.pathfinding.pathnode.geometry import unsafe_cells
 from flight.pathfinding.pathnode.minefield import generate_true_minefield
 from flight.pathfinding.protoMine import protoMine
 
