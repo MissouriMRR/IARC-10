@@ -7,13 +7,33 @@ Class for keeping track of Tasks and running them one step at a time
 """
 class TaskManager:
     def __init__(self) -> None:
-        self.tasks: list[TaskWrapper] = []
+        self.drones = []
+        self.tasks: dict[Drone, TaskWrapper] = {}
+
+    def add_drone(self, drone: Drone) -> None:
+        self.drones.append(drone)
+        gen = drone.task_generator()
+        try:
+            self.tasks[drone] = TaskWrapper(next(gen), gen)
+        except StopIteration:
+            self.tasks.pop(drone)
 
     """
     Adds a task and its generator to the task list
     """
-    def addTask(self, task: TaskWrapper) -> None:
-        self.tasks.append(task)
+    def next_task(self, drone: Drone) -> None:
+        gen = self.tasks[drone].get_gen()
+        try:
+            self.tasks[drone] = TaskWrapper(next(gen), gen)
+        except StopIteration:
+            self.tasks.pop(drone)
+
+
+    def get_tasks(self) -> list[TaskWrapper]:
+        tasks = []
+        for value in self.tasks.values():
+            tasks.append(value)
+        return tasks
 
     """
     Runs all tasks in the task list for one step (The smallest remaining task time)
@@ -21,11 +41,16 @@ class TaskManager:
     def step(self) -> None:
         min_task_step: float = self.get_min_task_step()
         if (min_task_step < float("inf")):
-            for task in self.tasks:
+            for task in self.tasks.values():
                 task.run_for_time(min_task_step)
-        for i in range(len(self.tasks) - 1, -1, -1):
-            if (self.tasks[i].check_finished()):
-                self.tasks.pop(i)
+        next_task_keys = []
+        for drone, task in self.tasks.items():
+            if task.check_finished():
+                next_task_keys.append(drone)
+        for drone in next_task_keys:
+                self.next_task(drone)
+
+        
         
 
     """
@@ -34,14 +59,14 @@ class TaskManager:
     def get_min_task_step(self) -> float:
         if len(self.tasks) == 0:
             return 0
-        min_time: float = self.tasks[0].get_task().get_remaining_time()
-        for task in self.tasks[1:]:
+        min_time: float = float('inf')
+        for task in self.tasks.values():
             if task.get_task().get_remaining_time() < min_time:
                 min_time = task.get_task().get_remaining_time()
         return min_time
 
     def debug_print(self):
-        for task in self.tasks:
-            print(task.task.get_remaining_time(), end = " ")
+        for task in self.tasks.values():
+            print(task.get_task().get_remaining_time(), end = " ")
         print()
 
