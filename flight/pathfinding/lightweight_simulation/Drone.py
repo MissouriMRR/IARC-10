@@ -29,6 +29,8 @@ class Drone:
     """
     def task_generator(self) -> Generator[Task, Any, Any]:
         yield ChangeAltitudeTask(self, 10)
+        yield ChangeAltitudeTask(self, 20)
+        yield ChangeAltitudeTask(self, 30)
         
 
     def set_position(self, pos: tuple[float, float]) -> None:
