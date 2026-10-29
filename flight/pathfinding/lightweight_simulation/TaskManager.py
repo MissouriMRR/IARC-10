@@ -26,6 +26,7 @@ class TaskManager:
         try:
             self.tasks[drone] = TaskWrapper(next(gen), gen)
         except StopIteration:
+            print("hello")
             self.tasks.pop(drone)
 
 
