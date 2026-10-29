@@ -5,3 +5,5 @@ datasets/labels/train/*
 label-space/*
 trash/*
 .venv
+runs/*/*/*.jpg
+runs/*/*/*.png
