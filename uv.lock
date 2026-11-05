@@ -219,20 +219,14 @@ wheels = [
 
 [[package]]
 name = "dronekit"
-version = "2.9.2"
-source = { url = "https://github.com/MissouriMRR/docs/raw/refs/heads/main/subteams/flight/installation_guide/dronekit-2.9.2-py310-none-any.whl" }
+version = "2.9.3"
+source = { registry = "https://missourimrr.github.io/pypi-index/simple" }
 dependencies = [
     { name = "monotonic" },
     { name = "pymavlink" },
 ]
 wheels = [
-    { url = "https://github.com/MissouriMRR/docs/raw/refs/heads/main/subteams/flight/installation_guide/dronekit-2.9.2-py310-none-any.whl", hash = "sha256:45af0ca983e6b9b1ee20885cdbac5ec2f60bc94c3ede8e134e2bc32a4c18ac54" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "monotonic", specifier = ">=1.3" },
-    { name = "pymavlink", specifier = ">=2.2.20" },
+    { url = "https://missourimrr.github.io/pypi-index/packages/dronekit-2.9.3-py3-none-any.whl" },
 ]
 
 [[package]]
@@ -375,7 +369,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "datetime", specifier = ">=6.0" },
-    { name = "dronekit", url = "https://github.com/MissouriMRR/docs/raw/refs/heads/main/subteams/flight/installation_guide/dronekit-2.9.2-py310-none-any.whl" },
+    { name = "dronekit", specifier = ">=2.9.3", index = "https://missourimrr.github.io/pypi-index/simple" },
     { name = "future", specifier = ">=1.0.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mavproxy", specifier = ">=1.8.74" },

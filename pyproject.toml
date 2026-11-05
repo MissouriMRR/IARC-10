@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13.5"
 dependencies = [
     "datetime>=6.0",
-    "dronekit>=2.9.2",
     "future>=1.0.0",
     "utm>=0.7.0",
     "numpy>=1.0.0",
@@ -20,7 +19,13 @@ dependencies = [
     "ultralytics>=8.4.14",
     "shapely>=2.1.2",
     "pandas>=3.0.5",
+    "dronekit>=2.9.3",
 ]
 
 [tool.uv.sources]
-dronekit = { url = "https://github.com/MissouriMRR/docs/raw/refs/heads/main/subteams/flight/installation_guide/dronekit-2.9.2-py310-none-any.whl" }
+dronekit = { index = "missourimrr" }
+
+[[tool.uv.index]]
+name = "missourimrr"
+url = "https://missourimrr.github.io/pypi-index/simple"
+explicit = true
