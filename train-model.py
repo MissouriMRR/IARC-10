@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 
-model_path = f"runs/obb/working-model/weights/last.pt"
+model_path = f"runs/detect/train/weights/last.pt"
 
 model = YOLO(model_path)  # load the chosen model
 
