@@ -18,7 +18,11 @@ taskManager.add_drone(drone_2)
 taskManager.add_drone(drone_3)
 taskManager.add_drone(drone_4)
 
+curr_step = 1
 while len(taskManager.tasks) > 0:
-    taskManager.debug_print()
+    #taskManager.debug_print()
+    print("Step", curr_step)
     taskManager.step()
-taskManager.debug_print()
+    curr_step += 1
+    print()
+#taskManager.debug_print()

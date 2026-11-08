@@ -29,8 +29,11 @@ class Drone:
     """
     def task_generator(self) -> Generator[Task, Any, Any]:
         yield ChangeAltitudeTask(self, 10)
+        yield GoToTask(self, (self.pos[0] + 10, self.pos[1] + 10))
         yield ChangeAltitudeTask(self, 20)
+        yield GoToTask(self, (self.pos[0] + 10, self.pos[1] + 10))
         yield ChangeAltitudeTask(self, 30)
+        yield GoToTask(self, (self.pos[0] + 10, self.pos[1] + 10))
         
 
     def set_position(self, pos: tuple[float, float]) -> None:
@@ -57,6 +60,9 @@ class Drone:
     def get_speed(self) -> float:
         return self.speed
 
+    def __str__(self) -> str:
+        return f"drone {self.id}"
+
 
 """
 Task class for moving a drone between two points horizontally (constant altitude)
@@ -80,14 +86,23 @@ class GoToTask(Task):
     def get_remaining_time(self) -> float:
         return self.duration - self.time
 
-    def run_for_time(self, time: float) -> tuple[bool, None]:
+    def run_for_time(self, time: float) -> None:
         self.time += time
-        self.drone.set_position((self.start_pos[0] + (self.movement_sequence.get_dist_at_time(time)/self.distance(self.start_pos, self.new_pos))*(self.new_pos[0] - self.start_pos[0]),self.start_pos[1] + (self.movement_sequence.get_dist_at_time(time)/self.distance(self.start_pos, self.new_pos))*(self.new_pos[1] - self.start_pos[1])))
+        if self.distance(self.start_pos, self.new_pos) > 0:
+            self.drone.set_position((self.start_pos[0] + (self.movement_sequence.get_dist_at_time(self.time)/self.distance(self.start_pos, self.new_pos))*(self.new_pos[0] - self.start_pos[0]),self.start_pos[1] + (self.movement_sequence.get_dist_at_time(self.time)/self.distance(self.start_pos, self.new_pos))*(self.new_pos[1] - self.start_pos[1])))
         self.drone.set_speed(self.movement_sequence.get_speed_at_time(self.time))
         if self.time >= self.duration:
             self.finished = True
-            return (True, None)
-        return (False, None)
+            return None
+        return None
+
+    def __str__(self) -> str:
+        return f"Goto task moving {str(self.drone)} to {self.new_pos[0]} {self.new_pos[1]}"
+
+    def debug_task_finished(self) -> str:
+        drone_pos: tuple[float, float] = self.drone.get_position()
+        drone_alt: float = self.drone.get_altitude()
+        return f"{str(self.drone)} moved to position {drone_pos[0]} {drone_pos[1]} {drone_alt}"
 
 """
 Task class for moving a drone to a new altitude
@@ -108,14 +123,23 @@ class ChangeAltitudeTask(Task):
     def get_remaining_time(self) -> float:
         return self.duration - self.time
 
-    def run_for_time(self, time: float) -> tuple[bool, None]:
+    def run_for_time(self, time: float) -> None:
         self.time += time
-        self.drone.set_altitude(self.start_alt + ((self.new_alt-self.start_alt)/(abs(self.new_alt-self.start_alt)))*self.movement_sequence.get_dist_at_time(self.time))
+        if abs(self.new_alt-self.start_alt) > 0:
+            self.drone.set_altitude(self.start_alt + ((self.new_alt-self.start_alt)/(abs(self.new_alt-self.start_alt)))*self.movement_sequence.get_dist_at_time(self.time))
         self.drone.set_speed(self.movement_sequence.get_speed_at_time(self.time))
         if self.time >= self.duration:
             self.finished = True
-            return (True, None)
-        return (False, None)
+            return None
+        return None
+
+    def __str__(self) -> str:
+        return f"Altitude task moving {str(self.drone)} to new altitude of {self.new_alt}"
+
+    def debug_task_finished(self) -> str:
+        drone_pos: tuple[float, float] = self.drone.get_position()
+        drone_alt: float = self.drone.get_altitude()
+        return f"{str(self.drone)} moved to position {drone_pos[0]} {drone_pos[1]} {drone_alt}"
 
 class MovementStage(Enum):
     ACCELERATING = 1
