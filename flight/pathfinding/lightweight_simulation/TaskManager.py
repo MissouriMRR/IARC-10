@@ -14,20 +14,18 @@ class TaskManager:
         self.drones.append(drone)
         gen = drone.task_generator()
         try:
-            self.tasks[drone] = TaskWrapper(next(gen), gen)
+            self.tasks[drone] = TaskWrapper(gen)
         except StopIteration:
             self.tasks.pop(drone)
 
     """
-    Adds a task and its generator to the task list
+    Removes drones that have finished
     """
-    def next_task(self, drone: Drone) -> None:
-        gen = self.tasks[drone].get_gen()
-        try:
-            self.tasks[drone] = TaskWrapper(next(gen), gen)
-        except StopIteration:
-            print("hello")
-            self.tasks.pop(drone)
+    def prune_drones(self) -> None:
+        for drone in range(len(self.drones) - 1, -1, -1):
+            if self.tasks[self.drones[drone]].check_gen_finished():
+                self.tasks.pop(self.drones[drone])
+                self.drones.pop(drone)
 
 
     def get_tasks(self) -> list[TaskWrapper]:
@@ -44,13 +42,7 @@ class TaskManager:
         if (min_task_step < float("inf")):
             for task in self.tasks.values():
                 task.run_for_time(min_task_step)
-        next_task_keys = []
-        for drone, task in self.tasks.items():
-            if task.check_finished():
-                next_task_keys.append(drone)
-        for drone in next_task_keys:
-                self.next_task(drone)
-
+        self.prune_drones()
         
         
 
@@ -62,12 +54,20 @@ class TaskManager:
             return 0
         min_time: float = float('inf')
         for task in self.tasks.values():
-            if task.get_task().get_remaining_time() < min_time:
-                min_time = task.get_task().get_remaining_time()
+            curr_task = task.get_task()
+            if curr_task is None:
+                task.task_init()
+                curr_task = task.get_task()
+            if curr_task is not None and curr_task.get_remaining_time() < min_time:
+                min_time = curr_task.get_remaining_time()
         return min_time
 
     def debug_print(self):
         for task in self.tasks.values():
-            print(task.get_task().get_remaining_time(), end = " ")
+            curr_task = task.get_task()
+            if curr_task is None:
+                print(None, end = " ")
+            else:
+                print(curr_task.get_remaining_time(), end = " ")
         print()
 
