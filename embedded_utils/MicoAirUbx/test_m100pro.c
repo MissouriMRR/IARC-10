@@ -5,7 +5,15 @@
 // (-Dtime renames the `time` global in ublox.c so it doesn't clash with libc's time())
 //
 // Run:
-//   ./test_m100pro <hours> [device=/dev/ttyUSB0] [out=m100pro_log.csv] [poll_s=1.0] [baud=auto]
+//   ./test_m100pro <hours> [device=/dev/serial0] [out=m100pro_log.csv] [poll_s=1.0] [baud=auto]
+//
+// Wiring to the Raspberry Pi header:
+//   GPS TX  -> GPIO15 / RXD (pin 10)
+//   GPS RX  -> GPIO14 / TXD (pin 8)
+//   GPS 5V  -> pin 2 or 4, GND -> pin 6
+// Before the first run, open raspi-config > Interface Options > Serial Port, answer
+// "No" to the login shell and "Yes" to the serial hardware, then reboot. Otherwise
+// the kernel console owns the UART and sends its own text to the GPS.
 //
 // The M100-PRO uses a u-blox M10 chip, which differs from the MG-F10 setup in two ways:
 //   - It ships with NMEA output for flight controllers, so we have to turn on UBX-NAV-PVT.
@@ -185,7 +193,7 @@ int main(int argc, char **argv)
         return 1;
     }
     double hours  = atof(argv[1]);
-    const char *dev = argc > 2 ? argv[2] : "/dev/ttyUSB0";
+    const char *dev = argc > 2 ? argv[2] : "/dev/serial0";
     const char *out = argc > 3 ? argv[3] : "m100pro_log.csv";
     double poll_s = argc > 4 ? atof(argv[4]) : 1.0;
     int baud = (argc > 5 && strcmp(argv[5], "auto") != 0) ? atoi(argv[5]) : 0;
@@ -216,7 +224,7 @@ int main(int argc, char **argv)
             fd = -1;
         }
         if (fd < 0) {
-            fprintf(stderr, "no GPS traffic on %s at any baud; check wiring (GPS TX -> adapter RX) and 5V\n", dev);
+            fprintf(stderr, "no GPS traffic on %s at any baud; check wiring (GPS TX -> Pi GPIO15) and 5V, and that the serial console is off\n", dev);
             return 1;
         }
     }
@@ -228,7 +236,7 @@ int main(int argc, char **argv)
     }
     if (!wait_for_pvt(fd, 5.0)) {
         fprintf(stderr, "no NAV-PVT after VALSET at %d baud; the module may not be an M10, "
-                        "or its UART RX isn't connected\n", baud);
+                        "or GPS RX isn't wired to Pi GPIO14\n", baud);
         return 1;
     }
     printf("NAV-PVT streaming at %d baud\n", baud);
