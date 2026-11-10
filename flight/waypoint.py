@@ -9,14 +9,14 @@ EARTH_RADIUS_M: float = 6_378_137.0  # WGS-84 equatorial radius
 _DEG_TO_M: float = math.pi * EARTH_RADIUS_M / 180.0  # meters per degree of latitude
 
 # Airframe-to-airframe clearance we actually want between two drones.
-MIN_SEPARATION_M: float = 32 * 0.0254  # 32 inches
+# MIN_SEPARATION_M: float = 32 * 0.0254  # 32 inches
 
 # How far a drone can be from where we believe it is. move_to() declares arrival
 # once it is within its tolerance of the target, so a drone that has reported
 # reaching a waypoint may still be this far from it.
 POSITION_UNCERTAINTY_M: float = 0.6
 
-COLLISION_RADIUS: float = MIN_SEPARATION_M + 2 * POSITION_UNCERTAINTY_M
+# COLLISION_RADIUS: float = MIN_SEPARATION_M + 2 * POSITION_UNCERTAINTY_M
 
 # How far a peer may sit from the path its reported waypoint index implies before
 # we stop trusting the lockstep guarantee and hold instead. Nominal deviation is

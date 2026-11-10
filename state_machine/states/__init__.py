@@ -10,7 +10,6 @@ from state_machine.states.impl import (
     DroneShare,
     EndRun,
     ExpandNodes,
-    POIF,
     Recall,
     Scan,
 )

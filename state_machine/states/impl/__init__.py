@@ -11,4 +11,3 @@ from state_machine.states.impl.end_run_impl import EndRun
 from state_machine.states.impl.expand_nodes_impl import ExpandNodes
 from state_machine.states.impl.recall_impl import Recall
 from state_machine.states.impl.scan_impl import Scan
-from state_machine.states.impl.poif_impl import POIF
