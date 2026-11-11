@@ -1,0 +1,22 @@
+{
+  "modelPath": "models/best_imx_model/network.rpk",
+  "labelsPath": "models/best_imx_model/labels.txt",
+  "bboxOrder": "xy",
+  "shutterSpeed": 3000,
+  "confThreshold": 0.65,
+  "useVoting": true,
+  "voteThreshold": 0.3,
+  "scanFrames": 10,
+  "minFrameHits": 4,
+  "minAverageConfidence": 0.7,
+  "voteIoU": 0.45,
+  "maxDetections": 10,
+  "printDetections": true,
+  "pathToPics": "./captures",
+  "pathToDetections": "./captures/detections",
+  "pathToMetadata": "./metadata",
+  "hFovDeg": 66.0,
+  "vFovDeg": 52.3,
+  "cameraOffsetM": [0.0, 0.0, 0.0],
+  "cameraMountRotationDeg": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+}
