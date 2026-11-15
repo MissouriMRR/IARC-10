@@ -68,12 +68,17 @@ class MissionConfig(TypedDict):
         GPS coordinates (lat/lon) of the four field corners.
     start_coord : dict[str, float]
         Starting GPS coordinate (lat/lon).
+     mission_type : str
+        The mission type, either "Prompted" or "Automatic" 
+        (determines whether ARM and Start Mission is a terminal thing (Prompted) or a phone voice command thing (Automatic))
     max_flight_height : float
         Maximum flight altitude in metres.
-    carrot_arc_m : float, optional
-        How far ahead of itself a drone aims while flying the POIF circles, in
-        metres of arc. This is the pace control for that demo: larger is faster
-        but cuts the corners harder. Omit to use the built-in default.
+    flight_directive : str
+        The type of flight that the drones should follow, either "Pathed", "RealTimeGen", or "Hybrid"
+        (Pathed: flies a path defined in flight path; RealTimeGen: flies a path that the drones generate through the mission;
+        Hybrid: Flies a predefined path, then begins real time gen flight [NOT IMPLEMENTED])
+    flight_path : list[list[dict[str, float]]]
+        Pair Each drone with a List GPS coordinates (lat/lon) to goto in order
     """
 
     run_title: str
@@ -93,7 +98,8 @@ class MissionConfig(TypedDict):
     start_coord: dict[str, float]
     mission_type: str
     max_flight_height: float
-    carrot_arc_m: NotRequired[float]
+    flight_directive: str
+    flight_path: NotRequired[list[dict[str, float]]]
 
 
 def get_mission_config(config_path: str) -> MissionConfig:

@@ -86,7 +86,8 @@ async def run(self: Takeoff) -> State:
                         self.interdrone.set_cmd_msg(CMD_MSG.MISSION)
                     case "takeoff":
                         self.interdrone.set_cmd_msg(CMD_MSG.TAKEOFF)
-
+            '''
+            OLD POIF STUFF
             if self.interdrone.get_cmd_msg() == CMD_MSG.DEMO or action_type.lower() == "demo":
                 if self.drone.id == 1:
 
@@ -106,9 +107,10 @@ async def run(self: Takeoff) -> State:
                 await self.drone.takeoff(LEG_ALTITUDE_M, margin=0.0)
                 self.drone.startTime = monotonic()
                 await asyncio.sleep(5)
+            
 
                 return POIF(self.drone, self.flight_settings, self.interdrone)
-
+            ''' 
             if self.interdrone.get_cmd_msg() == CMD_MSG.MISSION or action_type.lower() == "mission":
                 configureField(self)
                 # RPICamera.__init__ reads its config as a dict, not a path --
@@ -155,7 +157,18 @@ async def run(self: Takeoff) -> State:
 
                 # CalcScanPath starts the planner the first time it runs
                 # (planner.start_if_needed) -- no separate "initial" state.
-                return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
+
+                # GenPreDefPath will do pretty much the same thing as Calc scan path except for
+                # the "Pathed" flight directive
+
+                if self.flight_settings.flight_directive.equal("RealTimeGen"):
+                    return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
+                elif self.flight_settings.flight_directive.equal("Pathed") or self.flight_settings.flight_directive.equal("Hybrid"):
+                    return GenPreDefPath(self.drone, self.flight_settings, self.interdrone)
+                else:
+                    await asyncio.sleep(5)
+                    logging.warning("WARNING: flight directive invalid.")
+                    
             if self.interdrone.get_cmd_msg() == CMD_MSG.TAKEOFF or action_type.lower() == "takeoff":
                 if self.drone.id == 1:
 

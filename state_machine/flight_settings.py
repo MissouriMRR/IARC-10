@@ -145,7 +145,8 @@ class FlightSettings:
         mission_type: str = "",
         sim_mode: SimMode = SimMode.REAL,
         mission_data_path: str = "flight/data/golf_data.json",
-        carrot_arc_m: float | None = None,
+        flight_directive: str = "RealTimeGen",
+        flight_path: list[dict[str, float]] | None = None
     ) -> None:
         """
         Default Constructor for flight settings
@@ -185,7 +186,7 @@ class FlightSettings:
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
         self.__mission_type: str = mission_type
-        self.__carrot_arc_m: float | None = carrot_arc_m
+        self.__flight_driective: str = flight_driective
         self.__yolo_status: Event = Event()
 
         # Sides below are assigned by drone id, so the mission's drones must be exactly
@@ -332,24 +333,64 @@ class FlightSettings:
             mission_type=config["mission_type"],
             sim_mode=sim_mode,
             mission_data_path=sim_mode_config["mission_data_path"],
-            # Optional: configs written before the POIF pursuit controller
-            # existed do not have it, and the built-in default is correct.
-            carrot_arc_m=config.get("carrot_arc_m"),
+            flight_directive=config["flight_directive"],
+            # Optional: Only needed if using a flight directive that uses flight paths
+            flight_path=config["flight_path"]
         )
         return config_settings
 
     @property
-    def carrot_arc_m(self) -> float | None:
+    def flight_directive(self) -> str:
         """
-        How far ahead of itself a drone aims while flying the POIF circles, in
-        metres of arc, or None to use that state's built-in default.
-
+        Returns the mission type
+        
         Returns
         -------
-        float | None
-            The configured carrot arc length, or None if unset.
+        flight_directive : str
+            The type of flight that the drones should follow, either "Pathed", "RealTimeGen", or "Hybrid"
         """
-        return self.__carrot_arc_m
+
+        return self.__flight_directive
+
+    @flight_directive.setter
+    def flight_directive(self, flight_directive: str) -> None:
+        """
+        Sets the mission type
+
+        Parameters
+        ----------
+        flight_directive : str
+            The type of flight that the drones should follow, either "Pathed", "RealTimeGen", or "Hybrid"
+        """
+        if flight_directive not in ["Pathed", "RealTimeGen", "Hybrid"]:
+            raise ValueError("flight_directive must be either 'Pathed', 'RealTimeGen', or 'Hybrid'")
+        self.__flight_directive = flight_directive
+
+    @property
+    def flight_path(self) -> str:
+        """
+        Returns the mission type
+        
+        Returns
+        -------
+        flight_path : list[list[dict[str, float]]]
+            Pair Each drone with a List GPS coordinates (lat/lon) to goto in order
+        """
+
+        return self.__flight_path
+
+    @flight_path.setter
+    def flight_path(self, flight_path: str) -> None:
+        """
+        Sets the mission type
+
+        Parameters
+        ----------
+        flight_path : list[list[dict[str, float]]]
+            Pair Each drone with a List GPS coordinates (lat/lon) to goto in order
+        """
+
+        self.__flight_path = flight_path
 
     @property
     def mission_type(self) -> str:
