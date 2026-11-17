@@ -1,3 +1,6 @@
+import io
+import time
+
 import numpy as np
 from PIL import Image as PILImage
 
@@ -5,23 +8,27 @@ try:
     from dt_apriltags import Detector
 except ImportError:  # mine detection works without the apriltag library
     Detector = None
-from ultralytics import YOLO
 
 from vision.common.detection import Detection
 from vision.common.image import Image
 from vision.common.drone_coordinates import GimbalPose
 from vision.Cameras.baseCamera import BaseCamera
 
+# How long capture_image waits for the simulator's next picture before giving up.
+CAPTURE_TIMEOUT_S = 5.0
 
-class AirSimCamera(BaseCamera):
+
+class MrrsimCamera(BaseCamera):
     """
-    Camera backed by AirSim's simulated camera instead of physical hardware.
+    Camera backed by MRRSimulator's simulated camera instead of physical hardware.
+    The simulator streams the camera's pictures to this program over UDP (Vehicles tab:
+    "Stream pictures to the script" on the camera) and `mrrsim_camera.CameraReceiver`
+    collects them; the launcher sets SIM_CAMERA_PORT to the port to listen on.
     Mine detection runs a torch/ultralytics model on the captured frame, since
     there's no IMX500 to run it on-chip like RPICamera has.
 
-    `airsim` is only ever imported inside the methods that talk to the sim
-    (never at module load) so importing this class doesn't require airsim to
-    be installed on hardware that isn't running a simulation.
+    `mrrsim_camera` and `ultralytics` are only imported in `initialize_camera` (never
+    at module load), so importing this class works where they are not installed.
     """
 
     def __init__(self, visionConfig):
@@ -37,9 +44,9 @@ class AirSimCamera(BaseCamera):
             ),
         )
         self.config = visionConfig
-        self.client = None
-        self.vehicle_name = self.config.get("airsimVehicleName", "")
-        self.camera_name = self.config.get("airsimCameraName", "0")
+        self.receiver = None
+        # The camera's name in the Vehicles tab; "" takes the pictures of any camera.
+        self.camera_name = self.config.get("mrrsimCameraName", "")
         self.model = None
         self.apriltagDetector = None
 
@@ -51,11 +58,10 @@ class AirSimCamera(BaseCamera):
             self.detect_threshold = self.config["confThreshold"]
 
     def initialize_camera(self) -> None:
-        import airsim
+        from mrrsim_camera import CameraReceiver
+        from ultralytics import YOLO
 
-        self.client = airsim.MultirotorClient(ip=self.config.get("airsimIp", ""))
-        self.client.confirmConnection()
-
+        self.receiver = CameraReceiver()
         self.model = YOLO(self.config["modelPath"])
 
         if Detector is None:
@@ -66,26 +72,36 @@ class AirSimCamera(BaseCamera):
                 families="tag36h11", nthreads=4, quad_decimate=2.0, refine_edges=1, debug=0
             )
 
-    def capture_image(self, only_metadata: bool) -> Image:
-        import airsim
+    def _next_frame(self):
+        """The simulator's next picture (of this camera), or None if none comes in time."""
+        deadline = time.monotonic() + CAPTURE_TIMEOUT_S
+        while (left := deadline - time.monotonic()) > 0:
+            frame = self.receiver.get(timeout=left)
+            if frame is None:
+                return None
+            if not self.camera_name or frame.camera == self.camera_name:
+                return frame
+        return None
 
-        if self.client is None:
+    def capture_image(self, only_metadata: bool) -> Image:
+        if self.receiver is None:
             print("Camera not initialized, call initialize_camera()")
             return None
 
-        request = airsim.ImageRequest(self.camera_name, airsim.ImageType.Scene, False, False)
-        response = self.client.simGetImages([request], vehicle_name=self.vehicle_name)[0]
+        frame = self._next_frame()
+        if frame is None:
+            print(
+                f"No picture from the simulator's camera in {CAPTURE_TIMEOUT_S:g} s: is it set to"
+                " stream pictures to the script (Vehicles tab)?"
+            )
+            return None
 
         if only_metadata:
-            return Image(None, response)
+            return Image(None, frame)
 
-        # AirSim hands back raw BGR bytes (same convention as cv2), so flip to
-        # RGB for the PIL image this class stores everywhere else.
-        img_bgr = np.frombuffer(response.image_data_uint8, dtype=np.uint8).reshape(
-            response.height, response.width, 3
-        )
-        pil_image = PILImage.fromarray(img_bgr[:, :, ::-1])
-        return Image(pil_image, response)
+        # The frame holds the JPEG/PNG exactly as the simulator sent it.
+        pil_image = PILImage.open(io.BytesIO(frame.data)).convert("RGB")
+        return Image(pil_image, frame)
 
     def capture_and_detect_mines(self) -> list[Detection]:
         if self.model is None:
@@ -117,7 +133,7 @@ class AirSimCamera(BaseCamera):
         return dets
 
     def capture_and_detect_apriltags(self) -> list[Detection]:
-        if self.client is None:
+        if self.receiver is None:
             print("Camera not initialized, call initialize_camera()")
             return []
         if self.apriltagDetector is None:

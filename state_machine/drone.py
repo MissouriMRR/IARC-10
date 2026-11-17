@@ -442,9 +442,10 @@ class Drone:
 
     def remove_arming_check(self) -> None:
         """
-        For use with airsim.
+        For use with airsim. Skips every arming check: ArduPilot 4.7 replaced ARMING_CHECK
+        (checks to run, 0 = none) with ARMING_SKIPCHK (checks to skip), where -1 skips all.
         """
-        self.vehicle.parameters["ARMING_CHECK"] = 0
+        self.vehicle.parameters["ARMING_SKIPCHK"] = -1
 
     async def arm(self) -> None:
         """
