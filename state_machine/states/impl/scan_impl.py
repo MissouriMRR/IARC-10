@@ -5,7 +5,7 @@ import logging
 import math
 
 import flight.flight_log as flight_log
-from flight.pathfinding.utils.goto import move_to
+from flight.utils.goto import move_to
 from state_machine.drone import (
     LEG_GROUNDSPEED_M_S,
     LEG_TOLERANCE_M,
@@ -18,6 +18,7 @@ from state_machine.state_tracker import (
     update_state,
 )
 from state_machine.states.calc_scan_path import CalcScanPath
+from state_machine.states.gen_predef_path import GenPreDefPath
 from state_machine.states.drone_share import DroneShare
 from state_machine.states.end_run import EndRun
 from state_machine.states.land import Land
@@ -97,58 +98,59 @@ async def _capture_and_mark_seen(self: Scan, planner, waypoint) -> None:
             )
             altitude_agl_m = MISSION_ALTITUDE_M
 
-        drone_pose = DronePose(
-            lat=location.lat,
-            lon=location.lon,
-            altitude=altitude_agl_m,
-            # dronekit's Attitude is in radians; DronePose expects degrees.
-            yaw=math.degrees(attitude.yaw),
-            pitch=math.degrees(attitude.pitch),
-            roll=math.degrees(attitude.roll),
-        )
-
-        width, height = image.image.size
-        top_left, top_right, bottom_left, bottom_right = camera.get_image_corner_coordinates(
-            width, height, drone_pose
-        )
-        if None in (top_left, top_right, bottom_left, bottom_right):
-            logging.warning(
-                "drone %d: a corner ray never reached the ground -- skipping footprint marking",
-                self.drone.id,
+        if (self.flight_settings.flight_directive.equal("RealTimeGen")):
+            drone_pose = DronePose(
+                lat=location.lat,
+                lon=location.lon,
+                altitude=altitude_agl_m,
+                # dronekit's Attitude is in radians; DronePose expects degrees.
+                yaw=math.degrees(attitude.yaw),
+                pitch=math.degrees(attitude.pitch),
+                roll=math.degrees(attitude.roll),
             )
-            return
 
-        # get_image_corner_coordinates returns (top_left, top_right,
-        # bottom_left, bottom_right) -- a diagonal-crossing order, not a
-        # perimeter walk. The coverage fill is a simple-polygon test, so the
-        # corners must be reordered to trace the rectangle's actual edges
-        # (top_left, top_right, bottom_right, bottom_left) or the "polygon"
-        # self-intersects and the coverage test is wrong.
-        corners = [top_left, top_right, bottom_right, bottom_left]
-        planner.own_footprint(corners)
-        self.drone.last_photo_corners_latlon = corners
-
-        # None: the waypoint's cell is off the field, so no altitude can cover it.
-        if planner.cell_seen_at(waypoint.lat, waypoint.long) is not False:
-            return
-
-        attempts += 1
-        next_altitude_agl_m = altitude_agl_m + CAMERA_CLIMB_STEP_M
-        if attempts >= MAX_CAMERA_CLIMB_ATTEMPTS or next_altitude_agl_m > self.flight_settings.max_flight_height:
-            flight_log.event(
-                "photo_coverage_incomplete",
-                waypoint=flight_log.waypoint_brief(waypoint),
-                attempts=attempts,
-                altitude_agl_m=altitude_agl_m,
+            width, height = image.image.size
+            top_left, top_right, bottom_left, bottom_right = camera.get_image_corner_coordinates(
+                width, height, drone_pose
             )
-            logging.warning(
-                "drone %d: waypoint %d's target cell still not fully covered after"
-                " %d climb(s) -- giving up",
-                self.drone.id,
-                waypoint.waypoint_id,
-                attempts,
-            )
-            return
+            if None in (top_left, top_right, bottom_left, bottom_right):
+                logging.warning(
+                    "drone %d: a corner ray never reached the ground -- skipping footprint marking",
+                    self.drone.id,
+                )
+                return
+
+            # get_image_corner_coordinates returns (top_left, top_right,
+            # bottom_left, bottom_right) -- a diagonal-crossing order, not a
+            # perimeter walk. The coverage fill is a simple-polygon test, so the
+            # corners must be reordered to trace the rectangle's actual edges
+            # (top_left, top_right, bottom_right, bottom_left) or the "polygon"
+            # self-intersects and the coverage test is wrong.
+            corners = [top_left, top_right, bottom_right, bottom_left]
+            planner.own_footprint(corners)
+            self.drone.last_photo_corners_latlon = corners
+
+            # None: the waypoint's cell is off the field, so no altitude can cover it.
+            if planner.cell_seen_at(waypoint.lat, waypoint.long) is not False:
+                return
+
+            attempts += 1
+            next_altitude_agl_m = altitude_agl_m + CAMERA_CLIMB_STEP_M
+            if attempts >= MAX_CAMERA_CLIMB_ATTEMPTS or next_altitude_agl_m > self.flight_settings.max_flight_height:
+                flight_log.event(
+                    "photo_coverage_incomplete",
+                    waypoint=flight_log.waypoint_brief(waypoint),
+                    attempts=attempts,
+                    altitude_agl_m=altitude_agl_m,
+                )
+                logging.warning(
+                    "drone %d: waypoint %d's target cell still not fully covered after"
+                    " %d climb(s) -- giving up",
+                    self.drone.id,
+                    waypoint.waypoint_id,
+                    attempts,
+                )
+                return
 
         current = vehicle.location.global_relative_frame
         target_relative_alt = current.alt + CAMERA_CLIMB_STEP_M
@@ -244,7 +246,10 @@ async def run(self: Scan) -> State:
             # is competing for its event loop); asyncio.sleep(0) costs it
             # nothing and fixes the concurrent-drones-in-one-process case.
             await asyncio.sleep(0)
-            return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
+            if (self.flight_settings.flight_directive.equal("RealTimeGen")):
+                return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
+            else:
+                return GenPreDefPath(self.drone, self.flight_settings, self.interdrone)
 
         # drone_states is read-only peer state this drone already
         # maintains for collision avoidance (see conflictsForLeg's own
