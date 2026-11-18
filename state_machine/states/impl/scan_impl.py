@@ -10,7 +10,6 @@ from state_machine.drone import (
     LEG_GROUNDSPEED_M_S,
     LEG_TOLERANCE_M,
     MISSION_ALTITUDE_M,
-    FormationLost,
 )
 from state_machine.state_tracker import (
     update_drone,
@@ -21,7 +20,6 @@ from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.states.gen_predef_path import GenPreDefPath
 from state_machine.states.drone_share import DroneShare
 from state_machine.states.end_run import EndRun
-from state_machine.states.land import Land
 from state_machine.states.scan import Scan
 from state_machine.states.state import State
 from vision.common.drone_coordinates import DronePose
@@ -251,23 +249,9 @@ async def run(self: Scan) -> State:
             else:
                 return GenPreDefPath(self.drone, self.flight_settings, self.interdrone)
 
-        # drone_states is read-only peer state this drone already
-        # maintains for collision avoidance (see conflictsForLeg's own
-        # docstring on why it applies to non-formation, maze-mode
-        # waypoints too) -- not a new interdrone send.
         # MISSION_ALTITUDE_M, not gotoWaypoint's own POIF-oriented default
         # (LEG_ALTITUDE_M) -- this is the mapping-mission scan loop.
-        try:
-            reached = await self.drone.gotoWaypoint(
-                self.interdrone.drone_states, altitude_m=MISSION_ALTITUDE_M
-            )
-        except FormationLost as ex:
-            # Measured separation from a peer fell below the floor (or a hold never
-            # cleared): the avoidance guarantee is gone. Land, as POIF does, rather
-            # than let the exception kill the state machine with the drone in GUIDED.
-            flight_log.event("scan_separation_lost", reason=str(ex))
-            logging.critical("drone %d: scan aborted -- %s", self.drone.id, ex)
-            return Land(self.drone, self.flight_settings, self.interdrone)
+        reached = await self.drone.gotoWaypoint(altitude_m=MISSION_ALTITUDE_M)
         self.drone.last_reached_waypoint = reached
         flight_log.event("scan_waypoint_reached", waypoint=flight_log.waypoint_brief(reached))
 

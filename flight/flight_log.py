@@ -58,11 +58,8 @@ def run_dir() -> Path:
 def configure(drone_id: int, console_level: int = logging.WARNING) -> Path:
     """Point logging at files and open this drone's event stream.
 
-    Collision-avoidance output stops going to the console entirely: the
-    "collision" logger is detached from the root logger and given its own file
-    handler at DEBUG. Everything else still reaches the console, but only at
-    `console_level` and above, so the terminal stays readable while the file
-    keeps the full INFO-level record.
+    Everything reaches the console only at `console_level` and above, so the
+    terminal stays readable while the file keeps the full INFO-level record.
 
     Returns the run directory.
     """
@@ -96,37 +93,13 @@ def configure(drone_id: int, console_level: int = logging.WARNING) -> Path:
             handler.setLevel(console_level)
     root.addHandler(file_handler)
 
-    # Collision avoidance: file only. This is the data being collected, and at
-    # 5 Hz hold heartbeats it would bury anything else printed to the terminal.
-    collision = logging.getLogger("collision")
-    collision.setLevel(logging.DEBUG)
-    collision.propagate = False
-    collision_handler = logging.FileHandler(
-        _run_dir / f"drone_{drone_id}_collision.log", mode="w", encoding="utf-8"
-    )
-    collision_handler.setLevel(logging.DEBUG)
-    collision_handler.setFormatter(
-        logging.Formatter(
-            fmt=f"%(asctime)s.%(msecs)03d d{drone_id} %(levelname)-7s %(message)s",
-            datefmt="%H:%M:%S",
-        )
-    )
-    collision.addHandler(collision_handler)
-
     _stream = open(_run_dir / f"drone_{drone_id}.jsonl", "w", encoding="utf-8")
     atexit.register(close)
-
-    # Recorded so the analyzer reports the thresholds this flight actually ran
-    # with, rather than whatever is checked out when the logs are read. Imported
-    # here rather than at module scope to keep this module importable on its own.
-    from flight.waypoint import COLLISION_RADIUS, MIN_SEPARATION_M
 
     event(
         "run_start",
         pid=os.getpid(),
         run=run_id(),
-        collision_radius=COLLISION_RADIUS,
-        min_separation=MIN_SEPARATION_M,
         sample_hz=POSITION_SAMPLE_HZ,
     )
     return _run_dir

@@ -1712,8 +1712,7 @@ class Interdrone:
                                         },
                                     )
                                     self.send(reconfirm_waypoints_message)
-                                self.drone.checkForCollision(state.list_of_waypoints)
-                            # Held in DroneState for collision avoidance only; the
+                            # Held in DroneState only; the
                             # mapping mission's work comes from each drone's own
                             # planner, not from peers' waypoints.
 

@@ -7,11 +7,10 @@ import asyncio
 import logging
 import math
 import time
-from typing import Callable
 
 import dronekit
 
-from flight.pathfinding.utils.calculate_distance import horizontal_distance
+from flight.utils.calculate_distance import horizontal_distance
 
 # Waypoint tolerance in meters: 6 meters = 19.685 feet
 WAYPOINT_TOLERANCE: int = 6
@@ -72,7 +71,6 @@ async def move_to(
     tolerance: float | None = None,
     max_tolerance: float | None = None,
     altitude_tolerance: float | None = None,
-    abort_check: Callable[[], None] | None = None,
 ) -> None:
     """
     This function takes in a latitude, longitude and altitude and autonomously
@@ -115,16 +113,11 @@ async def move_to(
     max_tolerance : float, default None
         How far from the waypoint, horizontally, the drone may settle and still
         be called arrived, once it has stopped getting any closer. Defaults to
-        `tolerance`, i.e. no allowance. This is the number peers must assume
-        when they model where this drone actually is.
+        `tolerance`, i.e. no allowance.
     altitude_tolerance : float, default None
         How far off `altitude` the drone may be and still count as arrived, or
         None for `ALTITUDE_TOLERANCE_M`. Kept separate from `tolerance` because
         altitude converges on the autopilot's schedule, not ours.
-    abort_check : Callable[[], None], default None
-        Called once per poll; raise from it to abandon the leg. Legs are short
-        but not instant, and a swarm-level reason to stop flying — a peer
-        drifting into us — should not have to wait for this one to finish.
 
     Raises
     ------
@@ -133,8 +126,6 @@ async def move_to(
     LegStalled
         If the drone stopped converging while still outside `max_tolerance`,
         and re-commanding the goto did not restart it.
-    Exception
-        Whatever `abort_check` raises, unchanged.
     """
     if tolerance is None:
         tolerance = 2
@@ -165,8 +156,6 @@ async def move_to(
                 f"autopilot left our control mid-leg "
                 f"(mode={drone.mode.name}, armed={drone.armed})"
             )
-        if abort_check is not None:
-            abort_check()
         position: dronekit.LocationGlobalRelative = drone.location.global_relative_frame
 
         # continuously checks current latitude, longitude and altitude of the drone

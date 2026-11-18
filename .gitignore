@@ -226,3 +226,7 @@ __marimo__/
 # Vision capture output (scan records, saved images, metadata)
 vision/captures/
 vision/metadata/
+
+# AI
+.claude/*
+AGENTS.md

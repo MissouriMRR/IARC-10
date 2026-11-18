@@ -14,12 +14,9 @@ from state_machine.states.land import Land
 from state_machine.states.state import State
 from state_machine.drone import LEG_ALTITUDE_M, MISSION_ALTITUDE_M
 from state_machine.states.takeoff import Takeoff
-from state_machine.states.poif import POIF
 from state_machine.interdrone import CMD_MSG, get_input_or
 from state_machine.states.calc_scan_path import CalcScanPath
 from state_machine.flight_settings import SimMode
-from flight.pathfinding.mission_planner import make_planner
-from flight.pathfinding.side_agent import SideAgent
 from time import monotonic
 
 # RPICamera and AirSimCamera are imported inside the MISSION branch below, not
@@ -216,6 +213,10 @@ def configureField(state: Takeoff) -> None:
     """
     # Local import: calc_scan_path_impl's footprint constants are the planner's too.
     from state_machine.states.impl.calc_scan_path_impl import OVERLAP, SHAPE_SIZE_FT
+    # Local import: flight/pathfinding's planner was removed in the codebase purge and is
+    # being rebuilt, so only the MISSION path should fail on it, not every run.py start.
+    from flight.pathfinding.mission_planner import make_planner
+    from flight.pathfinding.side_agent import SideAgent
 
     state.drone.planner = make_planner(state.flight_settings, SHAPE_SIZE_FT, OVERLAP)
     state.drone.side = SideAgent(state.drone.planner, state.drone, state.flight_settings,
