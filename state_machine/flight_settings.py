@@ -186,7 +186,8 @@ class FlightSettings:
         self.__sim_mode: SimMode = sim_mode
         self.__mission_data_path: str = mission_data_path
         self.__mission_type: str = mission_type
-        self.__flight_driective: str = flight_driective
+        self.__flight_directive: str = flight_directive
+        self.__flight_path: list[dict[str, float]] | None = flight_path
         self.__yolo_status: Event = Event()
 
         # Sides below are assigned by drone id, so the mission's drones must be exactly

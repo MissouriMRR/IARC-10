@@ -158,9 +158,9 @@ async def run(self: Takeoff) -> State:
                 # GenPreDefPath will do pretty much the same thing as Calc scan path except for
                 # the "Pathed" flight directive
 
-                if self.flight_settings.flight_directive.equal("RealTimeGen"):
+                if self.flight_settings.flight_directive == "RealTimeGen":
                     return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
-                elif self.flight_settings.flight_directive.equal("Pathed") or self.flight_settings.flight_directive.equal("Hybrid"):
+                elif self.flight_settings.flight_directive == "Pathed" or self.flight_settings.flight_directive == "Hybrid":
                     return GenPreDefPath(self.drone, self.flight_settings, self.interdrone)
                 else:
                     await asyncio.sleep(5)

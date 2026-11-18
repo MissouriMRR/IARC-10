@@ -30,7 +30,7 @@
   "range_test_toggle": false,
   "mission_field_corners": [
     { "lat": 34.6251758, "lon": -86.8090283 },
-    { "lat": 34.6250780, "lon": -86.8092641 },
+    { "lat": 34.625078, "lon": -86.8092641 },
     { "lat": 34.6244482, "lon": -86.8085717 },
     { "lat": 34.6243474, "lon": -86.8088099 }
   ],
@@ -39,5 +39,7 @@
     "lon": -95.941831
   },
   "max_flight_height": 10,
-  "mission_type": "Automatic"
+  "mission_type": "Automatic",
+  "flight_directive": "RealTimeGen",
+  "flight_path": ""
 }

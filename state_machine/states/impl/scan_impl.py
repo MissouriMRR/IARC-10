@@ -96,7 +96,7 @@ async def _capture_and_mark_seen(self: Scan, planner, waypoint) -> None:
             )
             altitude_agl_m = MISSION_ALTITUDE_M
 
-        if (self.flight_settings.flight_directive.equal("RealTimeGen")):
+        if (self.flight_settings.flight_directive == "RealTimeGen"):
             drone_pose = DronePose(
                 lat=location.lat,
                 lon=location.lon,
@@ -244,7 +244,7 @@ async def run(self: Scan) -> State:
             # is competing for its event loop); asyncio.sleep(0) costs it
             # nothing and fixes the concurrent-drones-in-one-process case.
             await asyncio.sleep(0)
-            if (self.flight_settings.flight_directive.equal("RealTimeGen")):
+            if (self.flight_settings.flight_directive == "RealTimeGen"):
                 return CalcScanPath(self.drone, self.flight_settings, self.interdrone)
             else:
                 return GenPreDefPath(self.drone, self.flight_settings, self.interdrone)
