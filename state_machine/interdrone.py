@@ -1568,7 +1568,9 @@ class Interdrone:
                                 # Drone 1 distributes message to other drones in the mission
                                 disarm_message: Message = Message.create(
                                     id=MessageType.DISARM,
-                                    drones_to_send_data=(message.sender_id,),
+                                    drones_to_send_data=tuple(
+                                        self.flight_settings.other_drones_in_mission,
+                                    ),
                                     sender_id=self.flight_settings.current_drone_ID,
                                     data={},
                                 )
