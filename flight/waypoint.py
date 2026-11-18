@@ -1,53 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, NamedTuple
-import json
+from typing import Any
 import math
 import random
 
 EARTH_RADIUS_M: float = 6_378_137.0  # WGS-84 equatorial radius
 _DEG_TO_M: float = math.pi * EARTH_RADIUS_M / 180.0  # meters per degree of latitude
-
-# Airframe-to-airframe clearance we actually want between two drones.
-# MIN_SEPARATION_M: float = 32 * 0.0254  # 32 inches
-
-# How far a drone can be from where we believe it is. move_to() declares arrival
-# once it is within its tolerance of the target, so a drone that has reported
-# reaching a waypoint may still be this far from it.
-POSITION_UNCERTAINTY_M: float = 0.6
-
-# COLLISION_RADIUS: float = MIN_SEPARATION_M + 2 * POSITION_UNCERTAINTY_M
-
-# How far a peer may sit from the path its reported waypoint index implies before
-# we stop trusting the lockstep guarantee and hold instead. Nominal deviation is
-# one arrival tolerance (0.6 m), so this leaves room for that plus relative GPS
-# noise while still being far short of the separation floor.
-FORMATION_TOLERANCE_M: float = 1.2
-
-# Hard floor on *measured* separation between two drones, from the position each
-# broadcasts rather than from where its waypoints imply it should be. Dropping
-# below this aborts the demo and lands, and it is the last line of defence: the
-# barrier keeps the formation at 3.00 m and the worst case the barrier permits is
-# `formation_floor()` (1.71 m at 3 m spacing, 24 points), so reaching 1.2 m means
-# a drone is somewhere the formation logic did not predict.
-SEPARATION_ABORT_M: float = 1.2
-
-
-def formation_floor(spacing_m: float, radius_m: float, points_per_lap: int) -> float:
-    """Worst-case separation the lockstep formation can produce, in meters.
-
-    Drones fly congruent circles whose centers are `spacing_m` apart, all at the
-    same phase, so in perfect lockstep they stay exactly `spacing_m` apart. The
-    barrier permits at most one leg of skew between two drones, and the tightest
-    that gets is where the chords run collinear with the line of centers — the
-    in-trail geometry near the east and west extremes of the circle — where one
-    drone sits a full chord closer to its neighbour than nominal.
-
-    This is the number `COLLISION_RADIUS` has to stay under for the formation to
-    be flyable at all, which is what `POIF` asserts before takeoff.
-    """
-    chord_m = 2.0 * radius_m * math.sin(math.pi / points_per_lap)
-    return spacing_m - chord_m
 
 
 def project_to_meters(
@@ -126,48 +84,6 @@ def segment_distance(
     cx, cy = project_to_meters(b1[0], b1[1], ref_lat, ref_lon)
     dx_, dy_ = project_to_meters(b2[0], b2[1], ref_lat, ref_lon)
     return _segment_distance_xy(ax, ay, bx, by, cx, cy, dx_, dy_)
-
-
-class WaypointGroups(NamedTuple):
-    drone1_waypoints: tuple[Waypoint, Waypoint]
-    drone2_waypoints: tuple[Waypoint, Waypoint]
-
-
-class Line:
-    """A waypoint-to-waypoint segment, projected into a local east/north frame.
-
-    Distances are computed in meters rather than degrees: a degree of longitude
-    is shorter than a degree of latitude by cos(latitude), so comparing raw
-    degree deltas against a single threshold makes the check tighter east-west
-    than north-south (~26% at the Rolla test site).
-
-    All Lines compared against each other must share the same reference point,
-    otherwise their coordinates are in different frames.
-    """
-
-    def __init__(
-        self, start: Waypoint, end: Waypoint, ref_lat: float | None = None, ref_lon: float = 0.0
-    ):
-        self.start = start
-        self.end = end
-        self.ref_lat: float = start._get_latitude() if ref_lat is None else ref_lat
-        self.ref_lon: float = start._get_longitude() if ref_lat is None else ref_lon
-
-        lon_scale = _DEG_TO_M * math.cos(math.radians(self.ref_lat))
-        self.x1: float = (start._get_longitude() - self.ref_lon) * lon_scale
-        self.y1: float = (start._get_latitude() - self.ref_lat) * _DEG_TO_M
-        self.x2: float = (end._get_longitude() - self.ref_lon) * lon_scale
-        self.y2: float = (end._get_latitude() - self.ref_lat) * _DEG_TO_M
-
-    @property
-    def dx(self) -> float:
-        """East component of the segment, in meters."""
-        return self.x2 - self.x1
-
-    @property
-    def dy(self) -> float:
-        """North component of the segment, in meters."""
-        return self.y2 - self.y1
 
 
 class Waypoint:
@@ -281,76 +197,3 @@ class Waypoint:
     @staticmethod
     def getChecksum(waypoints: list[Waypoint]) -> int:
         return sum(wp._get_waypoint_id() for wp in waypoints)
-
-    @staticmethod
-    def _segment_min_distance(l1: Line, l2: Line) -> float:
-        """Minimum distance in meters between two Lines built on the same reference."""
-        return _segment_distance_xy(l1.x1, l1.y1, l1.x2, l1.y2, l2.x1, l2.y1, l2.x2, l2.y2)
-
-    @staticmethod
-    def check_for_collision(
-        drone1_waypoints: list[Waypoint], drone2_waypoints: list[Waypoint]
-    ) -> list[WaypointGroups]:
-        if len(drone1_waypoints) < 2 or len(drone2_waypoints) < 2:
-            return []
-
-        # Every segment must be projected against the same reference point so the
-        # resulting east/north coordinates are all in one frame.
-        ref = drone1_waypoints[0]
-        ref_lat, ref_lon = ref._get_latitude(), ref._get_longitude()
-
-        drone1_lines = [
-            Line(drone1_waypoints[i], drone1_waypoints[i + 1], ref_lat, ref_lon)
-            for i in range(len(drone1_waypoints) - 1)
-        ]
-        drone2_lines = [
-            Line(drone2_waypoints[i], drone2_waypoints[i + 1], ref_lat, ref_lon)
-            for i in range(len(drone2_waypoints) - 1)
-        ]
-
-        collision_waypoint_groups: list[WaypointGroups] = []
-
-        # Check distance between segments for each line and return one's that could collide
-        for i in range(len(drone1_waypoints) - 1):
-            for j in range(len(drone2_waypoints) - 1):
-                if (
-                    Waypoint._segment_min_distance(drone1_lines[i], drone2_lines[j])
-                    < COLLISION_RADIUS
-                ):
-                    collision_waypoint_groups.append(
-                        WaypointGroups(
-                            (drone1_waypoints[i], drone1_waypoints[i + 1]),
-                            (drone2_waypoints[j], drone2_waypoints[j + 1]),
-                        )
-                    )
-        return collision_waypoint_groups
-
-
-# Testing code
-if __name__ == "__main__":
-    with open("./data/waypoints_test.json", "r") as f:
-        data = json.load(f)
-
-    id = 0
-    waypoints_1 = []
-
-    for waypoint in data["Set 1"]:
-        waypoints_1.append(
-            Waypoint(id, id + 1, waypoint["latitude"], waypoint["longitude"], name=waypoint["name"])
-        )
-        id += 1
-
-    id = 0
-    waypoints_2 = []
-
-    for waypoint in data["Set 2"]:
-        waypoints_2.append(
-            Waypoint(id, id + 1, waypoint["latitude"], waypoint["longitude"], name=waypoint["name"])
-        )
-        id += 1
-
-    waypoint_groups = Waypoint.check_for_collision(waypoints_1, waypoints_2)
-    for group in waypoint_groups:
-        print(
-            f"Collision detected between ({group.drone1_waypoints[0]}, {group.drone1_waypoints[1]}) and ({group.drone2_waypoints[0]}, {group.drone2_waypoints[1]})"
-        )
