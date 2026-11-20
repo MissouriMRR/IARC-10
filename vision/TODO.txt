@@ -1,0 +1,3 @@
+Make two seperate folders for RPIcam and airsim cam, with init, capture, detect (does capture and detection)
+Implement camera base class they inherit from
+Detect for airsim cam should run the torch model

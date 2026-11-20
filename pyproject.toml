@@ -1,0 +1,31 @@
+[project]
+name = "iarc_10"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13.5"
+dependencies = [
+    "future>=1.0.0",
+    "utm>=0.7.0",
+    "numpy>=1.0.0",
+    "pyserial==3.5",
+    "mavproxy>=1.8.74",
+    "scipy>=1.18.0",
+    "dronekit>=2.9.3",
+    "typing-extensions>=4.0",
+]
+
+[project.optional-dependencies]
+# YOLO for AirSimCamera (--airsim missions) and vision/models/conversion.py.
+# Pulls in torch + CUDA (~2 GB), so it is opt-in: uv run --extra vision ...
+vision = [
+    "ultralytics>=8.4.14",
+]
+
+[tool.uv.sources]
+dronekit = { index = "missourimrr" }
+
+[[tool.uv.index]]
+name = "missourimrr"
+url = "https://missourimrr.github.io/pypi-index/simple"
+explicit = true
